@@ -64,7 +64,7 @@ jobs:
             (cd artifacts && zip -r "../GedFire-$rid.zip" "GedFire-$rid")
           done
       - name: Pack .NET tool
-        run: dotnet pack GedFire/GedFire.csproj --configuration Release --no-build -p:BuildNumber="$BUILD_NUMBER" --output artifacts
+        run: dotnet pack GedFire/GedFire.csproj --configuration Release -p:BuildNumber="$BUILD_NUMBER" --output artifacts
       - name: Publish .NET tool to NuGet
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
