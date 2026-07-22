@@ -1,0 +1,13 @@
+{
+  "proposal": "fixture-seed-duplicate-pair",
+  "items": [
+    {
+      "item": 1,
+      "target": "@I00010@ and @I00011@",
+      "ops": [
+        { "op": "createOrUpdateChild", "family": "@F00010@", "husb": "@I00002@", "child": { "xref": "@I00010@", "name": "Duplicate /Person/", "sex": "M", "facts": [ { "fact": "BIRT", "value": { "date": "1846" }, "citation": { "source": "@S00001@", "page": "a", "dataText": "born 1846", "quay": 1 } } ] } },
+        { "op": "createOrUpdateChild", "family": "@F00011@", "husb": "@I00002@", "child": { "xref": "@I00011@", "name": "Duplicate /Twin/", "sex": "M", "facts": [ { "fact": "BIRT", "value": { "date": "1849" }, "citation": { "source": "@S00001@", "page": "b", "dataText": "born abt 1849", "quay": 1 } } ] } }
+      ]
+    }
+  ]
+}

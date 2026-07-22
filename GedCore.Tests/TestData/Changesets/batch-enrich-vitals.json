@@ -1,0 +1,32 @@
+{
+  "proposal": "test-enrich-batch",
+  "newSources": [
+    { "xref": "@S00010@", "ops": [
+      { "op": "createOrUpdateSource", "xref": "@S00010@", "auth": "Test Grave Index",
+        "title": "Find a Grave Index (Allen Test, d. 1998)",
+        "url": "https://example.org/memorial/1", "accessed": "2026-07-11" } ] },
+    { "xref": "@S00011@", "ops": [
+      { "op": "createOrUpdateSource", "xref": "@S00011@", "auth": "Test Grave Index",
+        "title": "Find a Grave Index (Edna Test, d. 2001)",
+        "url": "https://example.org/memorial/2", "accessed": "2026-07-11" } ] }
+  ],
+  "items": [
+    { "item": 1, "target": "@I00001@ Allen -> add death date/place with two corroborating citations",
+      "ops": [
+        { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
+          "value": { "date": "9 APR 1998", "place": "Elbow Lake, Minnesota" },
+          "citations": [
+            { "source": "@S00001@", "page": "p. 1", "dataText": "died 9 Apr 1998", "quay": 2 },
+            { "source": "@S00010@", "page": "memorial 1", "dataText": "Death Date: 9 Apr 1998", "quay": 2 }
+          ] } ] },
+    { "item": 2, "target": "@I00004@ Edna -> add death place; note a one-year date conflict",
+      "ops": [
+        { "op": "createOrUpdateVital", "record": "@I00004@", "fact": "DEAT",
+          "value": { "place": "Elbow Lake, Minnesota" },
+          "citation": { "source": "@S00011@", "page": "memorial 2",
+                        "dataText": "Death Place: Elbow Lake, Minnesota", "quay": 2 } },
+        { "op": "createOrUpdateNote", "record": "@I00004@",
+          "text": "Find a Grave (S00011) gives death 2001; this tree's uncited DEAT year is 2000. Not reconciled -- only the place is adopted here." }
+      ] }
+  ]
+}

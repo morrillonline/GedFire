@@ -1,0 +1,24 @@
+{
+  "proposal": "mercy-whitfield-death-record",
+  "newSources": [
+    { "xref": "@S3@", "ops": [
+      { "op": "createOrUpdateSource", "xref": "@S3@",
+        "auth": "New Hampshire Bureau of Vital Records (fictional)",
+        "title": "Death certificate, Mercy (Whitfield) Ash, 1870",
+        "accessed": "2026-07-22" } ] }
+  ],
+  "items": [
+    { "item": 1,
+      "target": "@I2@ Mercy Whitfield -> cite her death, currently uncited",
+      "ops": [
+        { "op": "createOrUpdateVital", "record": "@I2@", "fact": "DEAT",
+          "value": { "date": "19 JAN 1870", "place": "Salisbury, Hartwell County, New Hampshire" },
+          "citation": { "source": "@S3@", "page": "cert. 1870-0114",
+                        "dataText": "Mercy Ash, widow of Nathaniel, died 19 Jan 1870, aged 75", "quay": 2 } } ] },
+    { "item": 2,
+      "target": "@I4@ Levi Ash -> record where the loss of the Corinth is reported",
+      "ops": [
+        { "op": "createOrUpdateNote", "record": "@I4@",
+          "text": "The barque Corinth was lost with all hands in August 1842; Pratt (p. 131) is the only account naming Levi among the crew. No official casualty list has been found." } ] }
+  ]
+}

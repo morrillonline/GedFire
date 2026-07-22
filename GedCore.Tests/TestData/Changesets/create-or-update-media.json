@@ -1,0 +1,19 @@
+{
+  "proposal": "example-create-or-update-media",
+  "newSources": [
+    {
+      "xref": "@M00001@",
+      "ops": [
+        { "op": "createOrUpdateMedia", "xref": "@M00001@",
+          "title": "Wedding portrait, 1902",
+          "files": [
+            { "path": "media/allen-edna-wedding.jpg", "mediaType": "image/jpeg", "medium": "PHOTO", "title": "Allen and Edna, 1902" }
+          ],
+          "attachTo": [
+            { "person": "@I00001@", "portrait": true }
+          ] }
+      ]
+    }
+  ],
+  "items": [ { "item": 1, "target": "@M00001@", "ops": [] } ]
+}

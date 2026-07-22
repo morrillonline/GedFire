@@ -1,0 +1,9 @@
+{
+  "proposal": "example-delete-media",
+  "newSources": [],
+  "items": [
+    { "item": 1, "target": "@M00001@", "ops": [
+      { "op": "deleteMedia", "xref": "@M00001@" }
+    ] }
+  ]
+}

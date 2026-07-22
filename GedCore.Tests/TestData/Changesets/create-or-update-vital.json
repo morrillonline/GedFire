@@ -1,0 +1,18 @@
+{
+  "proposal": "example-create-or-update-vital",
+  "items": [
+    {
+      "item": 1,
+      "target": "@I00001@",
+      "ops": [
+        {
+          "op": "createOrUpdateVital",
+          "record": "@I00001@",
+          "fact": "DEAT",
+          "value": { "date": "9 APR 2009", "place": "Elbow Lake, Minnesota" },
+          "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "passed away", "quay": 3 }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "proposal": "test-media-batch",
+  "newSources": [
+    { "xref": "@M00010@", "ops": [
+      { "op": "createOrUpdateMedia", "xref": "@M00010@",
+        "title": "Allen and Edna's wedding, 1902",
+        "files": [
+          { "path": "photos/allen-edna-wedding.jpg", "mediaType": "image/jpeg", "medium": "PHOTO", "title": "Wedding portrait" },
+          { "path": "documents/wedding program 1902.pdf", "mediaType": "application/pdf", "title": "Order of service" }
+        ],
+        "attachTo": [
+          { "person": "@I00001@", "portrait": true },
+          { "family": "@F00002@", "title": "Wedding day" }
+        ] } ] },
+    { "xref": "@M00011@", "ops": [
+      { "op": "createOrUpdateMedia", "xref": "@M00011@",
+        "title": "Edna in later years",
+        "files": [
+          { "path": "https://example.org/photos/edna-1990.jpg", "mediaType": "image/jpeg" }
+        ],
+        "attachTo": [ { "person": "@I00004@", "portrait": true } ] } ] }
+  ],
+  "items": [
+    { "item": 1, "target": "@I00001@ Allen + @F00002@ -> wedding photo set (records in newSources: @M00010@ two files incl. a space-containing path that must be percent-escaped on write; @M00011@ absolute-URL file, stored verbatim, never bundled)",
+      "ops": [] },
+    { "item": 2, "target": "@I00002@ Harvey -> tintype; xref omitted, so the op is content-addressed by its file-path set and the applier allocates the next free @M...@",
+      "ops": [
+        { "op": "createOrUpdateMedia",
+          "files": [ { "path": "photos/harvey-tintype.jpg", "mediaType": "image/jpeg", "medium": "PHOTO" } ],
+          "attachTo": [ { "person": "@I00002@" } ] } ] }
+  ]
+}

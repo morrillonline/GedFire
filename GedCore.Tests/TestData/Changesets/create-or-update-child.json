@@ -1,0 +1,17 @@
+{
+  "proposal": "example-create-or-update-child",
+  "items": [
+    {
+      "item": 1,
+      "target": "@F00002@",
+      "ops": [
+        {
+          "op": "createOrUpdateChild",
+          "family": "@F00002@",
+          "child": { "xref": "@I00006@", "name": "Junior /Test/", "sex": "M" },
+          "citation": { "source": "@S00001@", "page": "p. 5", "dataText": "surviving children include Junior", "quay": 3 }
+        }
+      ]
+    }
+  ]
+}

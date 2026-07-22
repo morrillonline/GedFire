@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <VersionMajor>4</VersionMajor>
+    <VersionMinor>0</VersionMinor>
+    <BuildNumber Condition="'$(BuildNumber)' == ''">1</BuildNumber>
+    <Version>$(VersionMajor).$(VersionMinor).$(BuildNumber)</Version>
+    <AssemblyVersion>$(Version).0</AssemblyVersion>
+    <FileVersion>$(Version).0</FileVersion>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

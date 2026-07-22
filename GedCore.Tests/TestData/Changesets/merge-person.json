@@ -1,0 +1,18 @@
+{
+  "proposal": "example-merge-person",
+  "items": [
+    {
+      "item": 1,
+      "target": "@I00010@",
+      "ops": [
+        {
+          "op": "mergePerson",
+          "survivor": "@I00010@",
+          "duplicate": "@I00011@",
+          "facts": [ { "fact": "BIRT", "keep": "survivor" }, { "fact": "NAME", "keep": "survivor" } ],
+          "note": "Merged per reviewed correlation evidence."
+        }
+      ]
+    }
+  ]
+}

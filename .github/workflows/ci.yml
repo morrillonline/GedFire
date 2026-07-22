@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Resolve build number
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            build_number="${version##*.}"
+          else
+            build_number="$GITHUB_RUN_NUMBER"
+          fi
+          echo "BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
+      - run: dotnet test --nologo -p:BuildNumber="$BUILD_NUMBER"
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Verify tag matches project version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          build_number="${tag_version##*.}"
+          project_version=$(dotnet msbuild GedFire/GedFire.csproj \
+            -getProperty:Version -p:BuildNumber="$build_number" --nologo)
+          test "$tag_version" = "$project_version"
+          echo "BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
+      - name: Publish self-contained binaries
+        shell: bash
+        run: |
+          for rid in win-x64 linux-x64 osx-x64 osx-arm64; do
+            dotnet publish GedFire/GedFire.csproj \
+              --configuration Release \
+              --runtime "$rid" \
+              --self-contained true \
+              -p:BuildNumber="$BUILD_NUMBER" \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              --output "artifacts/GedFire-$rid"
+            (cd artifacts && zip -r "../GedFire-$rid.zip" "GedFire-$rid")
+          done
+      - name: Pack .NET tool
+        run: dotnet pack GedFire/GedFire.csproj --configuration Release --no-build -p:BuildNumber="$BUILD_NUMBER" --output artifacts
+      - name: Publish .NET tool to NuGet
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        if: env.NUGET_API_KEY != ''
+        run: dotnet nuget push "artifacts/GedFire.$BUILD_NUMBER.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" GedFire-*.zip artifacts/GedFire.*.nupkg --generate-notes

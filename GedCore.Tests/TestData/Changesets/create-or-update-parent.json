@@ -1,0 +1,18 @@
+{
+  "proposal": "example-create-or-update-parent",
+  "items": [
+    {
+      "item": 1,
+      "target": "@I00004@",
+      "ops": [
+        {
+          "op": "createOrUpdateParent",
+          "person": "@I00004@",
+          "role": "mother",
+          "parent": { "xref": "@I00006@", "name": "Grandma /Test/", "sex": "F" },
+          "family": "@F00005@"
+        }
+      ]
+    }
+  ]
+}

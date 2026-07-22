@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="GedCore.Tests/GedCore.Tests.csproj" />
+  <Project Path="GedCore/GedCore.csproj" />
+  <Project Path="GedFire/GedFire.csproj" />
+</Solution>

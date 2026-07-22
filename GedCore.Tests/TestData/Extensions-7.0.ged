@@ -1,0 +1,34 @@
+0 HEAD
+1 GEDC
+2 VERS 7.0
+1 SCHMA
+2 TAG _MILT https://example.com/gedcom/MILT
+2 TAG _NICKSRC https://example.com/gedcom/NICKSRC
+2 TAG _ANNIV https://example.com/gedcom/ANNIV
+0 @I00001@ INDI
+1 NAME Allen /Test/
+2 _NICKSRC Provided by military discharge papers
+1 SEX M
+1 BIRT
+2 DATE 1928
+2 PLAC Minnesota
+1 _MILT
+2 DATE 1950
+2 PLAC Fort Snelling
+2 NOTE Served during the Korean War
+1 FAMS @F00001@
+0 @I00002@ INDI
+1 NAME Edna /Test/
+1 SEX F
+1 FAMS @F00001@
+0 @F00001@ FAM
+1 HUSB @I00001@
+1 WIFE @I00002@
+1 MARR
+2 DATE 1950
+1 _ANNIV
+2 DATE 2000
+2 NOTE Fiftieth wedding anniversary celebration
+0 @S00001@ SOUR
+1 TITL Existing source
+0 TRLR

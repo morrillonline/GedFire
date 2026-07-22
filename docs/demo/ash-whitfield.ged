@@ -1,0 +1,127 @@
+0 HEAD
+1 GEDC
+2 VERS 7.0
+1 NOTE Synthetic demonstration data for GedFire. Every person, place, and source in this file is fictional.
+0 @I1@ INDI
+1 NAME Nathaniel /Ash/
+1 SEX M
+1 BIRT
+2 DATE 14 FEB 1789
+2 PLAC Salisbury, Hartwell County, New Hampshire
+2 SOUR @S1@
+3 PAGE vol. 2, p. 114
+3 QUAY 2
+1 DEAT
+2 DATE 3 NOV 1861
+2 PLAC Salisbury, Hartwell County, New Hampshire
+2 SOUR @S1@
+3 PAGE vol. 9, p. 27
+3 QUAY 2
+1 OCCU Millwright
+1 FAMS @F1@
+1 NOTE Nathaniel kept the grist mill on the Blackwater brook for nearly forty years, and the account book he left behind records half the town passing over his threshold. He served two terms as a selectman and, by the recollection of his granddaughter, never once raised his voice in meeting.
+2 SOUR @S2@
+3 PAGE p. 88
+0 @I2@ INDI
+1 NAME Mercy /Whitfield/
+1 SEX F
+1 BIRT
+2 DATE 2 JUN 1794
+2 PLAC Andover, Hartwell County, New Hampshire
+2 SOUR @S1@
+3 PAGE vol. 3, p. 41
+3 QUAY 2
+1 DEAT
+2 DATE 19 JAN 1870
+2 PLAC Salisbury, Hartwell County, New Hampshire
+1 FAMS @F1@
+0 @I3@ INDI
+1 NAME Harriet /Ash/
+1 SEX F
+1 BIRT
+2 DATE 30 SEP 1816
+2 PLAC Salisbury, Hartwell County, New Hampshire
+2 SOUR @S1@
+3 PAGE vol. 5, p. 12
+1 DEAT
+2 DATE 8 MAY 1891
+2 PLAC Concord, New Hampshire
+1 FAMC @F1@
+1 FAMS @F2@
+0 @I4@ INDI
+1 NAME Levi /Ash/
+1 SEX M
+1 BIRT
+2 DATE 21 MAR 1818
+2 PLAC Salisbury, Hartwell County, New Hampshire
+2 SOUR @S1@
+3 PAGE vol. 5, p. 44
+1 DEAT
+2 DATE 2 AUG 1842
+2 PLAC at sea, aboard the barque Corinth
+2 SOUR @S2@
+3 PAGE p. 131
+3 QUAY 1
+1 FAMC @F1@
+0 @I5@ INDI
+1 NAME Susan /Ash/
+1 SEX F
+1 BIRT
+2 DATE 11 JUL 1821
+2 PLAC Salisbury, Hartwell County, New Hampshire
+2 SOUR @S1@
+3 PAGE vol. 6, p. 3
+1 FAMC @F1@
+0 @I6@ INDI
+1 NAME Charles /Ash/
+1 SEX M
+1 BIRT
+2 DATE 25 DEC 1825
+2 PLAC Salisbury, Hartwell County, New Hampshire
+2 SOUR @S1@
+3 PAGE vol. 6, p. 59
+1 OCCU Printer
+1 FAMC @F1@
+0 @I7@ INDI
+1 NAME Josiah /Brook/
+1 SEX M
+1 BIRT
+2 DATE 4 APR 1812
+2 PLAC Boscawen, New Hampshire
+1 FAMS @F2@
+0 @I8@ INDI
+1 NAME Ellen /Brook/
+1 SEX F
+1 BIRT
+2 DATE 17 OCT 1839
+2 PLAC Concord, New Hampshire
+1 FAMC @F2@
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 28 NOV 1815
+2 PLAC Andover, Hartwell County, New Hampshire
+2 SOUR @S1@
+3 PAGE vol. 4, p. 77
+3 QUAY 2
+1 CHIL @I3@
+1 CHIL @I4@
+1 CHIL @I5@
+1 CHIL @I6@
+0 @F2@ FAM
+1 HUSB @I7@
+1 WIFE @I3@
+1 MARR
+2 DATE 15 JUN 1837
+2 PLAC Salisbury, Hartwell County, New Hampshire
+1 CHIL @I8@
+0 @S1@ SOUR
+1 AUTH Town Clerk of Salisbury
+1 TITL Hartwell County Register of Births, Marriages, and Deaths (fictional)
+1 PUBL Salisbury, N.H.: Town Records Office
+0 @S2@ SOUR
+1 AUTH Abigail Pratt
+1 TITL Mills and Millers of the Blackwater Valley (fictional)
+1 PUBL Concord, N.H.: Rumford Press, 1904
+0 TRLR

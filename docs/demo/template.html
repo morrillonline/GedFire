@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><insert title> — Ash Family History</title>
+<style>
+:root{--bg:#f6f4ee;--surface:#ffffff;--ink:#23282b;--muted:#6c726f;--accent:#33523f;--accent-dk:#274030;--gold:#b08d57;--line:#e5e1d6;--link:#2f6d4e;--sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--radius:10px;--maxw:920px}
+*,*::before,*::after{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.7}a{color:var(--link);text-decoration:none}a:hover{text-decoration:underline}.wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+header.site{background:var(--accent);color:#fff;position:sticky;top:0;z-index:100}.site>.wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:14px;padding-bottom:14px}.brand{display:flex;flex-direction:column;line-height:1.2;text-decoration:none}.brand b{font-size:23px;font-weight:600;letter-spacing:.2px;color:#fff}.brand span{font-size:12.5px;color:#cfe0d4;text-transform:uppercase;letter-spacing:.12em}nav.main{display:flex;gap:20px;flex-wrap:wrap;font-size:15px}nav.main a{color:#e7efe8}nav.main a:hover{color:#fff;text-decoration:none}
+nav.crumb{font-size:14px;color:var(--muted);margin:22px 0 4px}nav.crumb a{color:var(--muted)}nav.crumb a:hover{color:var(--ink)}h1.fam-title{font-weight:600;font-size:34px;line-height:1.15;margin:.1em 0 .15em}p.lifespan{color:var(--muted);font-size:16px;margin-bottom:6px}
+.couple{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.person{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px}.person .role{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);font-weight:600}.person h2{font-size:24px;font-weight:600;margin:4px 0 14px}
+dl.facts{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:15.5px}dl.facts dt{color:var(--muted);white-space:nowrap}dl.facts dd{margin:0}.place{color:var(--muted);font-size:14.5px}
+sup a.fn{color:var(--gold);font-size:11px;font-weight:600;text-decoration:none;cursor:help}sup a.fn:hover{color:var(--accent)}
+#fn-tip{position:absolute;z-index:200;max-width:360px;background:#262b28;color:#eef2ee;font-size:13px;line-height:1.55;padding:10px 13px;border-radius:8px;box-shadow:0 8px 22px rgba(0,0,0,.20);pointer-events:none;white-space:pre-line;overflow-wrap:break-word}#fn-tip em{color:#dfe6df}#fn-tip a{color:#bcd5c4}#fn-tip[hidden]{display:none}
+section.bio{margin:30px 0}section.bio p{margin:0 0 1em;max-width:70ch}p.bio-inline{font-size:15px;color:var(--muted);margin:6px 0}
+section.fam-children{margin:34px 0}h3.sec{font-size:21px;font-weight:600;margin:0 0 6px;padding-bottom:8px;border-bottom:2px solid var(--accent)}.children{column-width:330px;column-gap:14px;margin-top:14px}.child{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin:0 0 14px;break-inside:avoid;-webkit-column-break-inside:avoid}.child .hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}.child .nm{font-size:19px;font-weight:600}.child .yr{color:var(--muted);font-size:14px;white-space:nowrap}.child dl.facts{font-size:14.5px;gap:5px 14px}.child .sub{color:var(--muted);font-size:13.5px}p.marr{margin:0 0 6px}p.marr:last-child{margin-bottom:0}.ord{color:var(--gold);font-weight:600}a.tofam{display:inline-block;font-size:12px;color:var(--accent);font-weight:600;border:1px solid var(--accent);border-radius:20px;padding:0 9px;margin-left:6px;text-decoration:none;white-space:nowrap;vertical-align:1px}a.tofam:hover{background:var(--accent);color:#fff;text-decoration:none}
+h1.idx-title{font-size:32px;font-weight:600;margin:18px 0 2px}p.count{color:var(--muted);font-size:15px;margin:0 0 18px}p.count b{color:var(--ink);font-weight:600}ul.idx-list{list-style:none;padding:0;columns:3;column-gap:20px}ul.idx-list li{margin-bottom:6px;break-inside:avoid}ul.idx-list a{font-weight:500}.tbl{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}table.index{width:100%;border-collapse:collapse;font-size:15px}.index th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;padding:11px 14px;border-bottom:2px solid var(--line)}.index td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}.index tbody tr:last-child td{border-bottom:0}.index tbody tr:hover{background:#faf8f3}.index .nm{font-weight:500}.index .num{font-variant-numeric:tabular-nums;white-space:nowrap}.index .sub{color:var(--muted);font-size:14px}.pager{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:18px 0;flex-wrap:wrap}.pager a{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-size:14px;font-weight:500}.pager a:hover{text-decoration:none;border-color:var(--accent)}.pager .where{color:var(--muted);font-size:14px}
+footer.site{background:#262b28;color:#b7bdb8;font-size:13.5px;margin-top:40px}footer.site .wrap{padding:26px 20px;text-align:center}footer.site a{color:#cfe0d4}
+@media(max-width:680px){body{font-size:16px}h1.fam-title{font-size:27px}.couple{grid-template-columns:1fr}nav.main{gap:14px;font-size:14px}ul.idx-list{columns:2}.index thead{display:none}.index tbody tr{display:block;border-bottom:1px solid var(--line);padding:10px 14px}.index tbody tr:hover{background:transparent}.index td{display:flex;justify-content:space-between;gap:16px;border:0;padding:3px 0;text-align:right}.index td::before{content:attr(data-label);color:var(--muted);font-weight:500;text-align:left;white-space:nowrap;flex-shrink:0}.index td:first-child{font-size:17px;padding-bottom:6px}.index td:first-child::before{content:""}}
+<insert stylesheet>
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <b>Ash Family History</b>
+      <span>Generated with GedFire</span>
+    </a>
+    <nav class="main">
+      <a href="index.html">Index of Names</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+
+<insert body>
+
+</div>
+
+<footer class="site">
+  <div class="wrap">
+    Demonstration site &mdash; every person and source is fictional. Built with GedFire.
+  </div>
+</footer>
+
+<div id="fn-tip" role="tooltip" hidden></div>
+<script>
+(function(){
+  var tip=document.getElementById('fn-tip');if(!tip)return;
+  function show(a){var id=a.getAttribute('href');if(!id||id.charAt(0)!=='#')return;var src=document.getElementById(id.slice(1));if(!src)return;tip.innerHTML=src.innerHTML;tip.hidden=false;var r=a.getBoundingClientRect(),pad=12,vw=document.documentElement.clientWidth,vh=document.documentElement.clientHeight,h=tip.offsetHeight,maxL=window.scrollX+vw-tip.offsetWidth-pad;tip.style.left=Math.max(pad,Math.min(window.scrollX+r.left,maxL))+'px';if(r.bottom+6+h>vh&&r.top-6-h>0){tip.style.top=(window.scrollY+r.top-h-6)+'px';}else{tip.style.top=(window.scrollY+r.bottom+6)+'px';}}
+  function hide(){tip.hidden=true;}
+  document.querySelectorAll('a.fn').forEach(function(a){a.addEventListener('mouseenter',function(){show(a);});a.addEventListener('mouseleave',hide);a.addEventListener('focus',function(){show(a);});a.addEventListener('blur',hide);a.addEventListener('click',function(e){e.preventDefault();tip.hidden?show(a):hide();});});
+  document.addEventListener('scroll',hide,{passive:true,capture:true});
+}());
+</script>
+
+</body>
+</html>

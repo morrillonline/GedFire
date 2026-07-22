@@ -1,0 +1,17 @@
+{
+  "proposal": "example-create-or-update-citation",
+  "items": [
+    {
+      "item": 1,
+      "target": "@I00001@",
+      "ops": [
+        {
+          "op": "createOrUpdateCitation",
+          "record": "@I00001@",
+          "fact": "BIRT",
+          "citation": { "source": "@S00001@", "page": "p. 2", "dataText": "born 1928", "quay": 2 }
+        }
+      ]
+    }
+  ]
+}

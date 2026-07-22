@@ -1,0 +1,21 @@
+{
+  "proposal": "example-create-or-update-spouse",
+  "items": [
+    {
+      "item": 1,
+      "target": "@F00001@",
+      "ops": [
+        {
+          "op": "createOrUpdateSpouse",
+          "person": "@I00002@",
+          "spouse": "@I00003@",
+          "marriage": {
+            "date": "12 JUN 1922",
+            "place": "Fergus Falls, Minnesota",
+            "citation": { "source": "@S00001@", "page": "p. 4", "dataText": "married June 12, 1922", "quay": 2 }
+          }
+        }
+      ]
+    }
+  ]
+}

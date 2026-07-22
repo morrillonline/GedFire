@@ -1,0 +1,10 @@
+{
+  "proposal": "example-delete-child",
+  "items": [
+    {
+      "item": 1,
+      "target": "@F00001@",
+      "ops": [ { "op": "deleteChild", "family": "@F00001@", "child": "@I00001@" } ]
+    }
+  ]
+}

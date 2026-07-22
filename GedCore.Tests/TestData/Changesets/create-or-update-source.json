@@ -1,0 +1,12 @@
+{
+  "proposal": "example-create-or-update-source",
+  "newSources": [
+    {
+      "xref": "@S00002@",
+      "ops": [
+        { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "County Clerk", "title": "Death record", "url": "https://example.org/record", "accessed": "2026-07-18" }
+      ]
+    }
+  ],
+  "items": [ { "item": 1, "target": "@S00002@", "ops": [] } ]
+}

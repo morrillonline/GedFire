@@ -1,0 +1,28 @@
+{
+  "proposal": "test-corrections",
+  "newSources": [
+    { "xref": "@S00030@", "ops": [
+      { "op": "createOrUpdateSource", "xref": "@S00030@", "auth": "Test Vital Records",
+        "title": "Birth record for Allen Test, 1928",
+        "url": "https://example.org/ark/2", "accessed": "2026-07-12" } ] }
+  ],
+  "items": [
+    { "item": 1, "target": "annotation only -- duplicate finding already assimilated; no GEDCOM change",
+      "ops": [] },
+    { "item": 2, "target": "@I00001@ Allen -> consolidate birth citation; add identity note on Nellie",
+      "ops": [
+        { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
+          "citations": [
+            { "source": "@S00001@", "page": "p. 1", "dataText": "born 1928", "quay": 1 },
+            { "source": "@S00030@", "page": "certificate 4",
+              "dataText": "Birth of Allen Test, 1928, Minnesota", "quay": 2 }
+          ] },
+        { "op": "createOrUpdateNote", "record": "@I00003@",
+          "text": "Identity anchor for Nellie: Allen's 1928 birth record (S00030) names her as his mother, tying this record to the family by document rather than an online tree." }
+      ] },
+    { "item": 3, "target": "@I00001@ Allen -> drop the superseded citation now that S00030 corroborates the birth",
+      "ops": [
+        { "op": "deleteCitation", "record": "@I00001@", "fact": "BIRT", "source": "@S00001@" }
+      ] }
+  ]
+}
