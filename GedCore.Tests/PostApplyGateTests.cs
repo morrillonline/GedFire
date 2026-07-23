@@ -20,48 +20,98 @@ public class PostApplyGateTests : ApplyTestBase
         return ms.ToArray();
     }
 
-    private static GedDiagnostic Diag(GedDiagnosticSeverity severity, string code, string xref, string tag,
-                                       string message = "m") => new(severity, code, message, xref, tag);
-
     // -------------------------------------------------------------------
-    // DiffDiagnostics — the multiset-increase mechanism itself
+    // Multiset diff semantics, exercised through ChangesetApplier.Run
     // -------------------------------------------------------------------
 
     [Fact]
-    public void DiffDiagnostics_FlagsOnlyIncreasedKeys()
+    public void MultisetIncrease_SecondIdenticalDiagnostic_IsRefusedDespiteBaselineOccurrence()
     {
-        var before = new[]
-        {
-            Diag(GedDiagnosticSeverity.Error, "GED004", "@I1@", "FAMC"),
-            Diag(GedDiagnosticSeverity.Warning, "GED010", "@I2@", "_FOO"),
-        };
-        var after = new[]
-        {
-            Diag(GedDiagnosticSeverity.Error, "GED004", "@I1@", "FAMC"),   // unchanged
-            Diag(GedDiagnosticSeverity.Error, "GED004", "@I3@", "FAMC"),   // new
-            Diag(GedDiagnosticSeverity.Warning, "GED010", "@I2@", "_FOO"), // unchanged
-            Diag(GedDiagnosticSeverity.Warning, "GED010", "@I4@", "_BAR"), // new
-        };
+        // The baseline already carries one GED005 (a citation on @I00001@
+        // naming the INDI @I00002@ as its source), so the diagnostic KEY
+        // (Code, Xref, Tag, Message) pre-exists. The changeset adds a second
+        // citation with the identical key. Baseline tolerance is per
+        // occurrence count, not per key: the count increase must be refused.
+        var bytes = Seed(
+            "0 HEAD",
+            "1 GEDC",
+            "2 VERS 7.0",
+            "0 @I00001@ INDI",
+            "1 NAME Allen /Test/",
+            "1 SEX M",
+            "1 BIRT",
+            "2 DATE 1 JAN 1900",
+            "2 SOUR @I00002@",
+            "3 PAGE p. 1",
+            "0 @I00002@ INDI",
+            "1 NAME Cited /Person/",
+            "0 TRLR");
 
-        var increased = ConformanceChecker.DiffDiagnostics(before, after);
+        var before = ConformanceChecker.Check(Ged70Parser.Read(new MemoryStream(bytes)));
+        Assert.Single(before.Where(d => d.Code == "GED005"));
 
-        Assert.Equal(2, increased.Count);
-        Assert.Contains(increased, d => d.Code == "GED004" && d.Xref == "@I3@");
-        Assert.Contains(increased, d => d.Code == "GED010" && d.Xref == "@I4@");
+        const string changesetJson = """
+        {
+          "proposal": "test",
+          "items": [
+            { "item": 1, "target": "@I00001@", "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
+                "value": { "date": "5 MAY 1999", "place": "Minnesota" },
+                "citation": { "source": "@I00002@", "page": "p. 1", "quay": 2 } } ] }
+          ]
+        }
+        """;
+
+        var result = ChangesetApplier.Run(bytes, Changeset.Parse(changesetJson), [1], dryRun: false);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e =>
+            e.StartsWith("conformance regression: GED005") && e.Contains("@I00002@"));
+        Assert.Null(result.OutputBytes);
     }
 
     [Fact]
-    public void DiffDiagnostics_DecreasedOrRemovedCounts_AreNeverFlagged()
+    public void PreExistingError_ThatTheChangesetLeavesAlone_NeverBlocks()
     {
-        var before = new[]
-        {
-            Diag(GedDiagnosticSeverity.Error, "GED004", "@I1@", "FAMC"),
-            Diag(GedDiagnosticSeverity.Error, "GED004", "@I2@", "FAMC"),
-        };
-        var after = new[] { Diag(GedDiagnosticSeverity.Error, "GED004", "@I1@", "FAMC") };
+        // A baseline Error-severity diagnostic on a record the changeset
+        // does not touch is tolerated: only genuinely new findings block.
+        var bytes = Seed(
+            "0 HEAD",
+            "1 GEDC",
+            "2 VERS 7.0",
+            "0 @I00001@ INDI",
+            "1 NAME Allen /Test/",
+            "1 SEX M",
+            "0 @I00003@ INDI",
+            "1 NAME Broken /Link/",
+            "1 FAMC @I00001@",
+            "0 @S00001@ SOUR",
+            "1 TITL Existing source",
+            "0 TRLR");
 
-        Assert.Empty(ConformanceChecker.DiffDiagnostics(before, after));
-        Assert.Empty(ConformanceChecker.DiffDiagnostics(before, []));
+        var before = ConformanceChecker.Check(Ged70Parser.Read(new MemoryStream(bytes)));
+        Assert.Contains(before, d => d.Code == "GED005" && d.Severity == GedDiagnosticSeverity.Error);
+
+        const string changesetJson = """
+        {
+          "proposal": "test",
+          "items": [
+            { "item": 1, "target": "@I00001@", "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
+                "value": "Albin H. /Test/", "match": "Allen /Test/",
+                "citation": { "source": "@S00001@", "page": "p. 1",
+                              "dataText": "Albin H. Test", "quay": 2 } } ] }
+          ]
+        }
+        """;
+
+        var result = ChangesetApplier.Run(bytes, Changeset.Parse(changesetJson), [1], dryRun: false);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.DoesNotContain(result.Errors, e => e.Contains("conformance"));
+
+        var after = ConformanceChecker.Check(Ged70Parser.Read(new MemoryStream(result.OutputBytes!)));
+        Assert.Single(after.Where(d => d.Code == "GED005"));
     }
 
     // -------------------------------------------------------------------
@@ -81,7 +131,7 @@ public class PostApplyGateTests : ApplyTestBase
         // If op-level validation ever learns to reject wrong-type citation
         // sources, this test will fail on the dry-run assertion below —
         // update it then to whatever hole remains, or retire it in favor of
-        // the DiffDiagnostics unit tests above.
+        // the multiset-diff tests above.
         WriteBaseFile();
         var before = ReadBytes();
         Assert.Empty(ConformanceChecker.Check(ReadDoc()));
