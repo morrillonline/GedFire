@@ -16,6 +16,11 @@ internal sealed class ApplyState(GedDocument doc)
     /// <summary>Count of actual tree mutations; zero means the file is not rewritten.</summary>
     public int Mutations { get; private set; }
 
+    /// <summary>Xrefs of SOUR records this run created, for the post-apply orphan-source
+    /// check in <see cref="ChangesetApplier"/> — a defense-in-depth backstop behind the
+    /// newSources[] citation filtering, in case some other path creates an uncited one.</summary>
+    public HashSet<string> CreatedSourceXrefs { get; } = new(StringComparer.Ordinal);
+
     /// <summary>
     /// Level-0 records touched by this run's mutations, for the post-apply
     /// CHAN (change date) stamping phase (Subproject F). A record is touched
@@ -98,6 +103,7 @@ internal sealed class ApplyState(GedDocument doc)
         Bump(tag, +1);
         Mutated();
         Touch(rec);   // newly created level-0 record
+        if (tag == "SOUR" && rec.Xref is not null) CreatedSourceXrefs.Add(rec.Xref);
         Doc.RebuildXrefIndex();   // later ops in this run can resolve it
     }
 

@@ -17,6 +17,8 @@ public sealed class CreateOrUpdateCitationOp : ChangeOp
     public FactMatch? Match { get; init; }
     public IReadOnlyList<Citation> Citations { get; init; } = [];
 
+    internal override IEnumerable<string> CitedSources => Citations.Select(c => c.Source);
+
     internal static CreateOrUpdateCitationOp Read(JsonElement el) => new()
     {
         Record = JsonRead.Req(el, "record", "createOrUpdateCitation"),

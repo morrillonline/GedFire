@@ -35,6 +35,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
     /// <summary>Disposition of citations already on the fact when its value is replaced.</summary>
     public string ReplacedCitations { get; init; } = "keep";
 
+    internal override IEnumerable<string> CitedSources => Citations.Select(c => c.Source);
+
     /// <summary>
     /// Vital tags that occur at most once per record, where a no-match op
     /// correctly updates the sole instance in place. Every other tag is treated

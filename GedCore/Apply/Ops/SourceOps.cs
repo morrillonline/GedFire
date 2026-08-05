@@ -118,16 +118,12 @@ public sealed class DeleteSourceOp : ChangeOp
         if (existing is null) return;   // no-op at apply time
         if (existing.Tag != "SOUR") { errors.Add($"{Kind} {Xref}: not a SOUR record"); return; }
 
-        int references = ctx.RecordsOfType("INDI")
+        int references = SourceCitations.Count(ctx.RecordsOfType("INDI")
             .Concat(ctx.RecordsOfType("FAM"))
-            .Concat(ctx.RecordsOfType("SOUR"))
-            .Sum(r => CountCitations(r));
+            .Concat(ctx.RecordsOfType("SOUR")), Xref);
         if (references > 0)
             errors.Add($"{Kind} {Xref}: still cited {references} time(s); remove the citations first");
     }
-
-    private int CountCitations(GedRecord node) =>
-        node.Children.Sum(c => (c.Tag == "SOUR" && c.Value == Xref ? 1 : 0) + CountCitations(c));
 
     internal override void Apply(ApplyState state, List<string> log)
     {
@@ -140,4 +136,16 @@ public sealed class DeleteSourceOp : ChangeOp
         state.RemoveRecord(existing);
         log.Add($"{Kind} {Xref}: deleted");
     }
+}
+
+/// <summary>Counts <c>SOUR</c> citation pointers naming a given source xref, shared by
+/// <see cref="DeleteSourceOp"/>'s still-cited guard and <see cref="ChangesetApplier"/>'s
+/// post-apply orphan-source check.</summary>
+internal static class SourceCitations
+{
+    public static int Count(IEnumerable<GedRecord> roots, string xref) =>
+        roots.Sum(r => CountIn(r, xref));
+
+    private static int CountIn(GedRecord node, string xref) =>
+        node.Children.Sum(c => (c.Tag == "SOUR" && c.Value == xref ? 1 : 0) + CountIn(c, xref));
 }

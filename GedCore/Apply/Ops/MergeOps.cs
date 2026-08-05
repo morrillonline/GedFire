@@ -45,6 +45,9 @@ public sealed class MergePersonOp : ChangeOp
     public IReadOnlyList<MergeFactResolution> Facts { get; init; } = [];
     public string? Note { get; init; }
 
+    internal override IEnumerable<string> CitedSources =>
+        Facts.SelectMany(f => f.Citations).Select(c => c.Source);
+
     internal static MergePersonOp Read(JsonElement el) => new()
     {
         Survivor = JsonRead.Req(el, "survivor", "mergePerson"),

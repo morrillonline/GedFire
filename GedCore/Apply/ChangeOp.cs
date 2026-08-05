@@ -26,6 +26,15 @@ public abstract class ChangeOp
     internal abstract void Validate(ResolutionContext ctx, List<string> errors);
     internal abstract void Apply(ApplyState state, List<string> log);
 
+    /// <summary>
+    /// Source xrefs this op attaches as a citation, including any carried by
+    /// inline facts on a person it describes. <see cref="ChangesetApplier"/>
+    /// uses this, gathered over an item's ops, to decide whether a
+    /// <c>newSources[]</c> entry is still needed once <c>--items</c> excludes
+    /// the item(s) that cited it. Ops that don't attach citations report none.
+    /// </summary>
+    internal virtual IEnumerable<string> CitedSources => [];
+
     internal static ChangeOp ReadOp(JsonElement el)
     {
         string kind = el.GetProperty("op").GetString()

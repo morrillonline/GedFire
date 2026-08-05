@@ -184,6 +184,55 @@ public class ApplyTests : ApplyTestBase
     }
 
     [Fact]
+    public void Apply_ItemFilter_SkipsNewSourceCitedOnlyByAnExcludedItem()
+    {
+        WriteBaseFile();
+
+        var result = RunExpectSuccess("""
+            { "newSources": [
+                { "xref": "@S00010@", "ops": [
+                  { "op": "createOrUpdateSource", "xref": "@S00010@", "title": "Excluded source" } ] },
+                { "xref": "@S00011@", "ops": [
+                  { "op": "createOrUpdateSource", "xref": "@S00011@", "title": "Included source" } ] } ],
+              "items": [
+                { "item": 1, "ops": [
+                  { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Item one note.",
+                    "citation": { "source": "@S00010@", "page": "p. 1", "dataText": "x", "quay": 2 } } ] },
+                { "item": 2, "ops": [
+                  { "op": "createOrUpdateNote", "record": "@I00002@", "text": "Item two note.",
+                    "citation": { "source": "@S00011@", "page": "p. 1", "dataText": "y", "quay": 2 } } ] } ] }
+            """, items: [2]);
+
+        var doc = ReadDoc();
+        // item 1 (the only citer of @S00010@) was excluded — the source must not
+        // appear as an orphan; item 2's source, actually applied, must be created.
+        Assert.False(doc.ByXref.ContainsKey("@S00010@"));
+        Assert.True(doc.ByXref.ContainsKey("@S00011@"));
+        Assert.Contains(result.Log, l => l.Contains("newSources @S00010@: skipped"));
+        Assert.DoesNotContain(result.Log, l => l.Contains("@S00011@: skipped"));
+    }
+
+    [Fact]
+    public void Apply_ItemFilter_StillAppliesASourceNoItemCites()
+    {
+        WriteBaseFile();
+
+        // A source with no citing item anywhere in the changeset is prepared ahead
+        // of citing it (e.g. a follow-up changeset will add the citation) — it stays
+        // always-applied regardless of which items are selected.
+        RunExpectSuccess("""
+            { "newSources": [
+                { "xref": "@S00010@", "ops": [
+                  { "op": "createOrUpdateSource", "xref": "@S00010@", "title": "Prepared ahead" } ] } ],
+              "items": [
+                { "item": 1, "ops": [
+                  { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Unrelated note." } ] } ] }
+            """, items: [1]);
+
+        Assert.True(ReadDoc().ByXref.ContainsKey("@S00010@"));
+    }
+
+    [Fact]
     public void Apply_DryRun_ValidatesButDoesNotModify()
     {
         byte[] original = WriteBaseFile();
@@ -308,6 +357,37 @@ public class ApplyTests : ApplyTestBase
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains(expectedError));
+        Assert.Equal(original, ReadBytes());
+    }
+
+    // -------------------------------------------------------------------------
+    // Post-apply orphan-source check — belt-and-suspenders behind the
+    // newSources[] item-citation filtering above
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Apply_SourceCitedBySomeItemButLeftUncited_FailsVerify_AndLeavesFileUntouched()
+    {
+        byte[] original = WriteBaseFile();
+
+        // item 1 creates the source via a cited note; item 2 then removes that very
+        // citation — the source is created because an item cited it, but the run's
+        // net effect leaves it an orphan, which the post-apply check must catch even
+        // though every individual op validated and applied cleanly on its own.
+        var result = Run("""
+            { "newSources": [
+                { "xref": "@S00010@", "ops": [
+                  { "op": "createOrUpdateSource", "xref": "@S00010@", "title": "Soon uncited" } ] } ],
+              "items": [
+                { "item": 1, "ops": [
+                  { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Cited note.",
+                    "citation": { "source": "@S00010@", "page": "p. 1", "dataText": "x", "quay": 2 } } ] },
+                { "item": 2, "ops": [
+                  { "op": "deleteCitation", "record": "@I00001@", "fact": "NOTE", "source": "@S00010@" } ] } ] }
+            """, items: [1, 2]);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("orphan source @S00010@"));
         Assert.Equal(original, ReadBytes());
     }
 

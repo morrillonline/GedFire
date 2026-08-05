@@ -25,6 +25,10 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
     public string? Note { get; init; }
     public IReadOnlyList<Citation> Citations { get; init; } = [];
 
+    internal override IEnumerable<string> CitedSources =>
+        Citations.Concat(MarriageCitations).Concat(Spouse.Facts.SelectMany(f => f.Citations))
+                 .Select(c => c.Source);
+
     internal static CreateOrUpdateSpouseOp Read(JsonElement el)
     {
         EventValue? marriage = null;
@@ -137,6 +141,9 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
     public string? Wife { get; init; }
     public IReadOnlyList<Citation> Citations { get; init; } = [];
 
+    internal override IEnumerable<string> CitedSources =>
+        Citations.Concat(Child.Facts.SelectMany(f => f.Citations)).Select(c => c.Source);
+
     internal static CreateOrUpdateChildOp Read(JsonElement el) => new()
     {
         Family = JsonRead.Req(el, "family", "createOrUpdateChild"),
@@ -223,6 +230,9 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
     public required PersonRef Parent { get; init; }
     public string? Family { get; init; }
     public IReadOnlyList<Citation> Citations { get; init; } = [];
+
+    internal override IEnumerable<string> CitedSources =>
+        Citations.Concat(Parent.Facts.SelectMany(f => f.Citations)).Select(c => c.Source);
 
     internal static CreateOrUpdateParentOp Read(JsonElement el) => new()
     {

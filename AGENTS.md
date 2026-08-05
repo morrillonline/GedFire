@@ -35,14 +35,16 @@ dotnet test --nologo --filter FullyQualifiedName~ApplyTests
 Before completing a change, run the affected tests and then the full suite when the change touches shared parsing, formatting, validation, changeset application, or command-line behavior. When changing the CLI, also exercise the affected command against synthetic input. Prefer `--dry-run` for changeset scenarios.
 
 - Name tests `<Action>_<Condition>_<Expected>` and keep each test class focused on one domain.
+- Generally write one unit test class per production class. The production class is the system under test, and all of its `public` elements are fair game for the unit test.
 - Test only through `public` types and members of the assembly under test. `InternalsVisibleTo` is strictly prohibited; if a behavior cannot be reached from the public surface, then you should wonder whether it has any purpose at all.
+- Avoid testing with files. Production code should expose public methods that take a stream, and tests should exercise those stream overloads; only the very highest level of the call stack takes a file path and opens the stream for reading or writing.
 - Build apply tests on `ApplyTestBase` and `ChangesetFixtures`. Changeset fixtures are embedded resources under `GedCore.Tests/TestData/Changesets/`, not loose files. Put reusable synthetic GEDCOM fixtures under `GedCore.Tests/TestData/`.
 - Any change to parsers, formatters, or `Ged70Upgrader` must pass `RoundTripTests`, which require byte-stable round trips including the 5.5 → 7.0 → 5.5 cycle.
 
 ## Engineering Conventions
 
 - Prefer existing parsers, document APIs, and operation types over editing GEDCOM or changeset JSON as raw text.
-- Read GEDCOM input through `GedReader`, which detects the version and dispatches to the 5.5 or 7.0 parser. Do not call a version-specific parser directly on input of unknown version.
+- Read GEDCOM input through `GedReader`, which detects the version and dispatches to the version-specific parser. Do not call a version-specific parser directly on input of unknown version.
 - Call `GedDocument.RebuildXrefIndex()` after inserting or removing level-0 records.
 - Mutate record structure through `NodeBuilder` helpers rather than raw string edits. Internal text uses `\n` (via `NodeBuilder.NormalizeText`); formatters emit CRLF. `CONT`/`CONC` lines are preserved as child records, so naive value edits break byte-stable round trips.
 - Never change formatter output conventions: `Ged70Formatter` writes UTF-8 with BOM, `Ged55Formatter` writes the detected legacy encoding (Windows-1252 default), both with CRLF line endings.
@@ -93,4 +95,6 @@ Run this procedure only when explicitly requested by the repository maintainer.
    `git pull --ff-only`
    `git branch -d <branch>`
    `git fetch --prune`
+
+Merging to `main` runs only the CI test job. Publishing a release (self-contained binaries, NuGet package, GitHub release) happens only when a `v*` tag is pushed, and the tag version must match the project version derived from `Directory.Build.props`. Never push a `v*` tag unless the maintainer explicitly requests a release.
 
