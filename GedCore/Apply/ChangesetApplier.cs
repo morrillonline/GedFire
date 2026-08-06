@@ -23,8 +23,14 @@ namespace GedCore.Apply;
 ///      are byte-identical by construction);
 ///   4. otherwise the result is serialized and verified in memory (parse →
 ///      re-serialize byte-stable, pointer resolution, signed record-count
-///      deltas) and the file on disk is only written after every check
-///      passes — there is no window where a bad state exists on disk.
+///      deltas, no newly created source left uncited) and the file on disk is
+///      only written after every check passes — there is no window where a
+///      bad state exists on disk;
+///   5. a newSources[] entry is only created when some selected item actually
+///      cites it (or nothing in the whole changeset cites it, i.e. it's
+///      prepared ahead of citing it) — excluding an item via --items also
+///      excludes the sources that item alone needed, rather than leaving them
+///      as uncited orphans.
 ///
 /// File conventions are preserved by construction: Ged70Formatter emits
 /// UTF-8 BOM + CRLF; new records go at the end of their record-type block;
@@ -72,8 +78,28 @@ public static class ChangesetApplier
             return result;
         }
 
-        var selectedOps = changeset.SourceOps
-            .Concat(changeset.Items.Where(i => itemNumbers.Contains(i.Number)).SelectMany(i => i.Ops))
+        var selectedItems = changeset.Items.Where(i => itemNumbers.Contains(i.Number)).ToList();
+
+        // A newSources[] group is cited by an item when one of that item's ops names
+        // its xref in a citation (see ChangeOp.CitedSources). A group nothing in the
+        // WHOLE changeset cites is a source prepared ahead of citing it and stays
+        // always-applied; a group some item does cite is only applied when a selected
+        // item is among its citers — otherwise it would land in the file uncited, an
+        // orphan `SOUR` record `--items` was supposed to have excluded entirely.
+        var citedByAnyItem = changeset.Items
+            .SelectMany(i => i.Ops.SelectMany(op => op.CitedSources))
+            .ToHashSet(StringComparer.Ordinal);
+        var citedBySelectedItems = selectedItems
+            .SelectMany(i => i.Ops.SelectMany(op => op.CitedSources))
+            .ToHashSet(StringComparer.Ordinal);
+        var usedSources = changeset.NewSources
+            .Where(g => !citedByAnyItem.Contains(g.Xref) || citedBySelectedItems.Contains(g.Xref))
+            .ToList();
+        foreach (var skipped in changeset.NewSources.Except(usedSources))
+            result.Log.Add($"newSources {skipped.Xref}: skipped (cited only by excluded item(s))");
+
+        var selectedOps = usedSources.SelectMany(g => g.Ops)
+            .Concat(selectedItems.SelectMany(i => i.Ops))
             .ToList();
 
         var ctx = new ResolutionContext(doc);
@@ -86,9 +112,9 @@ public static class ChangesetApplier
         var state = utcNow is { } fixedClock ? new ApplyState(doc) { UtcNow = fixedClock } : new ApplyState(doc);
         try
         {
-            foreach (var op in changeset.SourceOps)
+            foreach (var op in usedSources.SelectMany(g => g.Ops))
                 op.Apply(state, result.Log);
-            foreach (var item in changeset.Items.Where(i => itemNumbers.Contains(i.Number)))
+            foreach (var item in selectedItems)
             {
                 state.BeginItem();
                 foreach (var op in item.Ops)
@@ -138,7 +164,8 @@ public static class ChangesetApplier
         Ged70Formatter.Write(doc, ms);
         byte[] newBytes = ms.ToArray();
 
-        Verify(newBytes, beforeCounts, state.Deltas, result);
+        Verify(newBytes, beforeCounts, state.Deltas,
+               state.CreatedSourceXrefs.Intersect(citedByAnyItem), result);
         if (result.Errors.Count > 0) return result;
 
         result.Deltas = state.Deltas;
@@ -251,7 +278,8 @@ public static class ChangesetApplier
     // -------------------------------------------------------------------------
 
     private static void Verify(byte[] newBytes, Dictionary<string, int> beforeCounts,
-                               Dictionary<string, int> expectedDeltas, ApplyResult result)
+                               Dictionary<string, int> expectedDeltas,
+                               IEnumerable<string> createdCitedSourceXrefs, ApplyResult result)
     {
         var reparsed = Ged70Parser.Read(new MemoryStream(newBytes));
 
@@ -271,6 +299,21 @@ public static class ChangesetApplier
             int expected = expectedDeltas.GetValueOrDefault(tag);
             if (delta != expected)
                 result.Errors.Add($"record count {tag}: expected {expected:+0;-0;+0}, got {delta:+0;-0;+0}");
+        }
+
+        // Defense-in-depth backstop behind the newSources[] citation filtering in Run:
+        // a SOUR record this run created, that some item in the changeset intended to
+        // cite, should actually be cited somewhere. Only sources some item cites are
+        // checked — one nothing in the changeset cites is deliberately created ahead of
+        // citing it (see Run) and is not this check's concern. Likewise this only checks
+        // records the run itself created, not pre-existing ones — an orphan the file
+        // already carried is not this changeset's problem to fail on.
+        foreach (var xref in createdCitedSourceXrefs)
+        {
+            if (!reparsed.ByXref.ContainsKey(xref)) continue;   // deleted later in the same run
+            int citations = SourceCitations.Count(reparsed.Records, xref);
+            if (citations == 0)
+                result.Errors.Add($"orphan source {xref}: created with no citation anywhere in the file");
         }
     }
 

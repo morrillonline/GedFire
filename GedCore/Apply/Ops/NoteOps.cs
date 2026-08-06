@@ -26,6 +26,8 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
     public string? Mime { get; init; }
     public IReadOnlyList<Citation> Citations { get; init; } = [];
 
+    internal override IEnumerable<string> CitedSources => Citations.Select(c => c.Source);
+
     internal static CreateOrUpdateNoteOp Read(JsonElement el) => new()
     {
         Record = JsonRead.Req(el, "record", "createOrUpdateNote"),

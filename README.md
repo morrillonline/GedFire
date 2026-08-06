@@ -178,10 +178,14 @@ family-tree editor, a research provider, or a hosted genealogy service.
 
 ## Roadmap
 
+- **GEDCOM interoperability report** — the next patch release will add a
+  read-only `gedfire audit` command. It will summarize GEDCOM 7 conformance,
+  declared and undeclared extensions, unresolved pointers, and GEDZIP/media
+  sharing readiness so researchers can understand a file before sending it to
+  another tool or collaborator.
 - **MCP server** — a `gedfire mcp` verb exposing the same engine as typed
-  Model Context Protocol tools over stdio, for agent environments without
-  shell access (Claude Desktop and friends). Planned for the next minor
-  release.
+  Model Context Protocol tools over stdio, for agent environments without shell
+  access (Claude Desktop and friends). Planned after the interoperability report.
 - **Agent skills** — companion Claude Code skills for the full research
   workflow (evidence grading, identity correlation, record harvesting, and
   driving GedFire safely) are being prepared for publication as a separate
