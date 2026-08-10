@@ -7,6 +7,7 @@ using GedCore.Validate;
 using GedFire;
 using GedFire.Export;
 using GedFire.Gen;
+using GedFire.TargetSelection;
 using System.Reflection;
 
 // ---------------------------------------------------------------------------
@@ -18,6 +19,7 @@ using System.Reflection;
 //   gedfire downgrade    --input <ged70>  --output <ged55>
 //   gedfire generate     --input <ged>    --output-dir <dir>  [--format html] [--media-dir <dir>] [--media-base-url <url>]
 //   gedfire export-index --input <ged>    --output <json>
+//   gedfire select-targets --input <ged>  --output <wanted.json> --count <N> --surnames <list>
 //   gedfire apply        --input <ged>    --changes <json> --items all|1,3 [--dry-run]
 //   gedfire validate     <file> [--warnings-as-errors]
 //   gedfire pack         --input <ged>    --media-dir <dir> --output <gdz>
@@ -37,6 +39,7 @@ return args[0].ToLowerInvariant() switch
     "downgrade"    => RunDowngrade(args[1..]),
     "generate"     => RunGenerate(args[1..]),
     "export-index" => RunExportIndex(args[1..]),
+    "select-targets" => RunSelectTargets(args[1..]),
     "apply"        => RunApply(args[1..]),
     "validate"     => RunValidate(args[1..]),
     "pack"         => RunPack(args[1..]),
@@ -240,6 +243,62 @@ static int RunExportIndex(string[] args)
 
     PersonIndexExporter.WriteFile(model, input, output);
     Console.WriteLine($"Wrote    {output} ({model.Individuals.Count:N0} persons)");
+    return 0;
+}
+
+static int RunSelectTargets(string[] args)
+{
+    var cl = CommandLine.Parse(args, ["--input", "--output", "--count", "--surnames"]);
+    string? input        = cl.Value("--input");
+    string? output       = cl.Value("--output");
+    string? countArg     = cl.Value("--count");
+    string? surnamesArg  = cl.Value("--surnames");
+
+    if (cl.Error is not null || input is null || output is null || countArg is null || surnamesArg is null)
+    {
+        if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
+        Console.Error.WriteLine("Usage: gedfire select-targets --input <ged> --output <wanted.json> --count <N> --surnames <list>");
+        return 1;
+    }
+
+    if (!int.TryParse(countArg, out int count) || count <= 0)
+    {
+        Console.Error.WriteLine($"--count must be a positive integer, got: {countArg}");
+        return 1;
+    }
+
+    var surnames = surnamesArg
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToList();
+    if (surnames.Count == 0)
+    {
+        Console.Error.WriteLine("--surnames must list at least one surname");
+        return 1;
+    }
+
+    if (!File.Exists(input))
+    {
+        Console.Error.WriteLine($"Input file not found: {input}");
+        return 1;
+    }
+
+    Console.WriteLine($"Reading  {input}");
+    var doc = GedReader.ReadFile(input);
+    Console.WriteLine($"  {doc.Records.Count:N0} level-0 records");
+
+    var model = ModelBuilder.Build(doc);
+    var candidates = GapDetector.Detect(model, surnames);
+    Console.WriteLine($"  {candidates.Count:N0} candidate gap(s) detected for {string.Join(", ", surnames)}");
+    foreach (var group in candidates.GroupBy(c => c.CardType).OrderByDescending(g => g.Count()))
+        Console.WriteLine($"    {group.Count(),6:N0}  {group.Key}");
+
+    long seed = DateTime.UtcNow.Ticks;
+    var draw = TargetDrawer.Draw(candidates, count, seed);
+    if (draw.LegendaryDiscards.Count > 0)
+        Console.WriteLine($"  {draw.LegendaryDiscards.Count:N0} extra Legendary-band candidate(s) discarded (one-per-pack cap)");
+
+    WantedFileWriter.WriteFile(input, surnames, candidates.Count, draw, output);
+    Console.WriteLine($"Wrote    {output} ({draw.Targets.Count:N0} target(s), seed {seed})");
     return 0;
 }
 
@@ -459,6 +518,13 @@ static void PrintHelp()
                         Export the research person index (one JSON entry per
                         individual: xref, normalized name, birth/death, parents,
                         marriages with spouse and children xrefs).
+
+          select-targets --input <ged> --output <wanted.json> --count <N> --surnames <list>
+                        Detect every research gap for the given surnames
+                        (New parent/spouse/child, Enrich person), score each
+                        by nominal points and GED-only difficulty, and draw
+                        <N> of them uniformly at random (one Legendary-band
+                        cap per pack) into a self-contained wanted.json.
 
           apply     --input <ged> --changes <json> --items all|1,3 [--dry-run]
                         Apply approved research-proposal changeset items to the
