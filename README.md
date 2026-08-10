@@ -163,6 +163,7 @@ relationships, notes, media, deletion, and person merges live in
 | `apply` | Validate and apply selected JSON changeset items. |
 | `generate` | Generate static family-page HTML, with optional media staging. |
 | `export-index` | Export a JSON person-name index. |
+| `select-targets` | Detect research gaps for given surnames, score them, and draw a self-contained `wanted.json` pack. |
 | `pack` | Create a GEDZIP archive from GEDCOM and referenced media. |
 | `unpack` | Extract a GEDZIP archive. |
 
