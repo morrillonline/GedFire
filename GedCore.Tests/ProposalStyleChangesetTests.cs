@@ -145,24 +145,26 @@ public class ProposalStyleChangesetTests : ApplyTestBase
         Assert.Equal(3, result.Deltas["OBJE"]);
         var doc = ReadDoc();
 
-        // @M00010@ — title, two files; the space-containing path is percent-escaped on write
+        // @M00010@ — title, two files; the space-containing path is percent-escaped
+        // on write, and the composer's bare "photos/..." path gains the GEDCOM 7
+        // §2.12-recommended "media/" prefix it omitted (MediaFileRequest.NormalizePath).
         var wedding = doc.ByXref["@M00010@"];
         Assert.Equal("Allen and Edna's wedding, 1902", wedding.FirstChild("TITL")!.Value);
         var files = wedding.ChildrenByTag("FILE").ToList();
         Assert.Equal(2, files.Count);
-        Assert.Equal("photos/allen-edna-wedding.jpg", files[0].Value);
+        Assert.Equal("media/photos/allen-edna-wedding.jpg", files[0].Value);
         Assert.Equal("image/jpeg", files[0].FirstChild("FORM")!.Value);
         Assert.Equal("PHOTO", files[0].FirstChild("FORM")!.FirstChild("MEDI")!.Value);
         Assert.Equal("Wedding portrait", files[0].FirstChild("TITL")!.Value);
-        Assert.Equal("documents/wedding%20program%201902.pdf", files[1].Value);
+        Assert.Equal("media/documents/wedding%20program%201902.pdf", files[1].Value);
 
-        // @M00011@ — absolute URL stored verbatim, never escaped
+        // @M00011@ — absolute URL stored verbatim, never escaped, never prefixed
         Assert.Equal("https://example.org/photos/edna-1990.jpg",
             doc.ByXref["@M00011@"].ChildrenByTag("FILE").Single().Value);
 
         // omitted xref — content-addressed op allocated the next free @M…@
         var tintype = doc.ByXref["@M00012@"];
-        Assert.Equal("photos/harvey-tintype.jpg", tintype.ChildrenByTag("FILE").Single().Value);
+        Assert.Equal("media/photos/harvey-tintype.jpg", tintype.ChildrenByTag("FILE").Single().Value);
 
         // portrait attach = first OBJE link on the person
         Assert.Equal("@M00010@", doc.ByXref["@I00001@"].ChildrenByTag("OBJE").First().Value);

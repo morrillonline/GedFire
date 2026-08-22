@@ -91,6 +91,12 @@ public sealed class GedIndividual
     public string LastNameRaw { get; set; } = "";
     public string Title       { get; set; } = "";
     public bool   IsMale      { get; set; }
+    // Whether a SEX record was actually present (any value, not just "M").
+    // IsMale alone cannot distinguish "recorded female" from "sex never
+    // stated" — both leave it false. Matching's nickname-map selection
+    // (docs/design/mcp-server.md "Nickname dictionary") needs that
+    // distinction, so it is tracked here rather than guessed.
+    public bool   SexRecorded { get; set; }
     public string Fullname    { get; set; } = "";
     // Person-level NOTE/SNOTE structures in GEDCOM document order. GEDCOM
     // does not give a note a structured date, so source order is the reliable

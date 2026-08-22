@@ -155,7 +155,9 @@ public class PersonIndexExporterTests
         var p = Person(doc, "@I1@");
 
         Assert.Equal("MARY ANNE", p.GetProperty("given").GetString());
-        Assert.Equal("OBRIEN SMITH", p.GetProperty("surname").GetString());
+        // Hyphens are preserved (not collapsed to a space) so a hyphenated
+        // surname stays one token for find_person's query splitting.
+        Assert.Equal("OBRIEN-SMITH", p.GetProperty("surname").GetString());
         Assert.Equal("Mary Anne O'Brien-Smith", p.GetProperty("name").GetString());
     }
 

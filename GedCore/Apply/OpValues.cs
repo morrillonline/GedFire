@@ -120,7 +120,7 @@ public sealed record PersonRef(string Xref, string? Name, string? Sex, IReadOnly
 public sealed record MediaFileRequest(string Path, string MediaType, string? Medium, string? Title)
 {
     internal static MediaFileRequest Read(JsonElement el) => new(
-        JsonRead.Req(el, "path", "createOrUpdateMedia"),
+        NormalizePath(JsonRead.Req(el, "path", "createOrUpdateMedia")),
         JsonRead.Req(el, "mediaType", "createOrUpdateMedia"),
         JsonRead.Str(el, "medium"),
         JsonRead.Str(el, "title"));
@@ -129,6 +129,21 @@ public sealed record MediaFileRequest(string Path, string MediaType, string? Med
         el.TryGetProperty(name, out var files)
             ? [.. files.EnumerateArray().Select(Read)]
             : [];
+
+    // GEDCOM 7 §2.12 (File Path) recommends -- without requiring -- that
+    // local media files use the "media/" directory prefix, precisely so a
+    // FILE payload is self-describing rather than depending on whatever
+    // --media-dir a later pack/mcp invocation happens to guess. A composer
+    // may omit it for brevity; this is the one place, applied once at parse
+    // time so every later comparison (Validate, Apply, FilesMatch,
+    // MediaResolve.FindByFiles) sees the same normalized path, that the
+    // convention actually gets enforced rather than merely hoped for.
+    // Idempotent: a path already carrying the prefix, or an absolute URL
+    // (which GEDCOM 7 file paths may also be), passes through unchanged.
+    static string NormalizePath(string path) =>
+        !MediaPaths.IsAbsoluteUrl(path) && !path.StartsWith("media/", StringComparison.Ordinal)
+            ? "media/" + path
+            : path;
 }
 
 /// <summary>
