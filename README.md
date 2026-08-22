@@ -24,11 +24,37 @@ typed operations to a parsed document and refuses to write anything invalid,
 so a valid input file stays valid. As a bonus, the agent doesn't have to read
 and reproduce whole GEDCOM records, which saves a lot of tokens.
 
-![A generated family page: sourced facts with hover-popover footnotes, biography
-prose, and linked children](docs/family-page.png)
+**[Browse a live generated family-page site →](https://morrillonline.github.io/GedFire/)**
+*Generated from the synthetic family in [`docs/demo`](docs/demo), rebuilt by
+CI on every push. Facts retain their source citations, available as
+hover-popover footnotes in the HTML.*
 
-*Generated from the synthetic family in [`docs/demo`](docs/demo). Facts retain
-their source citations, available as hover-popover footnotes in the HTML.*
+## MCP server
+
+GedFire also runs as a Model Context Protocol server, so an MCP-compatible
+agent (Claude Desktop, Claude Code, and similar) can query your GEDCOM
+directly, in conversation, instead of shelling out to the CLI:
+
+```powershell
+gedfire mcp --input family.ged
+```
+
+The server binds to one document over stdio and exposes three read-only
+tools:
+
+| Tool | What it does |
+|---|---|
+| `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to a person's xref, family handoff identifiers, and disambiguation candidates when more than one plausible match exists. |
+| `get_document_stats` | Report person/family counts and the declared GEDCOM version, for a quick orientation before other work. |
+| `get_record` | Fetch the full detail of a specific person, family, or source by xref. |
+
+No tool in this release writes to the file. An agent that finds something
+worth adding still produces a JSON changeset for you to review — the same
+`apply` workflow described below, not a second, unreviewed path to your
+data. GedFire itself makes no network requests and sends no telemetry; the
+MCP client you choose is responsible for what it does with tool results.
+See [`docs/design/mcp-server.md`](docs/design/mcp-server.md) for the full
+design, including the matching algorithm behind `find_person`.
 
 ## Why should I use GedFire?
 
@@ -50,6 +76,10 @@ their source citations, available as hover-popover footnotes in the HTML.*
 * GedFire is also a scriptable GEDCOM 7 validator, a GEDCOM 5.5 converter,
   a GEDZIP packer, and a JSON name-index exporter, so it can anchor a
   genealogy build pipeline on its own.
+* GedFire runs as an MCP server (`gedfire mcp`), so agents like Claude
+  Desktop or Claude Code can look up people and records in your GEDCOM
+  directly, over a typed, read-only protocol, instead of shelling out to
+  the CLI.
 
 In other words, use GedFire if you want AI help with your research but final
 say over your family history.
@@ -184,9 +214,11 @@ family-tree editor, a research provider, or a hosted genealogy service.
   declared and undeclared extensions, unresolved pointers, and GEDZIP/media
   sharing readiness so researchers can understand a file before sending it to
   another tool or collaborator.
-- **MCP server** — a `gedfire mcp` verb exposing the same engine as typed
-  Model Context Protocol tools over stdio, for agent environments without shell
-  access (Claude Desktop and friends). Planned after the interoperability report.
+- **MCP write support** — the current `gedfire mcp` tools (`find_person`,
+  `get_document_stats`, `get_record`) are read-only by design. `validate_changeset`/
+  `apply_changeset` tools are planned next, extending the MCP server through
+  the same reviewed changeset-and-approval path the CLI already enforces,
+  rather than opening a second way to mutate a GEDCOM.
 - **Agent skills** — companion Claude Code skills for the full research
   workflow (evidence grading, identity correlation, record harvesting, and
   driving GedFire safely) are being prepared for publication as a separate
@@ -194,8 +226,8 @@ family-tree editor, a research provider, or a hosted genealogy service.
 - **`GedCore` library package** — publish the parser/apply engine on NuGet for
   embedding in other .NET projects, if there is interest.
 
-GedFire is newly public — if you're interested in the MCP server or the agent
-skills, watch or star the repo to follow along.
+GedFire is newly public — if you're interested in the agent skills, watch or
+star the repo to follow along.
 
 ## Building from source
 
