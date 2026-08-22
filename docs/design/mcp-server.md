@@ -139,9 +139,10 @@ chose, and what that client does with returned data is the trust-boundary
 statement in requirement 2, made in setup documentation — not a filter
 GedFire imposes between a researcher and their own data.
 
-An optional `--media-dir <dir>` mirrors `generate`'s flag of the same name
-and its same default, the GEDCOM's own directory (requirement 1 — one
-media-location convention, not a second one invented for this verb).
+Media always resolves against the GEDCOM's own directory — the same
+convention `generate` uses (requirement 1 — one media-location convention,
+not a second one invented for this verb). Resolved once at startup,
+alongside `--input`; it does not change across reloads.
 
 This was not the first default tried. A real research file's `OBJE.FILE`
 payloads turned out to be bare filenames with no `media/` prefix, which
@@ -150,8 +151,8 @@ briefly defaulted to `<gedcom-dir>/media` specifically to make that file
 resolve. That default was wrong, and reverted, once the real defect surfaced:
 `CreateOrUpdateMediaOp` (`GedCore/Apply/Ops/MediaOps.cs`) never applied
 GEDCOM 7 §2.12's recommended `media/` prefix when writing a new `FILE`
-payload, so every media record it ever wrote depended on whatever
-`--media-dir` a later reader happened to guess, rather than describing its
+payload, so every media record it ever wrote depended on whatever base
+directory a later reader happened to guess, rather than describing its
 own location. `MediaFileRequest.NormalizePath` now applies that prefix
 once, at changeset-parse time, so every `FILE` payload this engine writes
 going forward is self-describing (`media/photo.jpg`, resolved against the
@@ -163,8 +164,21 @@ paths. A record written before this fix existed, whose payload still lacks
 the prefix, will not resolve under this default — that is a gap in the
 existing data to close at the source (resubmit its `createOrUpdateMedia`
 op so the normalization rewrites it), not something `mcp` should
-special-case a different base directory to paper over. Resolved once at
-startup, alongside `--input`; it does not change across reloads.
+special-case a different base directory to paper over.
+
+**Addendum, post-4.0.5:** this section originally specified an optional
+`--media-dir <dir>` override on both `mcp` and `generate`, defaulting to
+the GEDCOM's own directory but letting a caller point elsewhere. Once
+self-describing `media/`-prefixed paths (above) became the only supported
+convention, that override had no legitimate use left — every file this
+engine writes resolves correctly under the one default, and a file that
+doesn't is a data gap to fix at the source, not a base directory to
+special-case. The flag was removed from both verbs' CLI surface; media
+resolution is no longer independently configurable on either. `pack`
+keeps its own `--media-dir <dir>`, which is unrelated: it names the
+loose-media source directory to bundle *into* a GEDZIP archive, not a
+resolution override for already-referenced paths, so there is no default
+to fall back to.
 
 ### Lifecycle: resident process, not one-shot
 
@@ -304,7 +318,7 @@ has one job; a class listed here must not absorb a neighbor's.
 | `FindPersonResults` | `GedFire/Mcp/FindPersonResults.cs` | Sealed records mirroring the output schema property-for-property (`SingleMatchResult`, `CandidateListResult`, `NoMatchResult`, and the identity records). Serialized with `System.Text.Json`, camelCase names, null properties emitted (never ignored), no indentation in the text block. |
 | `GetDocumentStatsTool` | `GedFire/Mcp/GetDocumentStatsTool.cs` | The MCP handler for `get_document_stats`: declares the tool metadata and schemas from that addendum; obtains the snapshot from `DocumentSession`; reads `personCount`/`familyCount`/`gedVersion` straight off it. No arguments to validate. Same last-chance `Exception` handler pattern as `FindPersonTool`. |
 | `DocumentStatsResult` | `GedFire/Mcp/DocumentStatsResult.cs` | The one sealed record mirroring `get_document_stats`'s flat output schema. Same serialization conventions as `FindPersonResults`. |
-| `GetRecordTool` | `GedFire/Mcp/GetRecordTool.cs` | The MCP handler for `get_record`: declares the tool metadata and schemas from that addendum; trims and validates `xref`; obtains the snapshot from `DocumentSession`; looks the xref up across `Individuals`/`Families`/`Sources` and maps whichever resolves. Takes the resolved `--media-dir` by constructor alongside `DocumentSession`/`ToolGate`, and resolves each `MediaFile.path` against it (`MediaPaths`, the same helpers `SiteGenerator.ResolveMediaSrc` uses). No matching or scoring logic — there is none to have, only a dictionary lookup. |
+| `GetRecordTool` | `GedFire/Mcp/GetRecordTool.cs` | The MCP handler for `get_record`: declares the tool metadata and schemas from that addendum; trims and validates `xref`; obtains the snapshot from `DocumentSession`; looks the xref up across `Individuals`/`Families`/`Sources` and maps whichever resolves. Takes the resolved media directory (always the GEDCOM's own directory — see the post-4.0.5 addendum above; no longer independently configurable) by constructor alongside `DocumentSession`/`ToolGate`, and resolves each `MediaFile.path` against it (`MediaPaths`, the same helpers `SiteGenerator.ResolveMediaSrc` uses). No matching or scoring logic — there is none to have, only a dictionary lookup. |
 | `GetRecordResults` | `GedFire/Mcp/GetRecordResults.cs` | Sealed records mirroring `get_record`'s output schema property-for-property (`PersonRecord`, `FamilyRecord`, `SourceRecord`, `NotFoundRecord`, and the shared identity/detail records). Same serialization conventions as `FindPersonResults`. |
 | `PersonMatcher` | `GedFire/Match/PersonMatcher.cs` | The whole algorithm in "Matching and ranking": query splitting, recall gate, evidence weights, availability normalization, classification thresholds, ordering, caps, and suggestions. Constructed with a `NicknameDirectory`; takes a `MatchIndex`, query, and hints; returns a `MatchOutcome`. Pure and deterministic — no I/O, no MCP types, no JSON. |
 | `MatchOutcome` | `GedFire/Match/MatchOutcome.cs` | The matcher's domain result: which of the three shapes, the ordered matched people with their family data, the truncated flag, suggestions with reasons. References model objects and xrefs, not DTOs. |
@@ -1345,7 +1359,7 @@ whatever combination of `null` fields, sources, and media actually exist.
 
 `MediaFile.path` and `.resolved` exist because a raw GEDCOM `FILE` payload
 by itself is not something a caller can act on: it is either an absolute
-URL or a path relative to `--media-dir` (default: the GEDCOM's own
+URL or a path relative to the media directory (always the GEDCOM's own
 directory — see "Architecture"), and nothing in the payload says which, or whether the
 file the path names actually exists. Leaving that resolution to the
 calling agent is what caused the problem this field exists to prevent: a
@@ -1363,11 +1377,11 @@ rejection, same existence check) — reused, not reimplemented:
   anything (still no network calls). The tool description tells the
   calling agent to render it directly (e.g. as a markdown image
   reference) rather than fetching or searching for it first.
-- A relative path that resolves to an existing file under `--media-dir`
-  becomes that file's absolute local path, with `resolved: true` — ready
-  to open directly, no search, no follow-up call.
-- A relative path that is missing, or would resolve outside `--media-dir`
-  (the same path-traversal rejection `ResolveMediaSrc` already applies),
+- A relative path that resolves to an existing file under the media
+  directory becomes that file's absolute local path, with `resolved: true`
+  — ready to open directly, no search, no follow-up call.
+- A relative path that is missing, or would resolve outside the media
+  directory (the same path-traversal rejection `ResolveMediaSrc` already applies),
   keeps the raw payload exactly as recorded, with `resolved: false` — a
   clear "do not try to locate this yourself" signal, rather than silently
   handing back something that looks actionable but is not.
@@ -1540,10 +1554,10 @@ blank xref as a tool execution error, and — at the subprocess level — all
 three tools listed together and one `tools/call` round-trip per record
 type through `structuredContent`. Media path resolution gets its own
 cases: a self-describing `media/...` relative path that resolves to a real
-file under the default `--media-dir` (the GEDCOM's own directory;
+file under the default media directory (the GEDCOM's own directory;
 `resolved: true`, `path` rewritten to the absolute path), one that is
-missing, one that would escape `--media-dir` via `../`, and an absolute
-URL passed through unchanged.
+missing, one that would escape the media directory via `../`, and an
+absolute URL passed through unchanged.
 
 All fixtures use synthetic people (requirements 2 and 9).
 

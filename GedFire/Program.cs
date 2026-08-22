@@ -21,14 +21,14 @@ using System.Reflection;
 //   gedfire create       --output <ged70> --name <gedcom-name> [--xref @I00001@] [--sex M|F|X|U]
 //   gedfire upgrade      --input <ged55>  --output <ged70>
 //   gedfire downgrade    --input <ged70>  --output <ged55>
-//   gedfire generate     --input <ged>    --output-dir <dir>  [--format html] [--media-dir <dir>] [--media-base-url <url>]
+//   gedfire generate     --input <ged>    --output-dir <dir>  [--format html] [--media-base-url <url>]
 //   gedfire export-index --input <ged>    --output <json>
 //   gedfire select-targets --input <ged>  --output <wanted.json> --count <N> --surnames <list>
 //   gedfire apply        --input <ged>    --changes <json> --items all|1,3 [--dry-run]
 //   gedfire validate     <file> [--warnings-as-errors]
 //   gedfire pack         --input <ged>    --media-dir <dir> --output <gdz>
 //   gedfire unpack       --input <gdz>    --output-dir <dir>
-//   gedfire mcp          --input <ged>    [--media-dir <dir>]
+//   gedfire mcp          --input <ged>
 // ---------------------------------------------------------------------------
 
 if (args.Length == 0)
@@ -166,17 +166,16 @@ static int RunUpgrade(string[] args)
 
 static int RunGenerate(string[] args)
 {
-    var cl = CommandLine.Parse(args, ["--input", "--output-dir", "--format", "--template", "--media-dir", "--media-base-url"]);
+    var cl = CommandLine.Parse(args, ["--input", "--output-dir", "--format", "--template", "--media-base-url"]);
     string? input        = cl.Value("--input");
     string? outputDir    = cl.Value("--output-dir");
     string? templateArg  = cl.Value("--template");
-    string? mediaDirArg  = cl.Value("--media-dir");
     string  mediaBaseUrl = cl.Value("--media-base-url") ?? "media/";
 
     if (cl.Error is not null || input is null || outputDir is null)
     {
         if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
-        Console.Error.WriteLine("Usage: gedfire generate --input <ged> --output-dir <dir> [--format html] [--template <file>] [--media-dir <dir>] [--media-base-url <url>]");
+        Console.Error.WriteLine("Usage: gedfire generate --input <ged> --output-dir <dir> [--format html] [--template <file>] [--media-base-url <url>]");
         return 1;
     }
 
@@ -211,7 +210,12 @@ static int RunGenerate(string[] args)
     }
 
     Console.WriteLine($"Generating HTML to {outputDir} ...");
-    string mediaDir = mediaDirArg ?? Path.GetDirectoryName(Path.GetFullPath(input)) ?? ".";
+    // Media always resolves against the GEDCOM's own directory -- every
+    // FILE payload this engine writes is self-describing (MediaFileRequest.
+    // NormalizePath prepends "media/" per GEDCOM 7 §2.12), so there is no
+    // second media-location convention to configure here (see gedfire mcp's
+    // matching default below).
+    string mediaDir = Path.GetDirectoryName(Path.GetFullPath(input)) ?? ".";
     var generator = new SiteGenerator(model, template, new MediaOptions(mediaDir, mediaBaseUrl));
     generator.Generate(outputDir);
     foreach (var warning in generator.Warnings)
@@ -493,14 +497,13 @@ static int RunUnpack(string[] args)
 
 static async Task<int> RunMcp(string[] args)
 {
-    var cl = CommandLine.Parse(args, ["--input", "--media-dir"]);
+    var cl = CommandLine.Parse(args, ["--input"]);
     string? input = cl.Value("--input");
-    string? mediaDirArg = cl.Value("--media-dir");
 
     if (cl.Error is not null || input is null)
     {
         if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
-        Console.Error.WriteLine("Usage: gedfire mcp --input <ged> [--media-dir <dir>]");
+        Console.Error.WriteLine("Usage: gedfire mcp --input <ged>");
         return 1;
     }
 
@@ -511,7 +514,7 @@ static async Task<int> RunMcp(string[] args)
     }
 
     string absoluteInput = Path.GetFullPath(input);
-    string absoluteMediaDir = Path.GetFullPath(mediaDirArg ?? DefaultMcpMediaDir(absoluteInput));
+    string absoluteMediaDir = Path.GetFullPath(DefaultMcpMediaDir(absoluteInput));
 
     // Startup: load the nickname directory and build the first snapshot.
     // Any failure here is the startup-error path -- stderr, exit 1, no
@@ -576,17 +579,18 @@ static string GedFireVersion() =>
     Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
         ?? "unknown";
 
-// gedfire mcp's --media-dir default (docs/design/mcp-server.md
-// "Architecture"): the GEDCOM's own directory -- the same default
-// `generate` has always used. Every FILE payload CreateOrUpdateMediaOp
-// writes is now self-describing (MediaFileRequest.NormalizePath prepends
-// "media/" per GEDCOM 7 §2.12's recommendation), so resolution needs no
-// special-casing here: a payload of "media/photo.jpg" already names its
-// own subfolder relative to this directory. A record written before that
-// normalization existed, with a bare filename and no "media/" segment,
-// will not resolve under this default -- that is a data gap in the
-// existing file to fix at the source (resubmit its media op), not
-// something this tool should paper over by guessing a different base.
+// gedfire mcp's media resolution (docs/design/mcp-server.md
+// "Architecture"): always the GEDCOM's own directory -- the same
+// convention `generate` uses, and not independently configurable. Every
+// FILE payload CreateOrUpdateMediaOp writes is self-describing
+// (MediaFileRequest.NormalizePath prepends "media/" per GEDCOM 7 §2.12's
+// recommendation), so resolution needs no overriding here: a payload of
+// "media/photo.jpg" already names its own subfolder relative to this
+// directory. A record written before that normalization existed, with a
+// bare filename and no "media/" segment, will not resolve under this
+// default -- that is a data gap in the existing file to fix at the source
+// (resubmit its media op), not something to paper over with a second,
+// configurable media-location convention.
 static string DefaultMcpMediaDir(string absoluteInput) =>
     Path.GetDirectoryName(absoluteInput) ?? ".";
 
