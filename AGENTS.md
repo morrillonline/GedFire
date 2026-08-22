@@ -96,5 +96,13 @@ Run this procedure only when explicitly requested by the repository maintainer.
    `git branch -d <branch>`
    `git fetch --prune`
 
-Merging to `main` runs only the CI test job. Publishing a release (self-contained binaries, NuGet package, GitHub release) happens only when a `v*` tag is pushed, and the tag version must match the project version derived from `Directory.Build.props`. Never push a `v*` tag unless the maintainer explicitly requests a release.
+**PR merge:**
+- Merging to `main` only runs CI's `test` job — no release happens automatically.
+- Merge commit message stays terse: "Merge pull request #N from `<branch>`" + PR title, nothing more. Detail lives in the feature commit underneath it, not the merge commit.
+
+**New tag / release:**
+- Version = `VersionMajor.VersionMinor` (`Directory.Build.props`) + `BuildNumber`. `BuildNumber` isn't stored in the file — CI reads it from the tag's own last segment.
+- Routine release: tag `vX.Y.<next-number>` on `main`, push it. No file edit needed unless deliberately bumping Major/Minor.
+- Pushing a `v*` tag triggers CI's `release` job: retest, verify tag == computed project version, publish self-contained binaries (win-x64, linux-x64, osx-x64, osx-arm64), pack + push the NuGet tool, create the GitHub release with auto-generated notes.
+- Never push a `v*` tag unless the maintainer explicitly requests a release.
 

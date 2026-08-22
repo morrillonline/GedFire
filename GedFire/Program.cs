@@ -7,7 +7,11 @@ using GedCore.Validate;
 using GedFire;
 using GedFire.Export;
 using GedFire.Gen;
+using GedFire.Match;
+using GedFire.Mcp;
 using GedFire.TargetSelection;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Reflection;
 
 // ---------------------------------------------------------------------------
@@ -24,6 +28,7 @@ using System.Reflection;
 //   gedfire validate     <file> [--warnings-as-errors]
 //   gedfire pack         --input <ged>    --media-dir <dir> --output <gdz>
 //   gedfire unpack       --input <gdz>    --output-dir <dir>
+//   gedfire mcp          --input <ged>    [--media-dir <dir>]
 // ---------------------------------------------------------------------------
 
 if (args.Length == 0)
@@ -44,6 +49,7 @@ return args[0].ToLowerInvariant() switch
     "validate"     => RunValidate(args[1..]),
     "pack"         => RunPack(args[1..]),
     "unpack"       => RunUnpack(args[1..]),
+    "mcp"          => await RunMcp(args[1..]),
     "--help" or "-h" or "help" => Help(),
     "--version" or "-v" or "version" => ShowVersion(),
     _ => Unknown(args[0]),
@@ -485,13 +491,109 @@ static int RunUnpack(string[] args)
     return 0;
 }
 
+static async Task<int> RunMcp(string[] args)
+{
+    var cl = CommandLine.Parse(args, ["--input", "--media-dir"]);
+    string? input = cl.Value("--input");
+    string? mediaDirArg = cl.Value("--media-dir");
+
+    if (cl.Error is not null || input is null)
+    {
+        if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
+        Console.Error.WriteLine("Usage: gedfire mcp --input <ged> [--media-dir <dir>]");
+        return 1;
+    }
+
+    if (!File.Exists(input))
+    {
+        Console.Error.WriteLine($"Input file not found: {input}");
+        return 1;
+    }
+
+    string absoluteInput = Path.GetFullPath(input);
+    string absoluteMediaDir = Path.GetFullPath(mediaDirArg ?? DefaultMcpMediaDir(absoluteInput));
+
+    // Startup: load the nickname directory and build the first snapshot.
+    // Any failure here is the startup-error path -- stderr, exit 1, no
+    // protocol output written (docs/design/mcp-server.md "Lifecycle").
+    NicknameDirectory nicknames;
+    DocumentSnapshot initialSnapshot;
+    try
+    {
+        nicknames = NicknameDirectory.LoadEmbedded();
+
+        var doc = GedReader.ReadFile(absoluteInput);
+        var model = ModelBuilder.Build(doc);
+        var info = new FileInfo(absoluteInput);
+        initialSnapshot = new DocumentSnapshot(model, doc.Version, File.GetLastWriteTimeUtc(absoluteInput), info.Length);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Failed to start MCP server: {ex.Message}");
+        return 1;
+    }
+
+    var session = new DocumentSession(absoluteInput, initialSnapshot);
+    var gate = new ToolGate();
+    var findPerson = new FindPersonTool(session, gate, nicknames);
+    var getDocumentStats = new GetDocumentStatsTool(session, gate);
+    var getRecord = new GetRecordTool(session, gate, absoluteMediaDir);
+
+    // Listed alphabetically by name for readability; the SDK's own
+    // McpServerPrimitiveCollection does not preserve this as the advertised
+    // tools/list order (docs/design/mcp-server.md "Tool registration and
+    // server guidance").
+    var toolCollection = new McpServerPrimitiveCollection<McpServerTool>
+    {
+        findPerson.ToMcpServerTool(),
+        getDocumentStats.ToMcpServerTool(),
+        getRecord.ToMcpServerTool(),
+    };
+
+    var serverOptions = new McpServerOptions
+    {
+        ServerInfo = new Implementation { Name = "gedfire", Version = GedFireVersion() },
+        Capabilities = new ServerCapabilities { Tools = new ToolsCapability { ListChanged = false } },
+        ToolCollection = toolCollection,
+        // States once that returned xrefs belong only to this server's bound
+        // document and that no initial-release tool mutates the file
+        // (docs/design/mcp-server.md "Tool registration and server guidance").
+        // Tool-specific calling guidance remains on the tool itself.
+        ServerInstructions =
+            "Every xref returned by a tool on this server (an individual or family reference such as \"@I123@\" " +
+            "or \"@F45@\") belongs only to the single GEDCOM document this server was started against, and is " +
+            "meaningless to any other document or provider. No tool in this release mutates that file; every tool " +
+            "is read-only.",
+    };
+
+    await using var transport = new StdioServerTransport(serverOptions, loggerFactory: null);
+    var server = McpServer.Create(transport, serverOptions, loggerFactory: null, serviceProvider: null);
+    await server.RunAsync(CancellationToken.None).ConfigureAwait(false);
+    return 0;
+}
+
+static string GedFireVersion() =>
+    Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? "unknown";
+
+// gedfire mcp's --media-dir default (docs/design/mcp-server.md
+// "Architecture"): the GEDCOM's own directory -- the same default
+// `generate` has always used. Every FILE payload CreateOrUpdateMediaOp
+// writes is now self-describing (MediaFileRequest.NormalizePath prepends
+// "media/" per GEDCOM 7 §2.12's recommendation), so resolution needs no
+// special-casing here: a payload of "media/photo.jpg" already names its
+// own subfolder relative to this directory. A record written before that
+// normalization existed, with a bare filename and no "media/" segment,
+// will not resolve under this default -- that is a data gap in the
+// existing file to fix at the source (resubmit its media op), not
+// something this tool should paper over by guessing a different base.
+static string DefaultMcpMediaDir(string absoluteInput) =>
+    Path.GetDirectoryName(absoluteInput) ?? ".";
+
 static int Help() { PrintHelp(); return 0; }
 static int ShowVersion()
 {
-    string version = Assembly.GetExecutingAssembly()
-        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-        .InformationalVersion ?? "unknown";
-    Console.WriteLine($"GedFire {version}");
+    Console.WriteLine($"GedFire {GedFireVersion()}");
     return 0;
 }
 static int Unknown(string cmd) { Console.Error.WriteLine($"Unknown command: {cmd}"); return 1; }
@@ -545,6 +647,12 @@ static void PrintHelp()
           unpack    --input <gdz> --output-dir <dir>
                         Extract a GEDZIP archive's gedcom.ged and media files
                         into a directory.
+
+          mcp       --input <ged>
+                        Start a stdio Model Context Protocol server exposing
+                        this GEDCOM to MCP-compatible agent clients. Resident
+                        process: stays running until stdin closes. Read-only;
+                        no tool in this release mutates the file.
 
         Options:
                     --help, -h       Show this help message.

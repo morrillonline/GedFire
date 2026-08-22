@@ -102,20 +102,11 @@ public static class PersonIndexExporter
         Children = fam.Children.Select(c => c.Xref).ToList(),
     };
 
-    // Matching normalization (genealogy-identity-correlation skill): uppercase,
-    // punctuation stripped; hyphens become spaces so hyphenated surnames still
-    // match their parts. Underscores survive — "____" is the unknown-name
-    // placeholder throughout this dataset.
-    static string Normalize(string name)
-    {
-        var sb = new StringBuilder(name.Length);
-        foreach (char c in name)
-        {
-            if (char.IsLetterOrDigit(c) || c == '_') sb.Append(char.ToUpperInvariant(c));
-            else if (c is ' ' or '-') sb.Append(' ');
-        }
-        return string.Join(' ', sb.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-    }
+    // Matching normalization, shared with the MCP find_person lookup
+    // (GedFire.Match.PersonNameNormalizer): uppercase, punctuation stripped,
+    // hyphens preserved so a hyphenated surname stays one token. Underscores
+    // survive — "____" is the unknown-name placeholder throughout this dataset.
+    static string Normalize(string name) => GedFire.Match.PersonNameNormalizer.Normalize(name);
 
     // -----------------------------------------------------------------------
     // Serialization shapes (public properties so reflection-based

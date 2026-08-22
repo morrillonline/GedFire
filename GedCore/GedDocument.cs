@@ -25,6 +25,14 @@ public sealed class GedDocument
     public IReadOnlyDictionary<string, GedRecord> ByXref { get; internal set; } =
         new Dictionary<string, GedRecord>();
 
+    /// <summary>
+    /// The document's declared GEDCOM version (HEAD.GEDC.VERS, e.g. "7.0" or
+    /// "5.5.1"), or null if the header or that structure is absent. Mirrors
+    /// the lookup ConformanceChecker's GED011 check already performs.
+    /// </summary>
+    public string? Version =>
+        Records.FirstOrDefault(r => r.Tag == "HEAD")?.FirstChild("GEDC")?.FirstChild("VERS")?.Value;
+
     internal GedDocument(List<GedRecord> records) => _records = records;
 
     /// <summary>Regenerate <see cref="ByXref"/> after level-0 mutations.</summary>

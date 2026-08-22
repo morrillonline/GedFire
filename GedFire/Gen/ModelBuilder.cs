@@ -131,6 +131,7 @@ public static class ModelBuilder
                         break;
                     case "SEX":
                         indi.IsMale = child.Value.Equals("M", StringComparison.OrdinalIgnoreCase);
+                        indi.SexRecorded = true;
                         if (string.Equals(indi.FirstMiddle(), "unknown", StringComparison.OrdinalIgnoreCase))
                             SetFullname(indi, indi.FirstMiddle() + " /" + indi.LastNameRaw + "/");
                         break;

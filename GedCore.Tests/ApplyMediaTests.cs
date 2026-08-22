@@ -143,6 +143,78 @@ public class ApplyMediaTests : ApplyTestBase
     }
 
     [Fact]
+    public void Create_BarePath_GainsTheRecommendedMediaPrefix()
+    {
+        WriteBaseFile();
+
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateMedia",
+                "files": [ { "path": "portrait.jpg", "mediaType": "image/jpeg" } ] } ] } ] }
+            """);
+
+        // GEDCOM 7 §2.12 recommends the "media/" prefix without requiring it;
+        // a composer that omits it still gets a self-describing FILE payload.
+        Assert.Equal("media/portrait.jpg",
+            ReadDoc().ByXref["@M00001@"].ChildrenByTag("FILE").Single().FullValue());
+    }
+
+    [Fact]
+    public void Create_PathAlreadyPrefixed_IsNotDoublePrefixed()
+    {
+        WriteBaseFile();
+
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateMedia",
+                "files": [ { "path": "media/portrait.jpg", "mediaType": "image/jpeg" } ] } ] } ] }
+            """);
+
+        Assert.Equal("media/portrait.jpg",
+            ReadDoc().ByXref["@M00001@"].ChildrenByTag("FILE").Single().FullValue());
+    }
+
+    [Fact]
+    public void Create_AbsoluteUrl_IsNeverPrefixed()
+    {
+        WriteBaseFile();
+
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateMedia",
+                "files": [ { "path": "https://example.org/portrait.jpg", "mediaType": "image/jpeg" } ] } ] } ] }
+            """);
+
+        Assert.Equal("https://example.org/portrait.jpg",
+            ReadDoc().ByXref["@M00001@"].ChildrenByTag("FILE").Single().FullValue());
+    }
+
+    [Fact]
+    public void Reapplying_BarePathAndPrefixedPath_AreTheSameFile_FullyIdempotent()
+    {
+        WriteBaseFile();
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateMedia",
+                "files": [ { "path": "portrait.jpg", "mediaType": "image/jpeg" } ] } ] } ] }
+            """);
+
+        // A second submission naming the same file, this time already
+        // carrying the prefix, must resolve to the same OBJE record rather
+        // than creating a duplicate -- normalization happens before the
+        // content-addressed match, not after.
+        var result = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateMedia",
+                "files": [ { "path": "media/portrait.jpg", "mediaType": "image/jpeg" } ] } ] } ] }
+            """);
+
+        Assert.Equal(0, result.Deltas.GetValueOrDefault("OBJE"));
+        Assert.Contains(result.Log, l => l.Contains("no-op (already matches)"));
+        Assert.Single(ReadDoc().Media());
+    }
+
+    [Fact]
     public void Validation_EmptyFiles_FailsCleanly()
     {
         WriteBaseFile();
