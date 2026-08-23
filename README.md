@@ -97,14 +97,21 @@ client should call `get_document_stats` and report both counts.
 
 The server binds to one document over stdio and exposes four read-only tools.
 Three inspect that document; `date_calc` is a pure calculation over its own
-arguments and does not read the document:
+arguments and does not read the document. The server also watches the bound
+file and reloads automatically if it changes on disk — no restart needed
+after editing the GEDCOM outside the client:
 
 | Tool | What it does |
 |---|---|
 | `date_calc` | Normalize a dual-dated year, add or subtract a genealogical age, or calculate elapsed years/months/days. Uses exact Gregorian dates supplied in the call and never reads or changes the bound document. |
 | `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to scored candidates, a confident match when one exists, and family handoff identifiers. Optional structured hints distinguish birth from death, father from mother, and one marriage from another. Set `maxResults` to an integer from `1` through `20` (default `8`) without changing the matcher's confidence decision. |
-| `get_document_stats` | Report person/family counts and the declared GEDCOM version, for a quick orientation before other work. |
+| `get_document_stats` | Report person/family counts, the declared GEDCOM version, and the running gedfire version, for a quick orientation before other work. |
 | `get_record` | Fetch the full detail of a specific person, family, or source by xref. |
+
+Every one of these four tools also has a one-shot CLI mirror — `find-person`,
+`get-record`, `get-document-stats`, and `date-calc` — that runs the same
+engine and prints the same JSON without starting a server. See "Command
+reference" below.
 
 For example, an MCP client can call `find_person` with:
 
@@ -350,7 +357,10 @@ The other operations return the canonical result in `date` and set `age` to
 | `export-index` | Export a JSON person-name index. |
 | `select-targets` | Detect research gaps for given surnames, score them, and draw a self-contained `wanted.json` pack. |
 | `date-calc` | Normalize dual-dated years, add or subtract a genealogical age, or calculate elapsed years/months/days. |
-| `mcp` | Start the read-only stdio MCP server bound to one GEDCOM document. |
+| `mcp` | Start the read-only stdio MCP server bound to one GEDCOM document. Watches the file and reloads if it changes on disk. |
+| `find-person` | One-shot mirror of the mcp server's `find_person` tool: resolve a name to scored candidates or a confident match. |
+| `get-record` | One-shot mirror of the mcp server's `get_record` tool: fetch a person, family, or source by xref. |
+| `get-document-stats` | One-shot mirror of the mcp server's `get_document_stats` tool: person/family counts, GEDCOM version, gedfire version. |
 | `pack` | Create a GEDZIP archive from GEDCOM and referenced media. |
 | `unpack` | Extract a GEDZIP archive. |
 

@@ -17,9 +17,9 @@ public sealed class GetDocumentStatsTool
 
     public const string Description =
         "Report basic size and format facts about this server's bound GEDCOM document: how many people and " +
-        "families it contains, and its declared GEDCOM version. Call this for a quick orientation before other " +
-        "work, or when the user asks how large their file is or what format it's in. Takes no arguments — there " +
-        "is only one bound document.";
+        "families it contains, its declared GEDCOM version, and the running gedfire version. Call this for a " +
+        "quick orientation before other work, or when the user asks how large their file is, what format it's " +
+        "in, or which gedfire version is running. Takes no arguments — there is only one bound document.";
 
     public const string InputSchemaJson = """
         {
@@ -49,9 +49,13 @@ public sealed class GetDocumentStatsTool
             "gedVersion": {
               "type": ["string", "null"],
               "description": "The document's declared GEDCOM version (HEAD.GEDC.VERS, e.g. \"7.0\" or \"5.5.1\"), or null if the header does not declare one."
+            },
+            "gedFireVersion": {
+              "type": "string",
+              "description": "The running gedfire tool/server's own version (e.g. \"4.0.7\"), not the document's GEDCOM version."
             }
           },
-          "required": ["personCount", "familyCount", "gedVersion"]
+          "required": ["personCount", "familyCount", "gedVersion", "gedFireVersion"]
         }
         """;
 
@@ -126,7 +130,8 @@ public sealed class GetDocumentStatsTool
         var result = new DocumentStatsResult(
             snapshot.Model.Individuals.Count,
             snapshot.Model.Families.Count,
-            snapshot.GedVersion);
+            snapshot.GedVersion,
+            ServerVersion.Current);
 
         return CallToolResults.Success(result, CallToolResults.JsonOptions);
     }

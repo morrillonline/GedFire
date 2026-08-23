@@ -6,4 +6,4 @@ namespace GedFire.Mcp;
 // with FindPersonTool's shared camelCase, nulls-emitted options.
 // ---------------------------------------------------------------------------
 
-public sealed record DocumentStatsResult(int PersonCount, int FamilyCount, string? GedVersion);
+public sealed record DocumentStatsResult(int PersonCount, int FamilyCount, string? GedVersion, string GedFireVersion);
