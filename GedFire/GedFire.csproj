@@ -18,6 +18,19 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <Authors>GedFire contributors</Authors>
+    <Description>GEDCOM CLI and MCP server for AI-assisted family-history research. Parses and writes GEDCOM 5.5/7.0, generates a static family-page site, and exposes read-only find_person/get_record/get_document_stats/date_calc tools over MCP so an agent like Claude can research your tree -- with proposed findings kept as reviewable JSON changesets, never silently written.</Description>
+    <PackageTags>gedcom;genealogy;family-history;ai-agents;mcp;model-context-protocol;claude;dotnet-tool;cli</PackageTags>
+    <PackageProjectUrl>https://github.com/morrillonline/GedFire</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/morrillonline/GedFire</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>
