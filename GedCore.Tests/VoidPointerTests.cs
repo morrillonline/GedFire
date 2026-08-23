@@ -5,8 +5,8 @@ using GedFire.Gen;
 namespace GedCore.Tests;
 
 /// <summary>
-/// Subproject B (SPEC-ged7-conformance.md): GEDCOM 7's reserved @VOID@
-/// pointer means "no record exists in this document". It must never resolve
+/// GEDCOM 7's reserved @VOID@ pointer means "no record exists in this
+/// document". It must never resolve
 /// to a real record, and tooling must not create a record named @VOID@.
 /// Covers Apply-layer validation, the generator's ModelBuilder, and raw
 /// round-trip stability of a file containing @VOID@ pointers.

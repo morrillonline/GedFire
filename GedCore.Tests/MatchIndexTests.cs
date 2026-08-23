@@ -53,17 +53,18 @@ public class MatchIndexTests
     }
 
     [Fact]
-    public void BirthYear_ParsedFromApproximateDate()
+    public void Birth_ParsesYearAndNormalizesPlace()
     {
         var entry = Entry(Index(), "@I1@");
-        Assert.Equal(1780, entry.BirthYear);
+        Assert.Equal(1780, entry.Birth!.Year);
+        Assert.Equal("CANTERBURY MERRIMACK NEW HAMPSHIRE", entry.Birth.NormalizedPlace);
     }
 
     [Fact]
-    public void BirthYear_NullWhenNoBirthEvent()
+    public void Birth_NullWhenNoBirthEvent()
     {
         var entry = Entry(Index(), "@I5@");
-        Assert.Null(entry.BirthYear);
+        Assert.Null(entry.Birth);
     }
 
     [Fact]
@@ -79,45 +80,44 @@ public class MatchIndexTests
         => Assert.Null(Entry(Index(), "@I4@").IsMale);
 
     [Fact]
-    public void Places_CollectBirthDeathAndCensus_Normalized()
+    public void Death_ParsesYearAndNormalizesPlace()
     {
         var entry = Entry(Index(), "@I1@");
-        Assert.Equal(3, entry.NormalizedPlaces.Count);
-        Assert.Contains("CANTERBURY MERRIMACK NEW HAMPSHIRE", entry.NormalizedPlaces);
-        Assert.Contains("CONCORD MERRIMACK NEW HAMPSHIRE", entry.NormalizedPlaces);
-        Assert.Contains("CANTERBURY TOWNSHIP MERRIMACK NEW HAMPSHIRE", entry.NormalizedPlaces);
+        Assert.Equal(1854, entry.Death!.Year);
+        Assert.Equal("CONCORD MERRIMACK NEW HAMPSHIRE", entry.Death.NormalizedPlace);
     }
 
     [Fact]
-    public void Places_EmptyWhenNoneRecorded()
-        => Assert.Empty(Entry(Index(), "@I5@").NormalizedPlaces);
+    public void Death_NullWhenNoneRecorded()
+        => Assert.Null(Entry(Index(), "@I5@").Death);
 
     [Fact]
-    public void SpouseNames_ResolvedFromFamSpouse()
+    public void Marriages_ResolveSpouseAndEventFromFamSpouse()
     {
         var husband = Entry(Index(), "@I1@");
-        Assert.Equal(["SARAH CLOUGH"], husband.NormalizedSpouseNames);
+        var husbandMarriage = Assert.Single(husband.Marriages);
+        Assert.Equal("SARAH CLOUGH", husbandMarriage.NormalizedSpouseName);
+        Assert.Equal(1805, husbandMarriage.Year);
 
         var wife = Entry(Index(), "@I2@");
-        Assert.Equal(["EZEKIEL HEARTH-STONE"], wife.NormalizedSpouseNames);
+        Assert.Equal("EZEKIEL HEARTH-STONE", Assert.Single(wife.Marriages).NormalizedSpouseName);
     }
 
     [Fact]
-    public void SpouseNames_EmptyWhenNeverMarried()
-        => Assert.Empty(Entry(Index(), "@I3@").NormalizedSpouseNames);
+    public void Marriages_EmptyWhenNeverMarried()
+        => Assert.Empty(Entry(Index(), "@I3@").Marriages);
 
     [Fact]
-    public void ParentNames_ResolvedFromFamChild()
+    public void Parents_ResolvedByRoleFromFamChild()
     {
         var child = Entry(Index(), "@I3@");
-        Assert.Equal(2, child.NormalizedParentNames.Count);
-        Assert.Contains("EZEKIEL HEARTH-STONE", child.NormalizedParentNames);
-        Assert.Contains("SARAH CLOUGH", child.NormalizedParentNames);
+        Assert.Equal("EZEKIEL HEARTH-STONE", child.Parents!.NormalizedFatherName);
+        Assert.Equal("SARAH CLOUGH", child.Parents.NormalizedMotherName);
     }
 
     [Fact]
-    public void ParentNames_EmptyWhenNoFamChild()
-        => Assert.Empty(Entry(Index(), "@I1@").NormalizedParentNames);
+    public void Parents_NullWhenNoFamChild()
+        => Assert.Null(Entry(Index(), "@I1@").Parents);
 
     [Fact]
     public void Entries_CoverEveryIndividualInTheModel()
@@ -125,5 +125,40 @@ public class MatchIndexTests
         var model = MatchTestModels.Build(FamilyGed);
         var index = new MatchIndex(model);
         Assert.Equal(model.Individuals.Count, index.Entries.Count);
+    }
+
+    [Fact]
+    public void Marriages_PreserveFamsOrderAndNormalizeMarriagePlaces()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Jane /Doe/
+            1 FAMS @F2@
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Alex /Smith/
+            1 FAMS @F1@
+            0 @I3@ INDI
+            1 NAME Beth /Jones/
+            1 FAMS @F2@
+            0 @F1@ FAM
+            1 HUSB @I2@
+            1 WIFE @I1@
+            1 MARR
+            2 DATE 1900
+            2 PLAC Boston, Massachusetts
+            0 @F2@ FAM
+            1 HUSB @I1@
+            1 WIFE @I3@
+            1 MARR
+            2 DATE 1920
+            2 PLAC Portland, Maine
+            """;
+
+        var marriages = Entry(new MatchIndex(MatchTestModels.Build(ged)), "@I1@").Marriages;
+
+        Assert.Equal(["BETH JONES", "ALEX SMITH"], marriages.Select(m => m.NormalizedSpouseName));
+        Assert.Equal([1920, 1900], marriages.Select(m => m.Year));
+        Assert.Equal(["PORTLAND MAINE", "BOSTON MASSACHUSETTS"], marriages.Select(m => m.NormalizedPlace));
     }
 }

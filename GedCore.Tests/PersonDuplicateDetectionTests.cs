@@ -185,6 +185,64 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         Assert.Contains(result.Errors, e => e.Contains("@New1@") && e.Contains("high-confidence match"));
     }
 
+      [Fact]
+      public void FatherEvidence_DoesNotMatchCandidatesMother_Succeeds()
+      {
+        var result = RunAgainstParentRoleFixture("husb");
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+      }
+
+      [Fact]
+      public void MotherEvidence_MatchesCandidatesMother_IsRejected()
+      {
+        var result = RunAgainstParentRoleFixture("wife");
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("@New1@") && e.Contains("high-confidence match"));
+      }
+
+      static Apply.ApplyResult RunAgainstParentRoleFixture(string assertedRole)
+      {
+        const string ged = """
+          0 HEAD
+          1 GEDC
+          2 VERS 7.0
+          0 @I1@ INDI
+          1 NAME Frederick /Morrill/
+          1 FAMC @F1@
+          0 @I2@ INDI
+          1 NAME Alex /Smith/
+          1 SEX F
+          1 FAMS @F1@
+          0 @I3@ INDI
+          1 NAME Alex /Smith/
+          1 SEX M
+          0 @I4@ INDI
+          1 NAME Carl /Jones/
+          1 SEX M
+          1 FAMS @F1@
+          0 @F1@ FAM
+          1 HUSB @I4@
+          1 WIFE @I2@
+          1 CHIL @I1@
+          0 TRLR
+          """;
+        var document = Ged70.Ged70Parser.Parse(ged.Replace("\n", "\r\n"));
+        var output = new MemoryStream();
+        Ged70.Ged70Formatter.Write(document, output);
+        string roleProperties = assertedRole == "husb"
+          ? "\"husb\": \"@I3@\""
+          : "\"wife\": \"@I2@\"";
+        var changeset = Apply.Changeset.Parse($$"""
+          { "items": [ { "item": 1, "ops": [
+            { "op": "createOrUpdateChild", "family": "@New2@", {{roleProperties}},
+            "child": { "xref": "@New1@", "name": "Frederick /Morrill/" } } ] } ] }
+          """);
+
+        return Apply.ChangesetApplier.Run(output.ToArray(), changeset, [1], dryRun: true);
+      }
+
     // -------------------------------------------------------------------
     // Conflicting scalar evidence across occurrences is a validation error,
     // not an arbitrary choice.

@@ -121,8 +121,8 @@ public class SiteGeneratorUrlAndIndexTests
     }
 
     // -----------------------------------------------------------------------
-    // Index linking rule (CLAUDE.md): several child-producing marriages ⇒
-    // each spouse in the Spouse(s) column links to that marriage's page.
+    // With several child-producing marriages, each spouse in the Spouse(s)
+    // column links to that marriage's page.
     // -----------------------------------------------------------------------
 
     [Fact]

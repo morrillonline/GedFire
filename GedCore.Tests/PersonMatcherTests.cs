@@ -253,7 +253,7 @@ public class PersonMatcherTests
         // weight is simply not available for I5, so both candidates can
         // still tie at 100 rather than one being penalized for silence.
         var outcome = Matcher().Match(IndexOf(MorrillGed), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: null, SpouseName: "Sarah Blake", ParentName: null));
+            new MatchHints(Spouse: new SpouseHint(Name: "Sarah Blake")));
 
         Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
         Assert.Equal(2, outcome.Matches.Count);
@@ -274,7 +274,7 @@ public class PersonMatcherTests
         // "Sarah Blake": the datum is present but disagrees, dropping I5 to
         // exactly 75 (60 name pts / 80 available) while I1 reaches 100 (80/80).
         var outcome = Matcher().Match(IndexOf(MorrillGedWithRivalSpouse), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: null, SpouseName: "Sarah Blake", ParentName: null));
+            new MatchHints(Spouse: new SpouseHint(Name: "Sarah Blake")));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         var winner = outcome.Matches[0];
@@ -286,7 +286,7 @@ public class PersonMatcherTests
     public void ParentHint_DisambiguatesExactNameTie()
     {
         var outcome = Matcher().Match(IndexOf(MorrillGed), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: null, SpouseName: null, ParentName: "Wyman Morrill"));
+            new MatchHints(Parents: new ParentsHint(Father: "Wyman Morrill")));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         Assert.Equal("@I1@", outcome.Matches[0].Individual.Xref);
@@ -296,7 +296,7 @@ public class PersonMatcherTests
     public void PlaceHint_MatchesWhenHintIsSubstringOfPlace()
     {
         var outcome = Matcher().Match(IndexOf(MorrillGed), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: "Gorham", SpouseName: null, ParentName: null));
+            new MatchHints(Birth: new EventHint(Place: "Gorham")));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         Assert.Equal("@I1@", outcome.Matches[0].Individual.Xref);
@@ -307,7 +307,7 @@ public class PersonMatcherTests
     {
         // The hint is longer than the recorded place and contains it.
         var outcome = Matcher().Match(IndexOf(MorrillGed), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: "Lewiston, Maine, USA", SpouseName: null, ParentName: null));
+            new MatchHints(Birth: new EventHint(Place: "Lewiston, Maine, USA")));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         Assert.Equal("@I5@", outcome.Matches[0].Individual.Xref);
@@ -317,7 +317,7 @@ public class PersonMatcherTests
     public void PlaceHint_NoContainmentEitherWay_AddsAvailableWeightButNoPoints()
     {
         var outcome = Matcher().Match(IndexOf(MorrillGed), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: "Boston, Massachusetts", SpouseName: null, ParentName: null));
+            new MatchHints(Birth: new EventHint(Place: "Boston, Massachusetts")));
 
         // Neither candidate's place matches, but both have a place recorded,
         // so the 15-point place weight counts toward availability for both
@@ -337,7 +337,7 @@ public class PersonMatcherTests
             1 SEX M
             """;
         var outcome = Matcher().Match(IndexOf(ged), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: "Gorham, Maine", SpouseName: null, ParentName: null));
+            new MatchHints(Birth: new EventHint(Place: "Gorham, Maine")));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         var match = outcome.Matches[0];
@@ -356,7 +356,7 @@ public class PersonMatcherTests
             1 SEX M
             """;
         var outcome = Matcher().Match(IndexOf(ged), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: null, SpouseName: null, ParentName: "Wyman Morrill"));
+            new MatchHints(Parents: new ParentsHint(Father: "Wyman Morrill")));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         var match = outcome.Matches[0];
@@ -388,7 +388,7 @@ public class PersonMatcherTests
     public void BirthYearHint_AwardsGradedPoints(int hintYear, double expectedRaw, double expectedFinal)
     {
         var outcome = Matcher().Match(IndexOf(SingleBirthGed), "Frederick Morrill",
-            new MatchHints(BirthYear: hintYear, Place: null, SpouseName: null, ParentName: null));
+            new MatchHints(Birth: new EventHint(Year: hintYear)));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         var match = outcome.Matches[0];
@@ -407,7 +407,7 @@ public class PersonMatcherTests
             1 SEX M
             """;
         var outcome = Matcher().Match(IndexOf(ged), "Frederick Morrill",
-            new MatchHints(BirthYear: 1841, Place: null, SpouseName: null, ParentName: null));
+            new MatchHints(Birth: new EventHint(Year: 1841)));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         var match = outcome.Matches[0];
@@ -482,7 +482,7 @@ public class PersonMatcherTests
             1 WIFE @I2@
             """;
         var outcome = Matcher(SyntheticNicknamesJson).Match(IndexOf(ged), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: null, SpouseName: "Bill Blake", ParentName: null));
+            new MatchHints(Spouse: new SpouseHint(Name: "Bill Blake")));
 
         double hintSim = JaroWinkler.Similarity("BILL BLAKE", "WILLIAM BLAKE");
         double expectedRaw = 60.0 + (hintSim >= 0.85 ? 20.0 : 0.0);
@@ -515,7 +515,7 @@ public class PersonMatcherTests
             2 DATE 1950
             """;
         var outcome = Matcher().Match(IndexOf(ged), "Xvqz Smith",
-            new MatchHints(BirthYear: 1900, Place: null, SpouseName: null, ParentName: null));
+            new MatchHints(Birth: new EventHint(Year: 1900)));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         Assert.Equal("@I1@", outcome.Matches[0].Individual.Xref);
@@ -616,7 +616,7 @@ public class PersonMatcherTests
         // change matchType away from Single, and TotalMatches must still
         // report the full recall set the classifier actually saw.
         var outcome = Matcher().Match(IndexOf(MorrillGedWithRivalSpouse), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: null, SpouseName: "Sarah Blake", ParentName: null),
+            new MatchHints(Spouse: new SpouseHint(Name: "Sarah Blake")),
             maxResults: 1);
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
@@ -629,8 +629,8 @@ public class PersonMatcherTests
     [Fact]
     public void MaxResults_One_OnUnresolvedCandidates_ReturnsOneCandidateButStaysCandidates()
     {
-        // Design's own example: maxResults: 1 can return one scored
-        // candidate while matchType stays "candidates", totalMatches is
+        // maxResults: 1 can return one scored candidate while matchType
+        // stays "candidates", totalMatches is
         // greater than 1, and truncated is true -- list length never
         // fabricates a confident classification.
         var outcome = Matcher().Match(IndexOf(TenJaneDoesGed()), "Jane Doe", maxResults: 1);
@@ -676,7 +676,7 @@ public class PersonMatcherTests
     public void TotalMatches_ForSingle_CanExceedOne_WhenADecisiveWinnerBeatsWeakerAlternatives()
     {
         var outcome = Matcher().Match(IndexOf(MorrillGedWithRivalSpouse), "Frederick Morrill",
-            new MatchHints(BirthYear: null, Place: null, SpouseName: "Sarah Blake", ParentName: null));
+            new MatchHints(Spouse: new SpouseHint(Name: "Sarah Blake")));
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
         Assert.Equal(2, outcome.TotalMatches);

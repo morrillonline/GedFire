@@ -26,16 +26,27 @@ public enum SuggestionReason { CloseSpelling, PartialName }
 /// <see cref="DisplayName"/> only breaks ties in ordering/suggestion
 /// selection; it plays no role in scoring.
 /// </summary>
+public sealed record PersonMatchEvent(int? Year, string? NormalizedPlace);
+
+public sealed record PersonMatchParents(
+    string? NormalizedFatherName,
+    string? NormalizedMotherName);
+
+public sealed record PersonMatchMarriage(
+    string? NormalizedSpouseName,
+    int? Year,
+    string? NormalizedPlace);
+
 public sealed record PersonMatchCandidate(
     string Id,
     string DisplayName,
     string NormalizedSurname,
     string NormalizedGiven,
-    int? BirthYear,
     bool? IsMale,
-    IReadOnlyList<string> NormalizedPlaces,
-    IReadOnlyList<string> NormalizedSpouseNames,
-    IReadOnlyList<string> NormalizedParentNames);
+    PersonMatchEvent? Birth,
+    PersonMatchEvent? Death,
+    PersonMatchParents? Parents,
+    IReadOnlyList<PersonMatchMarriage> Marriages);
 
 /// <summary>One matched or candidate person's id, with the scores that placed it.</summary>
 public sealed record PersonMatchScore(string Id, double FinalScore, double RawScore, double NameOnlyScore);
@@ -70,10 +81,12 @@ public sealed class PersonMatchCore
     const double SurnameWeight = 35.0;
     const double GivenWeight = 25.0;
     const double GivenNicknameFixedPoints = 20.0;
-    const double BirthYearWeight = 15.0;
-    const double PlaceWeight = 15.0;
-    const double SpouseWeight = 20.0;
-    const double ParentWeight = 20.0;
+    const double EventYearWeight = 15.0;
+    const double EventPlaceWeight = 15.0;
+    const double ParentNameWeight = 20.0;
+    const double SpouseNameWeight = 20.0;
+    const double MarriageYearWeight = 10.0;
+    const double MarriagePlaceWeight = 10.0;
 
     // Recall gate, classification, and suggestion thresholds ("Recall gate,
     // classification, and ordering" / "Limits").
@@ -86,6 +99,32 @@ public sealed class PersonMatchCore
     const double SingleMatchMargin = 10.0;
     const int DefaultCandidateCap = 8;
     const int SuggestionCap = 3;
+
+    // Floor on each name field itself for two-token queries, on top of the
+    // weighted-sum RecallThreshold. Without it, one strong field alone
+    // clears RecallThreshold regardless of how unrelated the other field is:
+    // e.g. SurnameWeight (35) is already 58% of the 60-point two-token pool,
+    // so any givenSim >= 0.28 pushes the sum over 70 -- and Jaro-Winkler
+    // routinely scores unrelated given names above that (the symmetric case,
+    // an exact given name riding along a merely-plausible surname, is milder
+    // but real too). Both floors are necessary conditions, not an alternate
+    // score: they never admit a candidate the weighted sum would otherwise
+    // reject, they only stop one field's strength from admitting a
+    // coincidentally-similar match on the other field alone.
+    //
+    // The surname floor reuses CloseSpellingThreshold: below it, two
+    // surnames share only a coincidental few letters, not a plausible
+    // spelling of each other -- e.g. "Moore" vs "Morrill" is 0.74.
+    //
+    // The given-name floor is deliberately lower, because
+    // WithoutDocumentedNickname_FallsBackToSimilarityAlone already relies on
+    // raw similarity recalling a genuine nickname that isn't in the
+    // directory: "Bill" vs "William" is 0.73, below CloseSpellingThreshold
+    // but a real shortening, not a coincidence. GivenNameAdmissionFloor
+    // sits just under that so the fallback keeps working, while still
+    // excluding a merely-coincidental overlap like "Eunice" vs "Ezekiel"
+    // (0.68).
+    const double GivenNameAdmissionFloor = 0.70;
 
     /// <summary>
     /// Resolve <paramref name="query"/> against <paramref name="candidates"/>.
@@ -110,7 +149,7 @@ public sealed class PersonMatchCore
         foreach (var candidate in candidates)
             nameScored.Add((candidate, ScoreNameOnly(candidate, querySurname, queryGiven, oneToken, nicknames)));
 
-        var recall = nameScored.Where(x => x.Score.Value >= RecallThreshold).ToList();
+        var recall = nameScored.Where(x => x.Score.Value >= RecallThreshold && x.Score.FieldFloorsMet).ToList();
 
         if (recall.Count == 0)
             return NoMatchOutcome(nameScored);
@@ -168,7 +207,7 @@ public sealed class PersonMatchCore
     // Name-only scoring and the recall gate
     // -------------------------------------------------------------------
 
-    readonly record struct NameOnlyScore(double Points, double Weight, double Value, double DecisiveSimilarity);
+    readonly record struct NameOnlyScore(double Points, double Weight, double Value, double DecisiveSimilarity, bool FieldFloorsMet);
 
     static NameOnlyScore ScoreNameOnly(
         PersonMatchCandidate candidate, string querySurname, string queryGiven, bool oneToken, NicknameDirectory nicknames)
@@ -179,17 +218,25 @@ public sealed class PersonMatchCore
         double givenPoints = Math.Max(givenSim * GivenWeight, nicknameEquivalent ? GivenNicknameFixedPoints : 0.0);
 
         double points, weight, decisive;
+        bool fieldFloorsMet;
         if (!oneToken)
         {
             points = surnameSim * SurnameWeight + givenPoints;
             weight = SurnameWeight + GivenWeight;
             decisive = surnameSim;
+            // Only a two-token query lets one field's own strength admit a
+            // candidate on the weighted sum alone -- gate that admission on
+            // both fields clearing their own floor (a documented nickname
+            // stands in for the given-name floor).
+            fieldFloorsMet = (givenSim >= GivenNameAdmissionFloor || nicknameEquivalent) &&
+                             surnameSim >= CloseSpellingThreshold;
         }
         else
         {
             // One-token query: compare against both fields independently and
             // let the better-scoring field stand alone, with only that
-            // field's weight available.
+            // field's weight available. No second field rides along, so no
+            // floor applies.
             double surnameNormalized = surnameSim * 100.0;
             double givenNormalized = givenPoints / GivenWeight * 100.0;
             if (surnameNormalized >= givenNormalized)
@@ -204,10 +251,11 @@ public sealed class PersonMatchCore
                 weight = GivenWeight;
                 decisive = givenSim;
             }
+            fieldFloorsMet = true;
         }
 
         double value = weight > 0 ? points * 100.0 / weight : 0.0;
-        return new NameOnlyScore(points, weight, value, decisive);
+        return new NameOnlyScore(points, weight, value, decisive, fieldFloorsMet);
     }
 
     static string FirstToken(string normalized)
@@ -227,49 +275,115 @@ public sealed class PersonMatchCore
         double raw = nameOnly.Points;
         double available = nameOnly.Weight;
 
-        if (hints.BirthYear is int hintYear && candidate.BirthYear is int candidateYear)
+        AddEventHint(hints.Birth, candidate.Birth, ref raw, ref available);
+        AddEventHint(hints.Death, candidate.Death, ref raw, ref available);
+
+        if (hints.Parents is { } parentHints && candidate.Parents is { } parents)
         {
-            available += BirthYearWeight;
-            int diff = Math.Abs(hintYear - candidateYear);
-            raw += diff switch { 0 => 15.0, 1 => 10.0, 2 => 5.0, _ => 0.0 };
+            AddNameHint(parentHints.Father, parents.NormalizedFatherName, ParentNameWeight, ref raw, ref available);
+            AddNameHint(parentHints.Mother, parents.NormalizedMotherName, ParentNameWeight, ref raw, ref available);
         }
 
-        if (!string.IsNullOrWhiteSpace(hints.Place) && candidate.NormalizedPlaces.Count > 0)
-        {
-            available += PlaceWeight;
-            string hintPlace = PersonNameNormalizer.Normalize(hints.Place);
-            if (hintPlace.Length > 0 && candidate.NormalizedPlaces.Any(p =>
-                    p.Contains(hintPlace, StringComparison.Ordinal) ||
-                    hintPlace.Contains(p, StringComparison.Ordinal)))
-            {
-                raw += PlaceWeight;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(hints.SpouseName) && candidate.NormalizedSpouseNames.Count > 0)
-        {
-            available += SpouseWeight;
-            string hintSpouse = PersonNameNormalizer.Normalize(hints.SpouseName);
-            if (hintSpouse.Length > 0 && candidate.NormalizedSpouseNames.Any(n =>
-                    JaroWinkler.Similarity(hintSpouse, n) >= RelationalHintThreshold))
-            {
-                raw += SpouseWeight;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(hints.ParentName) && candidate.NormalizedParentNames.Count > 0)
-        {
-            available += ParentWeight;
-            string hintParent = PersonNameNormalizer.Normalize(hints.ParentName);
-            if (hintParent.Length > 0 && candidate.NormalizedParentNames.Any(n =>
-                    JaroWinkler.Similarity(hintParent, n) >= RelationalHintThreshold))
-            {
-                raw += ParentWeight;
-            }
-        }
+        AddSpouseHint(hints.Spouse, candidate.Marriages, ref raw, ref available);
 
         double finalScore = available > 0 ? raw * 100.0 / available : 0.0;
         return new HintedScore(raw, available, finalScore);
+    }
+
+    static void AddEventHint(
+        EventHint? hint, PersonMatchEvent? candidate, ref double raw, ref double available)
+    {
+        if (hint is null || candidate is null) return;
+
+        AddYearHint(hint.Year, candidate.Year, EventYearWeight, ref raw, ref available);
+        AddPlaceHint(hint.Place, candidate.NormalizedPlace, EventPlaceWeight, ref raw, ref available);
+    }
+
+    static void AddSpouseHint(
+        SpouseHint? hint, IReadOnlyList<PersonMatchMarriage> marriages, ref double raw, ref double available)
+    {
+        if (hint is null || marriages.Count == 0) return;
+
+        double bestRaw = 0.0;
+        double bestAvailable = 0.0;
+        double bestNormalized = 0.0;
+        bool found = false;
+
+        foreach (var marriage in marriages)
+        {
+            double marriageRaw = 0.0;
+            double marriageAvailable = 0.0;
+
+            AddNameHint(
+                hint.Name, marriage.NormalizedSpouseName, SpouseNameWeight,
+                ref marriageRaw, ref marriageAvailable);
+            AddYearHint(
+                hint.Marriage?.Year, marriage.Year, MarriageYearWeight,
+                ref marriageRaw, ref marriageAvailable);
+            AddPlaceHint(
+                hint.Marriage?.Place, marriage.NormalizedPlace, MarriagePlaceWeight,
+                ref marriageRaw, ref marriageAvailable);
+
+            double normalized = marriageAvailable > 0
+                ? marriageRaw * 100.0 / marriageAvailable
+                : 0.0;
+            if (!found || normalized > bestNormalized ||
+                (normalized == bestNormalized && marriageRaw > bestRaw))
+            {
+                found = true;
+                bestRaw = marriageRaw;
+                bestAvailable = marriageAvailable;
+                bestNormalized = normalized;
+            }
+        }
+
+        raw += bestRaw;
+        available += bestAvailable;
+    }
+
+    static void AddYearHint(
+        int? hintYear, int? candidateYear, double weight, ref double raw, ref double available)
+    {
+        if (hintYear is not int expected || candidateYear is not int actual) return;
+
+        available += weight;
+        int difference = Math.Abs(expected - actual);
+        raw += difference switch
+        {
+            0 => weight,
+            1 => weight * 2.0 / 3.0,
+            2 => weight / 3.0,
+            _ => 0.0,
+        };
+    }
+
+    static void AddPlaceHint(
+        string? hint, string? candidate, double weight, ref double raw, ref double available)
+    {
+        if (string.IsNullOrWhiteSpace(hint) || string.IsNullOrEmpty(candidate)) return;
+
+        string normalizedHint = PersonNameNormalizer.Normalize(hint);
+        if (normalizedHint.Length == 0) return;
+
+        available += weight;
+        if (candidate.Contains(normalizedHint, StringComparison.Ordinal) ||
+            normalizedHint.Contains(candidate, StringComparison.Ordinal))
+        {
+            raw += weight;
+        }
+    }
+
+    static void AddNameHint(
+        string? hint, string? candidate, double weight, ref double raw, ref double available)
+    {
+        if (string.IsNullOrWhiteSpace(hint) || string.IsNullOrEmpty(candidate)) return;
+
+        string normalizedHint = PersonNameNormalizer.Normalize(hint);
+        if (normalizedHint.Length == 0) return;
+
+        available += weight;
+        if (JaroWinkler.Similarity(normalizedHint, candidate) >= RelationalHintThreshold)
+            raw += weight;
     }
 
     // -------------------------------------------------------------------

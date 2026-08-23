@@ -3,7 +3,7 @@ using GedCore;
 namespace GedFire.Gen;
 
 // ---------------------------------------------------------------------------
-// Publication privacy filter (CLAUDE.md privacy rule, 2026-07-06).
+// Publication privacy filter.
 //
 // The GED is the private research archive and may contain plausibly-living
 // people; the generated site must not show them. A person with any

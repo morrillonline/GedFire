@@ -6,7 +6,17 @@ namespace GedCore.Matching;
 // detection can build the same request shape find_person does.
 // ---------------------------------------------------------------------------
 
-public sealed record MatchHints(int? BirthYear, string? Place, string? SpouseName, string? ParentName)
+public sealed record EventHint(int? Year = null, string? Place = null);
+
+public sealed record ParentsHint(string? Father = null, string? Mother = null);
+
+public sealed record SpouseHint(string? Name = null, EventHint? Marriage = null);
+
+public sealed record MatchHints(
+    EventHint? Birth = null,
+    EventHint? Death = null,
+    ParentsHint? Parents = null,
+    SpouseHint? Spouse = null)
 {
-    public static readonly MatchHints None = new(null, null, null, null);
+    public static readonly MatchHints None = new();
 }

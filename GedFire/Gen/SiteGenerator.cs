@@ -882,7 +882,7 @@ public sealed class SiteGenerator
 
     // Spouse cell for a person with several child-producing marriages: their
     // name has no single page to link to, so each spouse links to that
-    // marriage's family page instead (linking rule — see CLAUDE.md).
+    // marriage's family page instead.
     string LinkedSpouseCellHtml(GedIndividual indi)
     {
         var parts = new List<string>();

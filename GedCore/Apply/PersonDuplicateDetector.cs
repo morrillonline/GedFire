@@ -48,7 +48,16 @@ internal static class PersonDuplicateDetector
                 .Select(kv => PersonRecordIndex.ToProvisionalCandidate(kv.Key, kv.Value));
             var candidates = realCandidates.Concat(provisional).ToList();
 
-            var hints = new MatchHints(self.BirthYear, self.Place, self.SpouseName, self.ParentName);
+            EventHint? birth = self.BirthYear is not null || self.BirthPlace is not null
+                ? new EventHint(self.BirthYear, self.BirthPlace)
+                : null;
+            ParentsHint? parents = self.FatherName is not null || self.MotherName is not null
+                ? new ParentsHint(self.FatherName, self.MotherName)
+                : null;
+            SpouseHint? spouse = self.SpouseName is not null
+                ? new SpouseHint(self.SpouseName)
+                : null;
+            var hints = new MatchHints(Birth: birth, Parents: parents, Spouse: spouse);
             var outcome = MatchCore.Match(candidates, self.Name, hints, Nicknames.Value, maxResults: 1);
 
             if (outcome.PersonMatchType == PersonMatchType.Single && outcome.Matches[0].FinalScore >= DuplicateScoreFloor)
@@ -75,7 +84,8 @@ internal static class PersonDuplicateDetector
         int? birthYear = null;
         string? birthPlace = null;
         var spouseNames = new HashSet<string>(StringComparer.Ordinal);
-        var parentNames = new HashSet<string>(StringComparer.Ordinal);
+        var fatherNames = new HashSet<string>(StringComparer.Ordinal);
+        var motherNames = new HashSet<string>(StringComparer.Ordinal);
         var conflicts = new List<string>();
 
         void ObserveBirth(IReadOnlyList<InlineFact> facts)
@@ -123,10 +133,10 @@ internal static class PersonDuplicateDetector
                 spouseNames.Add(PersonNameNormalizer.Normalize(realName));
         }
 
-        void AddParent(string? realName)
+        void AddParent(HashSet<string> names, string? realName)
         {
             if (!string.IsNullOrWhiteSpace(realName))
-                parentNames.Add(PersonNameNormalizer.Normalize(realName));
+            names.Add(PersonNameNormalizer.Normalize(realName));
         }
 
         foreach (var op in selectedOps)
@@ -147,13 +157,13 @@ internal static class PersonDuplicateDetector
                     {
                         if (childOp.Husb is not null || childOp.Wife is not null)
                         {
-                            AddParent(ResolveRealName(childOp.Husb));
-                            AddParent(ResolveRealName(childOp.Wife));
+                            AddParent(fatherNames, ResolveRealName(childOp.Husb));
+                            AddParent(motherNames, ResolveRealName(childOp.Wife));
                         }
                         else if (!Placeholder.IsPlaceholder(childOp.Family) && ctx.Existing(childOp.Family) is { } fam)
                         {
-                            AddParent(ResolveRealName(fam.FirstChild("HUSB")?.Value));
-                            AddParent(ResolveRealName(fam.FirstChild("WIFE")?.Value));
+                            AddParent(fatherNames, ResolveRealName(fam.FirstChild("HUSB")?.Value));
+                            AddParent(motherNames, ResolveRealName(fam.FirstChild("WIFE")?.Value));
                         }
                     }
                     break;
@@ -187,21 +197,26 @@ internal static class PersonDuplicateDetector
         if (conflicts.Count > 0)
             return (default, string.Join("; ", conflicts));
 
-        // Two named parents (or two spouses) are valid evidence about a real
-        // person, not conflicting values -- omit the hint rather than guess
-        // which one to keep, since find_person's request has one slot each.
         string? spouseHint = spouseNames.Count == 1 ? spouseNames.Single() : null;
-        string? parentHint = parentNames.Count == 1 ? parentNames.Single() : null;
+        string? fatherHint = fatherNames.Count == 1 ? fatherNames.Single() : null;
+        string? motherHint = motherNames.Count == 1 ? motherNames.Single() : null;
 
-        return (new PersonEvidence(name ?? "", sex, birthYear, birthPlace, spouseHint, parentHint), null);
+        return (new PersonEvidence(
+            name ?? "", sex, birthYear, birthPlace, spouseHint, fatherHint, motherHint), null);
     }
 }
 
 /// <summary>
 /// One person-creation placeholder's gathered duplicate-detection evidence.
-/// <see cref="SpouseName"/>/<see cref="ParentName"/> are already normalized
-/// (<see cref="PersonNameNormalizer"/>); <see cref="Place"/> is raw free text,
-/// normalized the same way <see cref="MatchHints"/> place hints always are.
+/// Relationship names are already normalized with
+/// <see cref="PersonNameNormalizer"/>; <see cref="BirthPlace"/> is raw free
+/// text, normalized the same way <see cref="MatchHints"/> place hints are.
 /// </summary>
 internal readonly record struct PersonEvidence(
-    string Name, string? Sex, int? BirthYear, string? Place, string? SpouseName, string? ParentName);
+    string Name,
+    string? Sex,
+    int? BirthYear,
+    string? BirthPlace,
+    string? SpouseName,
+    string? FatherName,
+    string? MotherName);

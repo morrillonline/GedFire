@@ -14,12 +14,8 @@ public static class GapDetector
     /// <summary>
     /// No person born within this many years of today is ever surfaced as a
     /// target, regardless of card type — a hard privacy floor with no CLI
-    /// override, because this design has no other way to keep a plausibly-
-    /// living person out of a file meant to be handed to a research
-    /// assistant. Unknown birth years are not gated: in practice a missing
-    /// birth date means an under-documented old ancestor far more often
-    /// than a deliberately-redacted living one, matching this design's
-    /// existing lenient treatment of unknown dates/places elsewhere.
+    /// override. Unknown birth years are not gated because a missing birth
+    /// date is treated consistently with other unknown dates and places.
     /// </summary>
     const int PrivacyFloorYears = 100;
 
@@ -135,8 +131,8 @@ public static class GapDetector
     }
 
     // Age at death from year subtraction only (day/month ignored) — coarse,
-    // consistent with the GED-only, year-granularity signals used elsewhere
-    // in this design. Unknown birth or death year never counts as "young".
+    // consistent with the GED-only, year-granularity signals used elsewhere.
+    // Unknown birth or death year never counts as "young".
     static bool DiedYoung(GedIndividual person)
     {
         if (person.Death is null) return false;
@@ -159,8 +155,7 @@ public static class GapDetector
 
             // Era/geography key off the marriage when one is recorded (this
             // is a descendancy target), else fall back to the subject's own
-            // birth — mirroring the design's "birth/marriage" wording for
-            // both signals.
+            // birth, keeping both signals tied to the descendancy event.
             bool hasMarriageYear = fam.Marriage != null && GedDate.ParseYear(fam.Marriage.Date) > 0;
             int era = hasMarriageYear
                 ? ExactnessRules.EraWeight(GedDate.ParseYear(fam.Marriage!.Date))
@@ -186,7 +181,7 @@ public static class GapDetector
     // -------------------------------------------------------------------
     // Enrich person — birth/marriage/death date or place not exact.
     // Geography always keys off the subject's own birth place, even when
-    // enriching a different fact, per the design's geography-weight table.
+    // enriching a different fact.
     // -------------------------------------------------------------------
 
     static void DetectEnrichBirth(GedIndividual person, List<SelectionTarget> targets)
@@ -205,8 +200,7 @@ public static class GapDetector
         {
             if (!familiesSeen.Add(fam.Xref)) continue;
             // A missing MARR record (fam.Marriage null) still counts as "not
-            // exact" — both date and place read as absent, per the design's
-            // "the whole fact being absent" rule.
+            // exact" because both date and place are absent.
             AddEnrichmentIfInexact(person, "Marriage", fam.Marriage?.Date, fam.Marriage?.Place, targets);
         }
     }

@@ -28,9 +28,8 @@ public static class TargetDrawer
     /// Draw <paramref name="count"/> candidates uniformly at random, without
     /// replacement, from <paramref name="candidates"/>. <paramref name="seed"/>
     /// is recorded verbatim in the result for the audit log — callers
-    /// generate it themselves (e.g. from the system clock); this design has
-    /// deliberately no --seed input, so it is never supplied by a caller
-    /// wanting a specific outcome.
+    /// generate it themselves, typically from the system clock. The CLI has
+    /// no --seed input, so users cannot request a specific outcome.
     /// </summary>
     public static DrawResult Draw(IReadOnlyList<SelectionTarget> candidates, int count, long seed)
     {

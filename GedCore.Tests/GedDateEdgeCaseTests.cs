@@ -92,8 +92,8 @@ public class ExactFullDateIdentityTests
 }
 
 // ---------------------------------------------------------------------------
-// Subproject C (SPEC-ged7-conformance.md): full GEDCOM 7 DateValue grammar
-// via GedDate.ParseValue. One theory per grammar production, plus a
+// Full GEDCOM 7 DateValue grammar via GedDate.ParseValue. One theory per
+// grammar production, plus a
 // wrapper-equivalence check that Parse/ParseYear still return exactly what
 // they returned before this subproject for every string already exercised
 // elsewhere in the suite.

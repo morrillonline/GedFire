@@ -439,8 +439,8 @@ public class SiteGeneratorSyntheticTests
     [Fact]
     public void IndexRow_MultipleChildProducingMarriages_NameIsSpanNotAnchor()
     {
-        // Henry has two child-producing marriages → index must show his name as
-        // <span class="nm"> (not <a class="nm">) per the linking rule in CLAUDE.md.
+        // Henry has two child-producing marriages, so no single family page
+        // can own the link from his name.
         string ged = """
             0 @I1@ INDI
             1 NAME Henry /Brown/

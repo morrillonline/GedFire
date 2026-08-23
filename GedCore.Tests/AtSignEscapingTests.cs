@@ -4,8 +4,8 @@ using GedCore.Ged70;
 namespace GedCore.Tests;
 
 /// <summary>
-/// Subproject A (SPEC-ged7-conformance.md): GEDCOM 7 requires a text payload
-/// whose first character is '@' to be written as '@@'; readers must un-escape.
+/// GEDCOM 7 requires a text payload whose first character is '@' to be
+/// written as '@@'; readers must un-escape.
 /// Covers the Escape/Unescape helpers, parse/reformat of an escaped payload,
 /// the upgrader's free-text-citation detection regression, and idempotent
 /// round-tripping through the Apply layer.

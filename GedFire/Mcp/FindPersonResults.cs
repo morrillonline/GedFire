@@ -1,7 +1,7 @@
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// find_person's three result shapes, mirroring FindPersonTool.OutputSchemaJson
+// find_person's unified result shape, mirroring FindPersonTool.OutputSchemaJson
 // property-for-property. Serialized with System.Text.Json using
 // FindPersonTool's camelCase, nulls-emitted options. Pure data — every
 // mapping from a MatchOutcome to these records happens in FindPersonTool,
