@@ -1,6 +1,7 @@
 using System.Text;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using GedCore;
 using GedCore.Apply;
 
 namespace GedFire.Gen;

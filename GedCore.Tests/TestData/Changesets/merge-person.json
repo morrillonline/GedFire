@@ -3,12 +3,12 @@
   "items": [
     {
       "item": 1,
-      "target": "@I00010@",
+      "target": "@I00005@",
       "ops": [
         {
           "op": "mergePerson",
-          "survivor": "@I00010@",
-          "duplicate": "@I00011@",
+          "survivor": "@I00005@",
+          "duplicate": "@I00006@",
           "facts": [ { "fact": "BIRT", "keep": "survivor" }, { "fact": "NAME", "keep": "survivor" } ],
           "note": "Merged per reviewed correlation evidence."
         }

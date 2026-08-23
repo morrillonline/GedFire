@@ -123,4 +123,76 @@ internal sealed class ApplyState(GedDocument doc)
         if (!map.TryGetValue(indiXref, out var fams)) map[indiXref] = fams = [];
         if (!fams.Contains(famXref)) fams.Add(famXref);
     }
+
+    // -------------------------------------------------------------------
+    // Placeholder minting: new-record identity is minted and committed by
+    // one locked apply invocation.
+    // -------------------------------------------------------------------
+
+    /// <summary>Placeholder token → real minted xref, reported on a successful
+    /// committing result (<see cref="ApplyResult.MintedXrefs"/>).</summary>
+    public Dictionary<string, string> MintedXrefs { get; } = new(StringComparer.Ordinal);
+
+    static readonly Dictionary<string, string> TagByPrefix = new(StringComparer.Ordinal)
+    { ["I"] = "INDI", ["F"] = "FAM", ["S"] = "SOUR", ["M"] = "OBJE" };
+
+    /// <summary>
+    /// Substitute a placeholder for the real xref minted for it earlier in
+    /// this run. Returns <paramref name="xref"/> unchanged when it is not a
+    /// placeholder, or is a placeholder not yet minted (meaning the caller
+    /// is the one that must mint it now — see <see cref="MintXref"/>).
+    /// </summary>
+    public string Resolve(string xref) =>
+        Placeholder.IsPlaceholder(xref) && MintedXrefs.TryGetValue(xref, out var real) ? real : xref;
+
+    /// <summary>Null-preserving form of <see cref="Resolve(string)"/>, for the several optional xref fields (Family, Husb/Wife, media Xref).</summary>
+    public string? ResolveOptional(string? xref) => xref is null ? null : Resolve(xref);
+
+    /// <summary>
+    /// The creation-site counterpart to <see cref="Resolve(string)"/>: when
+    /// <paramref name="xrefOrPlaceholder"/> is still placeholder-shaped (not
+    /// yet minted), mint its real identity now and return it; otherwise
+    /// (already resolved to a real xref, or never a placeholder at all)
+    /// return it unchanged. Every op that creates a record — a person,
+    /// family, source, or explicit-xref media object — funnels its own
+    /// identity through this one call.
+    /// </summary>
+    public string MintIfPlaceholder(string prefix, string xrefOrPlaceholder) =>
+        Placeholder.IsPlaceholder(xrefOrPlaceholder) ? MintXref(prefix, xrefOrPlaceholder) : xrefOrPlaceholder;
+
+    /// <summary>
+    /// Mint the next free real xref of the given prefix ("I"/"F"/"S"/"M") for
+    /// <paramref name="placeholder"/> and record the mapping. The one
+    /// collision this can't statically rule out — a document that already
+    /// contains a real record whose literal xref happens to match
+    /// @New&lt;token&gt;@ — is checked here and fails loudly rather than
+    /// silently colliding.
+    /// </summary>
+    public string MintXref(string prefix, string placeholder)
+    {
+        if (Doc.ByXref.ContainsKey(placeholder))
+            throw new InvalidOperationException(
+                $"{placeholder} is a reserved placeholder shape, but the document already contains a real " +
+                "record with that literal xref — a document health problem to fix at the source before this " +
+                "changeset can mint a new identity for it");
+
+        string tag = TagByPrefix[prefix];
+        string real = XrefMinter.MintNext(Doc.Records.Where(r => r.Tag == tag).Select(r => r.Xref ?? ""), prefix);
+        MintedXrefs[placeholder] = real;
+        return real;
+    }
+
+    /// <summary>
+    /// Resolve a PersonRef's own xref (if already minted) and every source
+    /// xref its inline facts cite, so a caller need not chase placeholders
+    /// through nested citations by hand.
+    /// </summary>
+    public PersonRef ResolvePersonRef(PersonRef p) => p with
+    {
+        Xref = Resolve(p.Xref),
+        Facts = [.. p.Facts.Select(f => f with { Citations = ResolveCitations(f.Citations) })],
+    };
+
+    public IReadOnlyList<Citation> ResolveCitations(IReadOnlyList<Citation> citations) =>
+        [.. citations.Select(c => c with { Source = Resolve(c.Source) })];
 }

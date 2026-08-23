@@ -48,14 +48,15 @@ public sealed class CreateOrUpdateCitationOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var target = state.Doc.ByXref[Record];
+        var target = state.Doc.ByXref[state.Resolve(Record)];
+        var citations = state.ResolveCitations(Citations);
         // validation guarantees resolution except on records created earlier
         // in this run, which it could not inspect — fail before any write
         var fact = Resolve.Fact(target, Fact, Match).Fact
             ?? throw new InvalidOperationException($"{Context}: no such fact on the record as applied");
 
         var changes = new List<string>();
-        foreach (var cit in Citations)
+        foreach (var cit in citations)
             if (NodeBuilder.UpsertCitation(state, fact, cit) is string change)
                 changes.Add(change);
 
@@ -97,17 +98,24 @@ public sealed class DeleteCitationOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var target = state.Doc.ByXref[Record];
+        // Source is compared against the actual written SOUR pointer value
+        // (Resolve.CitationOnStructure), which is always the real xref — so
+        // a placeholder naming a source created earlier in this same
+        // changeset must be resolved before that comparison, the same as
+        // any createOrUpdate op's citation source.
+        var record = state.Resolve(Record);
+        var source = state.Resolve(Source);
+        var target = state.Doc.ByXref[record];
         var fact = Resolve.Fact(target, Fact, Match).Fact;
-        var citation = fact is null ? null : Resolve.CitationOnStructure(fact, Source);
+        var citation = fact is null ? null : Resolve.CitationOnStructure(fact, source);
         if (citation is null)
         {
-            log.Add($"{Kind} {Fact} on {Record}: no-op ({Source} not cited)");
+            log.Add($"{Kind} {Fact} on {record}: no-op ({source} not cited)");
             return;
         }
         fact!.Children.Remove(citation);
         state.Mutated();
         state.Touch(target);
-        log.Add($"{Kind} {Fact} on {Record}: removed citation {Source}");
+        log.Add($"{Kind} {Fact} on {record}: removed citation {source}");
     }
 }

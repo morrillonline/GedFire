@@ -104,7 +104,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var target = state.Doc.ByXref[Record];
+        var target = state.Doc.ByXref[state.Resolve(Record)];
+        var citations = state.ResolveCitations(Citations);
         var res = Resolve.Fact(target, Fact, Match);
         var existingFact = Mode == "add"
             ? FactSatisfyingRequest(target)   // add: create unless an identical instance is already present (re-run)
@@ -115,7 +116,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
             var fact = NodeBuilder.EventNode(1, Fact, Value, []);
             foreach (var (sub, i) in Substructures.Select((s, i) => (s, i)))
                 NodeBuilder.Attach(fact, NodeBuilder.NewNode(2, sub.Tag, sub.Value), at: i);
-            foreach (var cit in Citations)
+            foreach (var cit in citations)
                 NodeBuilder.Attach(fact, NodeBuilder.CitationNode(2, cit));
             NodeBuilder.InsertFact(target, fact);
             state.Mutated();
@@ -143,7 +144,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
                 state.Touch(target);
                 changes.Add($"{sub.Tag} added '{sub.Value}'");
             }
-        foreach (var cit in Citations)
+        foreach (var cit in citations)
             if (NodeBuilder.UpsertCitation(state, existingFact, cit) is string change)
                 changes.Add(change);
 
@@ -225,11 +226,15 @@ public sealed class DeleteVitalOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var target = state.Doc.ByXref[Record];
+        // Validate accepts a Record that ctx.Known() resolves through the
+        // placeholder plan (a record an earlier op in this changeset
+        // created), so Apply must resolve it before using it as a doc key.
+        var record = state.Resolve(Record);
+        var target = state.Doc.ByXref[record];
         var res = Resolve.Fact(target, Fact, Match);
         if (res.Fact is null)
         {
-            log.Add($"{Kind} {Fact} on {Record}: no-op (absent)");
+            log.Add($"{Kind} {Fact} on {record}: no-op (absent)");
             return;
         }
 
@@ -239,7 +244,7 @@ public sealed class DeleteVitalOp : ChangeOp
         target.Children.Remove(res.Fact);
         state.Mutated();
         state.Touch(target);
-        log.Add($"{Kind} {Fact} on {Record}: deleted" + (cited > 0
+        log.Add($"{Kind} {Fact} on {record}: deleted" + (cited > 0
             ? DeletedCitations == "moveToNote"
                 ? $" ({cited} citation(s) moved to note)"
                 : $" ({cited} citation(s) dropped)"

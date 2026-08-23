@@ -1,9 +1,9 @@
 {
   "proposal": "test-merge-with-followups",
   "items": [
-    { "item": 1, "target": "@I00010@ / @I00011@ -> merge duplicate; correct death date; fix mother's name",
+    { "item": 1, "target": "@I00005@ / @I00006@ -> merge duplicate; correct death date; fix mother's name",
       "ops": [
-        { "op": "mergePerson", "survivor": "@I00010@", "duplicate": "@I00011@",
+        { "op": "mergePerson", "survivor": "@I00005@", "duplicate": "@I00006@",
           "facts": [
             { "fact": "NAME", "keep": "value", "value": "John Lorenzo Dow /Test/",
               "citation": { "source": "@S00001@", "page": "p. 1",
@@ -12,8 +12,8 @@
               "citation": { "source": "@S00001@", "page": "p. 1",
                             "dataText": "birth confirmed", "quay": 2 } }
           ],
-          "note": "Merged duplicate @I00011@: a death record bridges the two entered names and confirms this is the same man." },
-        { "op": "createOrUpdateVital", "record": "@I00010@", "fact": "DEAT",
+          "note": "Merged duplicate @I00006@: a death record bridges the two entered names and confirms this is the same man." },
+        { "op": "createOrUpdateVital", "record": "@I00005@", "fact": "DEAT",
           "value": { "date": "8 NOV 1998", "place": "Deering, New Hampshire" },
           "citation": { "source": "@S00001@", "page": "p. 1",
                         "dataText": "died 8 Nov 1998", "quay": 2 } },

@@ -54,6 +54,12 @@ Before completing a change, run the affected tests and then the full suite when 
 - To add a CLI command: add a `Run<Command>` method and a case in the `Program.cs` switch, parse arguments with `CommandLine.Parse`, return exit code 0 on success and 1 on any failure, write errors to standard error, and write informational output to standard output.
 - Product version numbers live in `Directory.Build.props`, not in individual project files.
 
+## Code Comments
+
+- Keep comments brief. State what the code does or why, in the comment's own words.
+- Never reference or cite a file in `docs/design/` from a code comment. Design docs get renamed, moved, or deleted; a comment that cites one becomes a dead reference nobody notices.
+- Never recount the origin story of how the next line came to exist (what it used to be, what it was moved from, what change introduced it). Describe the code as it is now.
+
 ## Compatibility And Safety
 
 - Refer to the [FamilySearch GEDCOM 7 specification](https://gedcom.io/specifications/FamilySearchGEDCOMv7.html) for format rules. Account for earlier GEDCOM versions where relevant.

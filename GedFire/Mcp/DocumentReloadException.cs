@@ -4,7 +4,7 @@ namespace GedFire.Mcp;
 /// A resident document could not be kept in sync with its source file: the
 /// file is missing, kept changing while being read, or failed to parse.
 /// FindPersonTool's last-chance handler turns this into an isError tool
-/// result (docs/design/mcp-server.md "Errors").
+/// result.
 /// </summary>
 public sealed class DocumentReloadException : Exception
 {

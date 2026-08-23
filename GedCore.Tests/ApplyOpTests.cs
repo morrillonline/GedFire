@@ -224,13 +224,13 @@ public class ApplyOpTests : ApplyTestBase
 
         // the burial-place enrichment: add the missing PLAC, date untouched
         RunExpectSuccess("""
-            { "newSources": [ { "xref": "@S00002@", "ops": [
-                { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "Find a Grave",
+            { "newSources": [ { "xref": "@NewS1@", "ops": [
+                { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "Find a Grave",
                   "title": "memorial" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "DEAT",
                 "value": { "place": "Benton Harbor, Berrien Co., Michigan" },
-                "citation": { "source": "@S00002@", "page": "memorial",
+                "citation": { "source": "@NewS1@", "page": "memorial",
                               "dataText": "Burial: Crystal Springs Cemetery", "quay": 3 } } ] } ] }
             """);
 
@@ -269,13 +269,13 @@ public class ApplyOpTests : ApplyTestBase
         SeedBirtWithExistingCitation();
 
         RunExpectSuccess("""
-            { "newSources": [ { "xref": "@S00002@", "ops": [
-                { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "New Source",
+            { "newSources": [ { "xref": "@NewS1@", "ops": [
+                { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "New Source",
                   "title": "New source" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
                 "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
-                "citation": { "source": "@S00002@", "page": "p. 1",
+                "citation": { "source": "@NewS1@", "page": "p. 1",
                               "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
             """);
 
@@ -291,14 +291,14 @@ public class ApplyOpTests : ApplyTestBase
         SeedBirtWithExistingCitation();
 
         RunExpectSuccess("""
-            { "newSources": [ { "xref": "@S00002@", "ops": [
-                { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "New Source",
+            { "newSources": [ { "xref": "@NewS1@", "ops": [
+                { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "New Source",
                   "title": "New source" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
                 "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
                 "replacedCitations": "drop",
-                "citation": { "source": "@S00002@", "page": "p. 1",
+                "citation": { "source": "@NewS1@", "page": "p. 1",
                               "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
             """);
 
@@ -315,14 +315,14 @@ public class ApplyOpTests : ApplyTestBase
         SeedBirtWithExistingCitation();
 
         RunExpectSuccess("""
-            { "newSources": [ { "xref": "@S00002@", "ops": [
-                { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "New Source",
+            { "newSources": [ { "xref": "@NewS1@", "ops": [
+                { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "New Source",
                   "title": "New source" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
                 "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
                 "replacedCitations": "moveToNote",
-                "citation": { "source": "@S00002@", "page": "p. 1",
+                "citation": { "source": "@NewS1@", "page": "p. 1",
                               "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
             """);
 
@@ -351,8 +351,8 @@ public class ApplyOpTests : ApplyTestBase
             """);
 
         RunExpectSuccess("""
-            { "newSources": [ { "xref": "@S00002@", "ops": [
-                { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "New Source",
+            { "newSources": [ { "xref": "@NewS1@", "ops": [
+                { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "New Source",
                   "title": "New source" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateNote", "record": "@I00001@",
@@ -360,7 +360,7 @@ public class ApplyOpTests : ApplyTestBase
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
                 "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
                 "replacedCitations": "moveToNote",
-                "citation": { "source": "@S00002@", "page": "p. 1",
+                "citation": { "source": "@NewS1@", "page": "p. 1",
                               "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
             """);
 
@@ -373,20 +373,24 @@ public class ApplyOpTests : ApplyTestBase
     }
 
     [Fact]
-    public void Note_WithCitation_AttachesSourceUnderNote_AndIsIdempotent()
+    public void Note_WithCitation_AttachesSourceUnderNote_AndReportsMintedXref()
     {
         WriteBaseFile();
         const string changeset = """
-            { "newSources": [ { "xref": "@S00002@", "ops": [
-                { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "State",
+            { "newSources": [ { "xref": "@NewS1@", "ops": [
+                { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "State",
                   "title": "Draft card" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateNote", "record": "@I00001@",
                 "text": "Adopted his maternal surname in adulthood.",
-                "citation": { "source": "@S00002@", "page": "1942 draft",
+                "citation": { "source": "@NewS1@", "page": "1942 draft",
                               "dataText": "Allen also known as Allen Other", "quay": 3 } } ] } ] }
             """;
-        RunExpectSuccess(changeset);
+        var result = RunExpectSuccess(changeset);
+
+        // The changeset never named a real source xref; MintedXrefs is how the
+        // calling pipeline learns which real xref @NewS1@ actually received.
+        Assert.Equal("@S00002@", result.MintedXrefs["@NewS1@"]);
 
         var note = ReadDoc().ByXref["@I00001@"].ChildrenByTag("NOTE")
             .Single(n => n.Value == "Adopted his maternal surname in adulthood.");
@@ -395,14 +399,46 @@ public class ApplyOpTests : ApplyTestBase
         Assert.Equal("@S00002@", sour!.Value);
         Assert.Equal("1942 draft", sour.FirstChild("PAGE")!.Value);
         Assert.Equal("3", sour.FirstChild("QUAY")!.Value);
+    }
 
-        // Re-applying the same changeset is a no-op: byte-identical file, one SOUR.
-        var before = ReadBytes();
-        RunExpectSuccess(changeset);
-        Assert.Equal(before, ReadBytes());
-        var note2 = ReadDoc().ByXref["@I00001@"].ChildrenByTag("NOTE")
-            .Single(n => n.Value == "Adopted his maternal surname in adulthood.");
-        Assert.Single(note2.ChildrenByTag("SOUR"));
+    /// <summary>
+    /// Placeholder identity is not durable across separate apply invocations:
+    /// rerun-identity guarantees are scoped to person duplicate detection;
+    /// source/family/media creation has no such guard. Re-submitting the
+    /// identical @NewS1@-keyed changeset a second time therefore mints a
+    /// second, distinct source — it is not a no-op. A caller that wants an
+    /// idempotent follow-up edit uses the real xref MintedXrefs reported from
+    /// the first run, not the placeholder again.
+    /// </summary>
+    [Fact]
+    public void CreateOrUpdateSource_RepeatedApplyOfTheSamePlaceholderChangeset_MintsADistinctSourceEachTime()
+    {
+        WriteBaseFile();
+        const string changeset = """
+            { "newSources": [ { "xref": "@NewS1@", "ops": [
+                { "op": "createOrUpdateSource", "xref": "@NewS1@", "title": "Draft card" } ] } ],
+              "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateNote", "record": "@I00001@", "text": "note" } ] } ] }
+            """;
+
+        var first = RunExpectSuccess(changeset);
+        Assert.Equal("@S00002@", first.MintedXrefs["@NewS1@"]);
+
+        var second = RunExpectSuccess(changeset);
+        Assert.Equal("@S00003@", second.MintedXrefs["@NewS1@"]);
+
+        Assert.Equal(2, ReadDoc().Records.Count(r => r.Tag == "SOUR" && r.Xref != "@S00001@"));
+
+        // A follow-up edit against the already-minted real xref, by contrast,
+        // is idempotent in the ordinary createOrUpdate sense.
+        const string followUp = """
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "State" } ] } ] }
+            """;
+        RunExpectSuccess(followUp);
+        var beforeRepeat = ReadBytes();
+        RunExpectSuccess(followUp);
+        Assert.Equal(beforeRepeat, ReadBytes());
     }
 
     [Fact]

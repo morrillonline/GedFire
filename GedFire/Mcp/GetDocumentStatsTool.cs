@@ -5,11 +5,10 @@ using ModelContextProtocol.Server;
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// The get_document_stats MCP tool (docs/design/mcp-server.md "The second
-// tool: get_document_stats"). Declares the tool's metadata and schemas
-// verbatim from that addendum; takes no arguments; obtains the snapshot from
-// DocumentSession and reads personCount/familyCount/gedVersion straight off
-// it. No matching or scoring logic — there is none to have.
+// The get_document_stats MCP tool. Declares the tool's metadata and schemas;
+// takes no arguments; obtains the snapshot from DocumentSession and reads
+// personCount/familyCount/gedVersion straight off it. No matching or
+// scoring logic — there is none to have.
 // ---------------------------------------------------------------------------
 
 public sealed class GetDocumentStatsTool
@@ -22,7 +21,6 @@ public sealed class GetDocumentStatsTool
         "work, or when the user asks how large their file is or what format it's in. Takes no arguments — there " +
         "is only one bound document.";
 
-    // Verbatim from docs/design/mcp-server.md "The second tool: get_document_stats" — Input.
     public const string InputSchemaJson = """
         {
           "type": "object",
@@ -32,7 +30,6 @@ public sealed class GetDocumentStatsTool
         }
         """;
 
-    // Verbatim from docs/design/mcp-server.md "The second tool: get_document_stats" — Output.
     public const string OutputSchemaJson = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",

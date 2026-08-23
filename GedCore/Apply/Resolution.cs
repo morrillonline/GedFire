@@ -13,6 +13,22 @@ internal sealed class ResolutionContext(GedDocument doc)
     /// <summary>Xrefs that earlier ops in this run will create.</summary>
     public HashSet<string> Planned { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The changeset-wide placeholder registry, shared by every op's
+    /// validation within one selected changeset.
+    /// </summary>
+    public PlaceholderRegistry Placeholders { get; } = new();
+
+    /// <summary>
+    /// New families this changeset has already validated as creating, each
+    /// with its partner pair and exact marriage-date identity -- consulted
+    /// by the same-partner-same-date conflict check alongside existing
+    /// shared families, so a second createOrUpdateSpouse op earlier in the
+    /// same changeset can be caught, not just a collision with the document
+    /// as it already stood.
+    /// </summary>
+    public List<PlannedMarriage> PlannedMarriages { get; } = [];
+
     public bool Known(string xref) => doc.ByXref.ContainsKey(xref) || Planned.Contains(xref);
 
     public GedRecord? Existing(string xref) =>
@@ -32,6 +48,14 @@ internal sealed record FactResolution(GedRecord? Fact, int TagCount, int MatchCo
 {
     public bool Ambiguous => MatchCount > 1;
 }
+
+/// <summary>
+/// One new family this changeset has already validated as creating for
+/// <see cref="PartnerA"/> and <see cref="PartnerB"/>, with the exact
+/// marriage-date identity it supplied. <see cref="FamilyRef"/> is the
+/// placeholder that names the new family (for the conflict message).
+/// </summary>
+internal sealed record PlannedMarriage(string PartnerA, string PartnerB, GedDate.ExactDateIdentity Date, string FamilyRef);
 
 /// <summary>Outcome of resolving a PersonRef.</summary>
 internal enum PersonHit { Link, Create }
@@ -100,18 +124,45 @@ internal static class Resolve
     /// person, or fail. An inline ref whose xref already exists with the
     /// identical NAME degrades to a link — this is what makes whole-changeset
     /// re-runs no-ops; a different NAME is refused.
+    ///
+    /// Creating a new person requires an @New&lt;token&gt;@ placeholder — a
+    /// real, currently-unused xref is rejected, not silently accepted. The
+    /// placeholder is registered
+    /// in <see cref="ResolutionContext.Placeholders"/> as it is first seen; a
+    /// later creation-capable occurrence of the same token must agree on
+    /// kind and (when both supply one) name/sex.
     /// </summary>
     public static PersonResolution Person(ResolutionContext ctx, PersonRef p)
     {
         if (p.Xref == GedRecord.VoidPointer)
             return PersonResolution.Fail($"{GedRecord.VoidPointer} is not an addressable record");
+        if (Placeholder.RejectRealRecordCollision(ctx, p.Xref) is string collision)
+            return PersonResolution.Fail(collision);
         var existing = ctx.Existing(p.Xref);
         if (existing is null)
         {
             if (ctx.Planned.Contains(p.Xref))
+            {
+                if (Placeholder.IsPlaceholder(p.Xref))
+                {
+                    if (!ctx.Placeholders.TryGetKind(p.Xref, out var kind) || kind != PlaceholderKind.Person)
+                        return PersonResolution.Fail($"{p.Xref} is registered as a different kind of placeholder");
+                    if (p.IsInline)
+                    {
+                        var conflict = ctx.Placeholders.Register(p.Xref, PlaceholderKind.Person, p.Name, p.Sex);
+                        if (conflict is not null) return PersonResolution.Fail(conflict);
+                    }
+                }
                 return new PersonResolution(PersonHit.Link, null, null);
+            }
             if (!p.IsInline)
                 return PersonResolution.Fail($"person {p.Xref} not in file (give name/sex to create inline)");
+            if (!Placeholder.IsPlaceholder(p.Xref))
+                return PersonResolution.Fail(
+                    $"{p.Xref} is not a placeholder — creating a new person requires an @New<token>@ xref " +
+                    "(apply mints the real identity), not a caller-chosen one");
+            var registerError = ctx.Placeholders.Register(p.Xref, PlaceholderKind.Person, p.Name, p.Sex);
+            if (registerError is not null) return PersonResolution.Fail(registerError);
             return new PersonResolution(PersonHit.Create, null, null);
         }
         if (existing.Tag != "INDI")
@@ -186,17 +237,35 @@ internal static class Resolve
         };
     }
 
+    /// <summary>
+    /// Resolve a named family xref against the document/plan. Creating a new
+    /// family requires an @New&lt;token&gt;@ placeholder — a real,
+    /// currently-unused xref is rejected, not silently accepted.
+    /// </summary>
     private static FamilyResolution NamedFamily(ResolutionContext ctx, string familyXref)
     {
         if (familyXref == GedRecord.VoidPointer)
             return FamilyResolution.Fail($"{GedRecord.VoidPointer} is not an addressable record");
+        if (Placeholder.RejectRealRecordCollision(ctx, familyXref) is string collision)
+            return FamilyResolution.Fail(collision);
         var existing = ctx.Existing(familyXref);
         if (existing is not null)
             return existing.Tag == "FAM"
                 ? new FamilyResolution(existing, null, false, null)
                 : FamilyResolution.Fail($"{familyXref} is not a FAM record");
         if (ctx.Planned.Contains(familyXref))
+        {
+            if (Placeholder.IsPlaceholder(familyXref) &&
+                (!ctx.Placeholders.TryGetKind(familyXref, out var kind) || kind != PlaceholderKind.Family))
+                return FamilyResolution.Fail($"{familyXref} is registered as a different kind of placeholder");
             return new FamilyResolution(null, null, true, null);
+        }
+        if (!Placeholder.IsPlaceholder(familyXref))
+            return FamilyResolution.Fail(
+                $"{familyXref} is not a placeholder — creating a new family requires an @New<token>@ xref " +
+                "(apply mints the real identity), not a caller-chosen one");
+        var registerError = ctx.Placeholders.Register(familyXref, PlaceholderKind.Family);
+        if (registerError is not null) return FamilyResolution.Fail(registerError);
         return new FamilyResolution(null, familyXref, false, null);
     }
 
@@ -206,4 +275,37 @@ internal static class Resolve
     /// <summary>The existing citation of <paramref name="source"/> on a structure, if any.</summary>
     public static GedRecord? CitationOnStructure(GedRecord structure, string source) =>
         structure.ChildrenByTag("SOUR").FirstOrDefault(s => s.Value == source);
+
+    /// <summary>
+    /// The same-partner-same-date marriage conflict check: a person may have
+    /// multiple spouse-family records with the same partner, but not two
+    /// marriages to that same
+    /// partner on the same exact date. Symmetric in the two partners and
+    /// blind to family xref choice; searches both families the two people
+    /// already share and family creations validated earlier in this same
+    /// changeset. Returns the xrefs/placeholders of every conflicting family
+    /// found, empty when there is no conflict.
+    /// </summary>
+    public static List<string> SameDateMarriageConflicts(
+        ResolutionContext ctx, string partnerA, string partnerB, GedDate.ExactDateIdentity date)
+    {
+        var conflicts = new List<string>();
+
+        foreach (var fam in Kin.SharedFamilies(ctx, partnerA, partnerB))
+        {
+            var marrDate = fam.FirstChild("MARR")?.FirstChild("DATE")?.FullValue();
+            if (GedDate.ExactFullDateIdentity(marrDate) is { } existingDate && existingDate == date)
+                conflicts.Add(fam.Xref!);
+        }
+
+        foreach (var planned in ctx.PlannedMarriages)
+        {
+            bool samePair = (planned.PartnerA == partnerA && planned.PartnerB == partnerB)
+                          || (planned.PartnerA == partnerB && planned.PartnerB == partnerA);
+            if (samePair && planned.Date == date)
+                conflicts.Add(planned.FamilyRef);
+        }
+
+        return conflicts;
+    }
 }

@@ -4,8 +4,7 @@ namespace GedCore.Tests;
 
 // DocumentSession's whole job is watching a real file's OS-level metadata,
 // so — unlike the rest of this suite — these tests use real temporary files
-// (docs/design/mcp-server.md scopes reload-policy testing at this level,
-// not as pure in-memory unit tests).
+// rather than pure in-memory units.
 public class DocumentSessionTests : IDisposable
 {
     readonly string _dir;

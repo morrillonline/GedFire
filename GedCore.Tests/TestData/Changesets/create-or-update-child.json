@@ -8,7 +8,7 @@
         {
           "op": "createOrUpdateChild",
           "family": "@F00002@",
-          "child": { "xref": "@I00006@", "name": "Junior /Test/", "sex": "M" },
+          "child": { "xref": "@New1@", "name": "Junior /Test/", "sex": "M" },
           "citation": { "source": "@S00001@", "page": "p. 5", "dataText": "surviving children include Junior", "quay": 3 }
         }
       ]

@@ -1,4 +1,4 @@
-using GedFire.Match;
+using GedCore.Matching;
 
 namespace GedCore.Tests;
 
@@ -61,9 +61,8 @@ public class JaroWinklerTests
     [InlineData("FRED", "FREDERICK")]
     public void ShortenedForm_ScoresHigh(string a, string b)
     {
-        // docs/design/mcp-server.md: "FRED vs FREDERICK scores about 0.89" —
-        // the prefix bonus is what makes a shortened form score high without
-        // any lookup table.
+        // FRED vs FREDERICK scores about 0.89 — the prefix bonus is what
+        // makes a shortened form score high without any lookup table.
         double sim = JaroWinkler.Similarity(a, b);
         Assert.Equal(0.89, sim, 2);
     }
@@ -72,8 +71,8 @@ public class JaroWinklerTests
     [InlineData("BILL", "WILLIAM")]
     public void DocumentedNickname_ScoresLowerThanSpellingVariant(string a, string b)
     {
-        // docs/design/mcp-server.md: "BILL vs WILLIAM scores only about
-        // 0.73 — documented nicknames are not a spelling phenomenon."
+        // BILL vs WILLIAM scores only about 0.73 — documented nicknames are
+        // not a spelling phenomenon.
         double sim = JaroWinkler.Similarity(a, b);
         Assert.Equal(0.73, sim, 2);
         Assert.True(sim < 0.89, "a nickname pair should not out-score a true shortened form");

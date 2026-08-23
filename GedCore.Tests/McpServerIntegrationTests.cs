@@ -2,10 +2,9 @@ using System.Text.Json;
 
 namespace GedCore.Tests;
 
-// Subprocess integration tests (docs/design/mcp-server.md "Testing
-// approach" / "File tests remain at the highest level"): launch the packed
-// `gedfire mcp` command against a synthetic GEDCOM and drive it over real
-// stdio, the way an actual MCP client would.
+// Subprocess integration tests: launch the packed `gedfire mcp` command
+// against a synthetic GEDCOM and drive it over real stdio, the way an
+// actual MCP client would.
 public class McpServerIntegrationTests : IDisposable
 {
     static readonly TimeSpan ShortTimeout = TimeSpan.FromSeconds(15);
@@ -110,10 +109,9 @@ public class McpServerIntegrationTests : IDisposable
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
-        // empirically, not assumed (docs/design/mcp-server.md "Tool
-        // registration and server guidance"). Order within one process is
-        // covered separately by ToolsList_IsDeterministicAcrossCalls; here
-        // only membership is asserted.
+        // empirically, not assumed. Order within one process is covered
+        // separately by ToolsList_IsDeterministicAcrossCalls; here only
+        // membership is asserted.
         Assert.Equal(
             new HashSet<string> { "find_person", "get_document_stats", "get_record" },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
@@ -248,6 +246,83 @@ public class McpServerIntegrationTests : IDisposable
         Assert.Equal("@I1@", structured.GetProperty("person").GetProperty("xref").GetString());
     }
 
+    // -------------------------------------------------------------------
+    // maxResults, over real stdio JSON-RPC: proves the wire-level
+    // integer/"all" union actually binds through the SDK's argument
+    // binder, not just FindPersonTool.HandleAsync called in-process.
+    // -------------------------------------------------------------------
+
+    string WriteTenJaneDoesGed()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("0 HEAD");
+        sb.AppendLine("1 GEDC");
+        sb.AppendLine("2 VERS 7.0");
+        for (int i = 1; i <= 10; i++)
+        {
+            sb.AppendLine($"0 @I{i:D2}@ INDI");
+            sb.AppendLine("1 NAME Jane /Doe/");
+            sb.AppendLine("1 SEX F");
+        }
+        sb.AppendLine("0 TRLR");
+        string path = Path.Combine(_dir, "ten.ged");
+        File.WriteAllText(path, sb.ToString());
+        return path;
+    }
+
+    [Fact]
+    public async Task ToolsCall_MaxResults_Integer_CapsCandidatesOverRealJsonRpc()
+    {
+        await using var client = McpStdioTestClient.Start(WriteTenJaneDoesGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "find_person",
+            arguments = new { query = "Jane Doe", maxResults = 3 },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal("candidates", structured.GetProperty("matchType").GetString());
+        Assert.Equal(3, structured.GetProperty("candidates").GetArrayLength());
+        Assert.Equal(10, structured.GetProperty("totalMatches").GetInt32());
+        Assert.True(structured.GetProperty("truncated").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ToolsCall_MaxResultsAll_ReturnsWholeRecallSetOverRealJsonRpc()
+    {
+        await using var client = McpStdioTestClient.Start(WriteTenJaneDoesGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "find_person",
+            arguments = new { query = "Jane Doe", maxResults = "all" },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.Equal(10, structured.GetProperty("candidates").GetArrayLength());
+        Assert.Equal(10, structured.GetProperty("totalMatches").GetInt32());
+        Assert.False(structured.GetProperty("truncated").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ToolsCall_MaxResultsInvalid_ReturnsIsErrorOverRealJsonRpc()
+    {
+        await using var client = McpStdioTestClient.Start(WriteGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "find_person",
+            arguments = new { query = "Frederick Morrill", maxResults = 0 },
+        }, ShortTimeout);
+
+        var result = response.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+    }
+
     [Fact]
     public async Task ToolsCall_GetDocumentStats_ReturnsCountsAndVersionForNoArguments()
     {
@@ -311,9 +386,8 @@ public class McpServerIntegrationTests : IDisposable
     public async Task ToolsCall_GetRecord_DefaultMediaDir_ResolvesASelfDescribingPathUnderTheGedcomDir()
     {
         // No --media-dir given: the default is the GEDCOM's own directory,
-        // matching generate (docs/design/mcp-server.md "Architecture"). A
-        // self-describing "media/..." payload -- the shape
-        // MediaFileRequest.NormalizePath now always produces -- resolves
+        // matching generate. A self-describing "media/..." payload -- the
+        // shape MediaFileRequest.NormalizePath always produces -- resolves
         // correctly against that plain default with no special-casing.
         string mediaSubdir = Path.Combine(_dir, "media");
         Directory.CreateDirectory(mediaSubdir);

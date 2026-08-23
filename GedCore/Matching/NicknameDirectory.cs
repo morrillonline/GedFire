@@ -1,10 +1,11 @@
 using System.Text.Json;
 
-namespace GedFire.Match;
+namespace GedCore.Matching;
 
 // ---------------------------------------------------------------------------
-// Documented given-name equivalents (docs/design/mcp-server.md "Nickname
-// dictionary"). Loads GedFire/Resources/nicknames.json once and answers one
+// Documented given-name equivalents, embedded resource and all, shared so
+// the duplicate-person detector inside GedCore.Apply uses the same nickname
+// equivalence GedFire's find_person tool does. Answers one
 // question: are two given names documented equivalents, given the
 // candidate's recorded sex? Constructed from a Stream rather than reaching
 // for the embedded resource itself, so tests can supply a small synthetic
@@ -13,7 +14,7 @@ namespace GedFire.Match;
 
 public sealed class NicknameDirectory
 {
-    const string EmbeddedResourceName = "GedFire.Resources.nicknames.json";
+    const string EmbeddedResourceName = "GedCore.Resources.nicknames.json";
 
     readonly List<HashSet<string>> _maleGroups;
     readonly List<HashSet<string>> _femaleGroups;
@@ -40,7 +41,7 @@ public sealed class NicknameDirectory
         using var stream = assembly.GetManifestResourceStream(EmbeddedResourceName)
             ?? throw new InvalidOperationException(
                 $"Embedded resource not found: {EmbeddedResourceName}. " +
-                "Is it marked <EmbeddedResource> in GedFire.csproj?");
+                "Is it marked <EmbeddedResource> in GedCore.csproj?");
         return new NicknameDirectory(stream);
     }
 

@@ -8,24 +8,38 @@ namespace GedCore.Apply;
 /// </summary>
 internal static class Kin
 {
-    /// <summary>Create the inline person if their xref is not in the file yet.</summary>
+    /// <summary>
+    /// Create the inline person if their xref is not in the file yet.
+    /// <paramref name="p"/> must already be resolved (<see cref="ApplyState.ResolvePersonRef"/>):
+    /// when its xref is still placeholder-shaped, this is the creating
+    /// occurrence — apply-time duplicate detection has already run during
+    /// validation, so this mints the real identity and commits it.
+    /// </summary>
     public static void EnsurePerson(ApplyState state, PersonRef p, List<string> log)
     {
         if (state.Doc.ByXref.ContainsKey(p.Xref)) return;
-        var rec = new GedRecord(0, p.Xref, "INDI", "");
+        string realXref = state.MintIfPlaceholder("I", p.Xref);
+        var rec = new GedRecord(0, realXref, "INDI", "");
         NodeBuilder.Attach(rec, NodeBuilder.NewNode(1, "NAME", p.Name!));
         if (p.Sex is not null) NodeBuilder.Attach(rec, NodeBuilder.NewNode(1, "SEX", p.Sex));
         foreach (var f in p.Facts)
             NodeBuilder.Attach(rec, NodeBuilder.EventNode(1, f.Fact, f.Value, f.Citations));
         NodeBuilder.Attach(rec, NodeBuilder.NewNode(1, "UID", Guid.NewGuid().ToString()));
         state.AddRecord("INDI", rec);
-        log.Add($"created person {p.Xref} ({p.Name})");
+        log.Add($"created person {realXref} ({p.Name})");
     }
 
-    /// <summary>Create an empty FAM record (UID only) so link helpers can fill it.</summary>
-    public static GedRecord CreateFamily(ApplyState state, string xref)
+    /// <summary>
+    /// Create an empty FAM record (UID only) so link helpers can fill it.
+    /// <paramref name="xrefOrPlaceholder"/> is resolved first (<see
+    /// cref="ApplyState.Resolve"/>) by every caller before reaching here when
+    /// it names an earlier-planned family; when it's still placeholder-shaped
+    /// this is the creating occurrence and a real identity is minted here.
+    /// </summary>
+    public static GedRecord CreateFamily(ApplyState state, string xrefOrPlaceholder)
     {
-        var rec = new GedRecord(0, xref, "FAM", "");
+        string realXref = state.MintIfPlaceholder("F", xrefOrPlaceholder);
+        var rec = new GedRecord(0, realXref, "FAM", "");
         NodeBuilder.Attach(rec, NodeBuilder.NewNode(1, "UID", Guid.NewGuid().ToString()));
         state.AddRecord("FAM", rec);
         return rec;

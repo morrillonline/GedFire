@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GedCore;
 using GedFire.Gen;
 
 namespace GedFire.Export;
@@ -103,10 +104,10 @@ public static class PersonIndexExporter
     };
 
     // Matching normalization, shared with the MCP find_person lookup
-    // (GedFire.Match.PersonNameNormalizer): uppercase, punctuation stripped,
+    // (GedCore.Matching.PersonNameNormalizer): uppercase, punctuation stripped,
     // hyphens preserved so a hyphenated surname stays one token. Underscores
     // survive — "____" is the unknown-name placeholder throughout this dataset.
-    static string Normalize(string name) => GedFire.Match.PersonNameNormalizer.Normalize(name);
+    static string Normalize(string name) => GedCore.Matching.PersonNameNormalizer.Normalize(name);
 
     // -----------------------------------------------------------------------
     // Serialization shapes (public properties so reflection-based

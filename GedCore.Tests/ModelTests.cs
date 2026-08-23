@@ -1,3 +1,4 @@
+using GedCore;
 using GedCore.Ged55;
 using GedFire.Gen;
 

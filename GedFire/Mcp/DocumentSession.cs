@@ -5,10 +5,10 @@ namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
 // Owns the current DocumentSnapshot and the source path; implements the
-// entire reload policy from docs/design/mcp-server.md "Resident document and
-// reload policy": mtime+length staleness check, one per-document async lock,
-// before/after metadata capture with a single retry, atomic reference swap,
-// actionable errors. The only code that ever replaces the snapshot.
+// entire reload policy: mtime+length staleness check, one per-document
+// async lock, before/after metadata capture with a single retry, atomic
+// reference swap, actionable errors. The only code that ever replaces the
+// snapshot.
 // ---------------------------------------------------------------------------
 
 public sealed class DocumentSession

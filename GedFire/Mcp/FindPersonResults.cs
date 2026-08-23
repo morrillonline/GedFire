@@ -2,10 +2,10 @@ namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
 // find_person's three result shapes, mirroring FindPersonTool.OutputSchemaJson
-// property-for-property (docs/design/mcp-server.md "Output: three shapes,
-// one schema"). Serialized with System.Text.Json using FindPersonTool's
-// camelCase, nulls-emitted options. Pure data — every mapping from a
-// MatchOutcome to these records happens in FindPersonTool, not here.
+// property-for-property. Serialized with System.Text.Json using
+// FindPersonTool's camelCase, nulls-emitted options. Pure data — every
+// mapping from a MatchOutcome to these records happens in FindPersonTool,
+// not here.
 // ---------------------------------------------------------------------------
 
 public sealed record EventIdentity(string? Date, int? Year, string? Qualifier, string? Place);
@@ -18,7 +18,8 @@ public sealed record CandidateIdentity(
     EventIdentity? Birth,
     EventIdentity? Death,
     ParentsIdentity? Parents,
-    IReadOnlyList<string> Spouses);
+    IReadOnlyList<string> Spouses,
+    double MatchScore);
 
 public sealed record SpouseFamilyIdentity(string Xref, string? MarriageDate, string? SpouseName);
 
@@ -33,10 +34,19 @@ public sealed record ResolvedPersonIdentity(
     EventIdentity? Death,
     FamiliesIdentity Families);
 
-public sealed record SuggestionIdentity(string Xref, string Name, string Reason);
+public sealed record SuggestionIdentity(string Xref, string Name, string Reason, double MatchScore);
 
-public sealed record SingleMatchResult(string MatchType, ResolvedPersonIdentity Person);
-
-public sealed record CandidateListResult(string MatchType, IReadOnlyList<CandidateIdentity> Candidates, bool Truncated);
-
-public sealed record NoMatchResult(string MatchType, IReadOnlyList<SuggestionIdentity> Suggestions);
+/// <summary>
+/// find_person's one unified response shape. Every call returns every
+/// field; unused fields for a given matchType are null or empty per the
+/// invariants documented on FindPersonTool.OutputSchemaJson.
+/// </summary>
+public sealed record FindPersonResult(
+    string MatchType,
+    string? ConfidentMatchXref,
+    double? ConfidentMatchScore,
+    ResolvedPersonIdentity? Person,
+    IReadOnlyList<CandidateIdentity> Candidates,
+    IReadOnlyList<SuggestionIdentity> Suggestions,
+    int TotalMatches,
+    bool Truncated);

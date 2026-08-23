@@ -1,11 +1,13 @@
+using GedCore;
+using GedCore.Matching;
 using GedFire.Gen;
 
 namespace GedFire.Match;
 
 // ---------------------------------------------------------------------------
 // Everything PersonMatcher needs to compare a query against a person,
-// pre-normalized once per snapshot (docs/design/mcp-server.md "MatchIndex").
-// Built once from a GedModel; no re-normalization happens per tool call.
+// pre-normalized once per snapshot. Built once from a GedModel; no
+// re-normalization happens per tool call.
 // ---------------------------------------------------------------------------
 
 /// <summary>One individual's pre-normalized, comparable fields.</summary>

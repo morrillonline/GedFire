@@ -1,8 +1,8 @@
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// The two admission bounds from docs/design/mcp-server.md "Lifecycle":
-// a SemaphoreSlim(4) for concurrency and a 120-per-minute sliding window.
+// The two admission bounds: a SemaphoreSlim(4) for concurrency and a
+// 120-per-minute sliding window.
 // Wraps every tool invocation; throws ToolRateLimitExceededException on rate
 // rejection. Knows nothing about any specific tool.
 // ---------------------------------------------------------------------------

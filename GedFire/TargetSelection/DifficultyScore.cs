@@ -1,9 +1,8 @@
 namespace GedFire.TargetSelection;
 
 /// <summary>
-/// The four difficulty bands a candidate's raw difficulty sums into
-/// (docs/design/target-selection.md, "Difficulty — a second, independent
-/// axis"). Serialized by name (Common/Uncommon/Rare/Legendary).
+/// The four difficulty bands a candidate's raw difficulty sums into.
+/// Serialized by name (Common/Uncommon/Rare/Legendary).
 /// </summary>
 public enum DifficultyBand
 {

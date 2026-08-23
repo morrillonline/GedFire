@@ -126,14 +126,14 @@ public class ApplyMediaTests : ApplyTestBase
         WriteBaseFile();
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateMedia", "xref": "@M00001@",
+              { "op": "createOrUpdateMedia", "xref": "@NewM1@",
                 "files": [ { "path": "media/allen-childhood.jpg", "mediaType": "image/jpeg" } ],
                 "attachTo": [ { "person": "@I00001@" } ] } ] } ] }
             """);
 
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateMedia", "xref": "@M00002@",
+              { "op": "createOrUpdateMedia", "xref": "@NewM2@",
                 "files": [ { "path": "media/allen-wedding.jpg", "mediaType": "image/jpeg" } ],
                 "attachTo": [ { "person": "@I00001@", "portrait": true } ] } ] } ] }
             """);
@@ -277,7 +277,7 @@ public class ApplyMediaTests : ApplyTestBase
         WriteBaseFile();
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateMedia", "xref": "@M00001@",
+              { "op": "createOrUpdateMedia", "xref": "@NewM1@",
                 "files": [ { "path": "media/family.jpg", "mediaType": "image/jpeg" } ],
                 "attachTo": [ { "person": "@I00001@" }, { "family": "@F00002@" } ] } ] } ] }
             """);

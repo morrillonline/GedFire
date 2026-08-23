@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GedCore;
+using GedCore.Matching;
 using GedFire.Gen;
 using GedFire.Match;
 using ModelContextProtocol.Protocol;
@@ -8,12 +10,11 @@ using ModelContextProtocol.Server;
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// The find_person MCP tool (docs/design/mcp-server.md "The first tool:
-// find_person"). Declares the tool's metadata, schemas, and annotations
-// verbatim from that document; trims and validates the query; obtains the
-// snapshot from DocumentSession; calls PersonMatcher; maps the MatchOutcome
-// to the result records. The last-chance Exception handler lives here. No
-// matching or scoring logic lives in this class.
+// The find_person MCP tool. Declares the tool's metadata, schemas, and
+// annotations; trims and validates the query; obtains the snapshot from
+// DocumentSession; calls PersonMatcher; maps the MatchOutcome to the result
+// records. The last-chance Exception handler lives here. No matching or
+// scoring logic lives in this class.
 // ---------------------------------------------------------------------------
 
 public sealed class FindPersonTool
@@ -27,7 +28,6 @@ public sealed class FindPersonTool
         "pass those xrefs to future family detail or research tools when needed. When candidates are returned, " +
         "ask the user which person they mean and call again with any new birth, place, spouse, or parent hint.";
 
-    // Verbatim from docs/design/mcp-server.md "Input".
     public const string InputSchemaJson = """
         {
           "type": "object",
@@ -65,21 +65,46 @@ public sealed class FindPersonTool
                   "description": "A parent's name, if the user mentioned one."
                 }
               }
+            },
+            "maxResults": {
+              "oneOf": [
+                { "type": "integer", "minimum": 1 },
+                { "type": "string", "const": "all" }
+              ],
+              "default": 8,
+              "description": "The most scored recall candidates to return. An integer caps the list at that size; \"all\" returns the complete scored recall set. This never changes the matcher's confidence classification or totalMatches. Use \"all\" to correlate a finding by checking the selected person against every plausible same-name alternative. Omit for the default of 8."
             }
           },
           "required": ["query"]
         }
         """;
 
-    // Verbatim from docs/design/mcp-server.md "Output: three shapes, one schema".
+    // One scored shape and a true recall count for every response, no oneOf.
     public const string OutputSchemaJson = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "type": "object",
-          "oneOf": [
-            { "$ref": "#/$defs/SingleMatch" },
-            { "$ref": "#/$defs/CandidateList" },
-            { "$ref": "#/$defs/NoMatch" }
+          "additionalProperties": false,
+          "properties": {
+            "matchType": { "type": "string", "enum": ["none", "single", "candidates"] },
+            "confidentMatchXref": { "type": ["string", "null"], "pattern": "^@[^@]+@$" },
+            "confidentMatchScore": { "type": ["number", "null"] },
+            "person": { "$ref": "#/$defs/ResolvedPersonIdentity" },
+            "candidates": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/CandidateIdentity" }
+            },
+            "suggestions": {
+              "type": "array",
+              "maxItems": 3,
+              "items": { "$ref": "#/$defs/Suggestion" }
+            },
+            "totalMatches": { "type": "integer", "minimum": 0 },
+            "truncated": { "type": "boolean" }
+          },
+          "required": [
+            "matchType", "confidentMatchXref", "confidentMatchScore", "person",
+            "candidates", "suggestions", "totalMatches", "truncated"
           ],
           "$defs": {
             "EventIdentity": {
@@ -111,9 +136,10 @@ public sealed class FindPersonTool
                 "birth": { "$ref": "#/$defs/EventIdentity" },
                 "death": { "$ref": "#/$defs/EventIdentity" },
                 "parents": { "$ref": "#/$defs/ParentsIdentity" },
-                "spouses": { "type": "array", "items": { "type": "string" } }
+                "spouses": { "type": "array", "items": { "type": "string" } },
+                "matchScore": { "type": "number" }
               },
-              "required": ["xref", "name", "birth", "death", "parents", "spouses"]
+              "required": ["xref", "name", "birth", "death", "parents", "spouses", "matchScore"]
             },
             "SpouseFamilyIdentity": {
               "type": "object",
@@ -141,7 +167,7 @@ public sealed class FindPersonTool
               "required": ["asChild", "asParent"]
             },
             "ResolvedPersonIdentity": {
-              "type": "object",
+              "type": ["object", "null"],
               "additionalProperties": false,
               "properties": {
                 "xref": { "type": "string", "pattern": "^@[^@]+@$" },
@@ -161,46 +187,10 @@ public sealed class FindPersonTool
                 "reason": {
                   "type": "string",
                   "enum": ["close spelling", "partial name"]
-                }
-              },
-              "required": ["xref", "name", "reason"]
-            },
-            "SingleMatch": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "matchType": { "const": "single" },
-                "person": { "$ref": "#/$defs/ResolvedPersonIdentity" }
-              },
-              "required": ["matchType", "person"]
-            },
-            "CandidateList": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "matchType": { "const": "candidates" },
-                "candidates": {
-                  "type": "array",
-                  "minItems": 2,
-                  "maxItems": 8,
-                  "items": { "$ref": "#/$defs/CandidateIdentity" }
                 },
-                "truncated": { "type": "boolean" }
+                "matchScore": { "type": "number" }
               },
-              "required": ["matchType", "candidates", "truncated"]
-            },
-            "NoMatch": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "matchType": { "const": "none" },
-                "suggestions": {
-                  "type": "array",
-                  "maxItems": 3,
-                  "items": { "$ref": "#/$defs/Suggestion" }
-                }
-              },
-              "required": ["matchType", "suggestions"]
+              "required": ["xref", "name", "reason", "matchScore"]
             }
           }
         }
@@ -251,25 +241,28 @@ public sealed class FindPersonTool
     // The delegate McpServerTool.Create binds arguments to and invokes.
     // "hints" needs a real default so the SDK's reflection-based argument
     // binder treats it as optional rather than throwing when a client omits
-    // it entirely (as most calls will).
-    Task<CallToolResult> InvokeAsync(string query, FindPersonHintsArgs? hints = null, CancellationToken cancellationToken = default)
-        => HandleAsync(query, hints, cancellationToken);
+    // it entirely (as most calls will). "maxResults" is bound as a raw
+    // JsonElement since its wire shape is an integer-or-"all" union with no
+    // single natural CLR type.
+    Task<CallToolResult> InvokeAsync(
+        string query, FindPersonHintsArgs? hints = null, JsonElement? maxResults = null, CancellationToken cancellationToken = default)
+        => HandleAsync(query, hints, cancellationToken, maxResults);
 
     /// <summary>
     /// The tool's actual behavior, reachable directly without any MCP
     /// protocol machinery: admission through ToolGate, then the work itself.
     /// Never throws: every failure — including a rate-limit rejection from
     /// ToolGate, which is thrown before the work below ever starts — becomes
-    /// an isError CallToolResult (docs/design/mcp-server.md "Errors"), except
-    /// that an already-requested cancellation is left to propagate as
+    /// an isError CallToolResult, except that an already-requested
+    /// cancellation is left to propagate as
     /// OperationCanceledException so no late response is emitted.
     /// </summary>
     public async Task<CallToolResult> HandleAsync(
-        string query, FindPersonHintsArgs? hints, CancellationToken cancellationToken)
+        string query, FindPersonHintsArgs? hints, CancellationToken cancellationToken, JsonElement? maxResults = null)
     {
         try
         {
-            return await _gate.RunAsync(ct => ExecuteAsync(query, hints, ct), cancellationToken).ConfigureAwait(false);
+            return await _gate.RunAsync(ct => ExecuteAsync(query, hints, maxResults, ct), cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -279,23 +272,27 @@ public sealed class FindPersonTool
         {
             // Last-chance handler: the stack trace is deliberately included —
             // this is a local tool run by the researcher against their own
-            // data (docs/design/mcp-server.md "Errors").
+            // data.
             return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
         }
     }
 
-    async Task<CallToolResult> ExecuteAsync(string query, FindPersonHintsArgs? hints, CancellationToken cancellationToken)
+    async Task<CallToolResult> ExecuteAsync(
+        string query, FindPersonHintsArgs? hints, JsonElement? maxResults, CancellationToken cancellationToken)
     {
         string trimmed = (query ?? "").Trim();
         if (trimmed.Length == 0)
             return CallToolResults.Error("query must not be blank.");
+
+        if (!TryParseMaxResults(maxResults, out int? cap, out string? capError))
+            return CallToolResults.Error(capError!);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var matcher = new PersonMatcher(_nicknames);
         // trimmed.Length > 0 here guarantees query is non-null; the matcher
         // still receives the original, untrimmed query (it normalizes on its
         // own terms) rather than the trimmed copy.
-        var outcome = matcher.Match(snapshot.MatchIndex, query!, ToMatchHints(hints));
+        var outcome = matcher.Match(snapshot.MatchIndex, query!, ToMatchHints(hints), cap);
 
         return CallToolResults.Success(MapOutcome(outcome), CallToolResults.JsonOptions);
     }
@@ -303,20 +300,76 @@ public sealed class FindPersonTool
     static MatchHints ToMatchHints(FindPersonHintsArgs? hints) =>
         hints is null ? MatchHints.None : new MatchHints(hints.BirthYear, hints.Place, hints.SpouseName, hints.ParentName);
 
+    // Default cap when the caller omits "maxResults" entirely (JSON schema
+    // "default": 8). null means "all" -- no cap at all.
+    const int DefaultMaxResults = 8;
+
+    /// <summary>
+    /// Parse the wire "maxResults" argument: absent -> the default cap of 8;
+    /// the string "all" -> no cap (null); a positive integer -> that cap.
+    /// Anything else is a validation error: zero and negative values are
+    /// malformed input.
+    /// </summary>
+    static bool TryParseMaxResults(JsonElement? raw, out int? cap, out string? error)
+    {
+        if (raw is null || raw.Value.ValueKind == JsonValueKind.Undefined || raw.Value.ValueKind == JsonValueKind.Null)
+        {
+            cap = DefaultMaxResults;
+            error = null;
+            return true;
+        }
+
+        var value = raw.Value;
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            if (value.GetString() == "all")
+            {
+                cap = null;
+                error = null;
+                return true;
+            }
+            cap = null;
+            error = $"maxResults must be a positive integer or \"all\", got: \"{value.GetString()}\".";
+            return false;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int n) && n >= 1)
+        {
+            cap = n;
+            error = null;
+            return true;
+        }
+
+        cap = null;
+        error = "maxResults must be a positive integer or \"all\".";
+        return false;
+    }
+
     // -------------------------------------------------------------------
     // MatchOutcome -> result record mapping
     // -------------------------------------------------------------------
 
-    static object MapOutcome(MatchOutcome outcome) => outcome.PersonMatchType switch
+    static FindPersonResult MapOutcome(MatchOutcome outcome)
     {
-        PersonMatchType.Single => new SingleMatchResult("single", MapResolvedPerson(outcome.Matches[0].Individual)),
-        PersonMatchType.Candidates => new CandidateListResult(
-            "candidates",
-            [.. outcome.Matches.Select(m => MapCandidate(m.Individual))],
-            outcome.Truncated),
-        PersonMatchType.None => new NoMatchResult("none", [.. outcome.Suggestions.Select(MapSuggestion)]),
-        _ => throw new InvalidOperationException($"Unknown match type: {outcome.PersonMatchType}"),
-    };
+        bool isSingle = outcome.PersonMatchType == PersonMatchType.Single;
+        string matchType = outcome.PersonMatchType switch
+        {
+            PersonMatchType.Single => "single",
+            PersonMatchType.Candidates => "candidates",
+            PersonMatchType.None => "none",
+            _ => throw new InvalidOperationException($"Unknown match type: {outcome.PersonMatchType}"),
+        };
+
+        return new FindPersonResult(
+            matchType,
+            isSingle ? outcome.Matches[0].Individual.Xref : null,
+            isSingle ? outcome.Matches[0].FinalScore : null,
+            isSingle ? MapResolvedPerson(outcome.Matches[0].Individual) : null,
+            [.. outcome.Matches.Select(MapCandidate)],
+            [.. outcome.Suggestions.Select(MapSuggestion)],
+            outcome.TotalMatches,
+            outcome.Truncated);
+    }
 
     static ResolvedPersonIdentity MapResolvedPerson(GedIndividual indi) => new(
         indi.Xref,
@@ -325,18 +378,24 @@ public sealed class FindPersonTool
         MapEvent(indi.Death),
         new FamiliesIdentity(MapAsChild(indi), MapAsParent(indi)));
 
-    static CandidateIdentity MapCandidate(GedIndividual indi) => new(
-        indi.Xref,
-        PersonDisplay.FullName(indi),
-        MapEvent(indi.Birth),
-        MapEvent(indi.Death),
-        MapParents(indi.FamChild),
-        MapSpouseNames(indi));
+    static CandidateIdentity MapCandidate(ScoredMatch match)
+    {
+        var indi = match.Individual;
+        return new(
+            indi.Xref,
+            PersonDisplay.FullName(indi),
+            MapEvent(indi.Birth),
+            MapEvent(indi.Death),
+            MapParents(indi.FamChild),
+            MapSpouseNames(indi),
+            match.FinalScore);
+    }
 
     static SuggestionIdentity MapSuggestion(Suggestion s) => new(
         s.Individual.Xref,
         PersonDisplay.FullName(s.Individual),
-        s.Reason == SuggestionReason.CloseSpelling ? "close spelling" : "partial name");
+        s.Reason == SuggestionReason.CloseSpelling ? "close spelling" : "partial name",
+        s.Score);
 
     static EventIdentity? MapEvent(GedEvent? ev)
     {

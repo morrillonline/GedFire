@@ -2,9 +2,9 @@
   "proposal": "example-create-or-update-media",
   "newSources": [
     {
-      "xref": "@M00001@",
+      "xref": "@New1@",
       "ops": [
-        { "op": "createOrUpdateMedia", "xref": "@M00001@",
+        { "op": "createOrUpdateMedia", "xref": "@New1@",
           "title": "Wedding portrait, 1902",
           "files": [
             { "path": "media/allen-edna-wedding.jpg", "mediaType": "image/jpeg", "medium": "PHOTO", "title": "Allen and Edna, 1902" }

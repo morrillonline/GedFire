@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore.Matching;
 using GedFire.Mcp;
 using GedFire.Match;
 using ModelContextProtocol.Protocol;
@@ -88,6 +89,12 @@ public class FindPersonToolTests : IDisposable
 
     static string TextOf(CallToolResult result) => Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
 
+    static JsonElement Json(string literal)
+    {
+        using var doc = JsonDocument.Parse(literal);
+        return doc.RootElement.Clone();
+    }
+
     // -------------------------------------------------------------------
     // Success: single match, full field mapping
     // -------------------------------------------------------------------
@@ -151,8 +158,8 @@ public class FindPersonToolTests : IDisposable
         Assert.Equal("Sarah Blake", f2.GetProperty("spouseName").GetString());
 
         // Childless marriage: no MARR date, but the family xref and spouse
-        // name are still present (docs/design/mcp-server.md "Family xref
-        // semantics" — childless marriages are included, not skipped).
+        // name are still present — childless marriages are included, not
+        // skipped.
         var f3 = asParent.Single(f => f.GetProperty("xref").GetString() == "@F3@");
         Assert.Equal(JsonValueKind.Null, f3.GetProperty("marriageDate").ValueKind);
         Assert.Equal("Second Wife", f3.GetProperty("spouseName").GetString());
@@ -233,7 +240,7 @@ public class FindPersonToolTests : IDisposable
         Assert.Empty(bare.GetProperty("spouses").EnumerateArray());
 
         // Candidates never carry family xrefs — only a resolved single match
-        // does (docs/design/mcp-server.md "CandidateList").
+        // does.
         Assert.False(withFamily.TryGetProperty("families", out _));
     }
 
@@ -310,8 +317,7 @@ public class FindPersonToolTests : IDisposable
         // CandidateIdentity.spouses and a resolved person's
         // families.asParent[].spouseName are computed by two separate
         // mapping functions over the same FamSpouse/SpouseOf data; they
-        // must describe the same set of marriages, in the same order
-        // (docs/design/mcp-server.md "Family xref semantics").
+        // must describe the same set of marriages, in the same order.
         Assert.Equal(["Sarah Blake", "Second Wife"], candidateSpouses);
         Assert.Equal(asParentSpouseNames, candidateSpouses);
     }
@@ -437,6 +443,152 @@ public class FindPersonToolTests : IDisposable
         Assert.Equal(
             JsonSerializer.Serialize(expectedOutput.RootElement),
             JsonSerializer.Serialize(tool.ProtocolTool.OutputSchema!.Value));
+    }
+
+    // -------------------------------------------------------------------
+    // Unified output shape: confidentMatchXref/Score, totalMatches,
+    // truncated, and per-candidate/suggestion matchScore are present in
+    // every scenario.
+    // -------------------------------------------------------------------
+
+    [Fact]
+    public async Task HandleAsync_SingleMatch_SetsConfidentFieldsAndIncludesCandidatesArray()
+    {
+        var tool = ToolOver(RichFamilyGed, out _, _dir);
+        var result = await tool.HandleAsync("Frederick Morrill", null, CancellationToken.None);
+
+        var root = StructuredContent(result);
+        Assert.Equal("single", root.GetProperty("matchType").GetString());
+        Assert.Equal("@I1@", root.GetProperty("confidentMatchXref").GetString());
+        Assert.True(root.GetProperty("confidentMatchScore").GetDouble() > 0);
+        // A decisive single winner can still have weaker same-name
+        // alternatives in the full recall set (Ansel Morrill scores above
+        // the 70-point recall gate here on surname alone); totalMatches
+        // reports that full set, not just the winner.
+        int totalMatches = root.GetProperty("totalMatches").GetInt32();
+        Assert.True(totalMatches >= 1);
+
+        // The unified schema also carries a scored candidates array for a
+        // single result, with the confident match first.
+        var candidates = root.GetProperty("candidates").EnumerateArray().ToList();
+        Assert.NotEmpty(candidates);
+        Assert.Equal("@I1@", candidates[0].GetProperty("xref").GetString());
+        Assert.True(candidates[0].GetProperty("matchScore").GetDouble() > 0);
+        Assert.Equal(
+            candidates.Count < totalMatches,
+            root.GetProperty("truncated").GetBoolean());
+
+        Assert.Empty(root.GetProperty("suggestions").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task HandleAsync_CandidateList_HasNullConfidentFieldsAndNullPerson_AndPerCandidateMatchScore()
+    {
+        var tool = ToolOver(TwoCandidatesGed, out _, _dir);
+        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None);
+
+        var root = StructuredContent(result);
+        Assert.Equal("candidates", root.GetProperty("matchType").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("confidentMatchXref").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("confidentMatchScore").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("person").ValueKind);
+        Assert.Equal(2, root.GetProperty("totalMatches").GetInt32());
+
+        foreach (var candidate in root.GetProperty("candidates").EnumerateArray())
+            Assert.True(candidate.GetProperty("matchScore").GetDouble() > 0);
+    }
+
+    [Fact]
+    public async Task HandleAsync_NoMatch_HasNullConfidentFieldsAndNullPerson_AndZeroTotalMatches()
+    {
+        var tool = ToolOver(SparsePersonGed, out _, _dir);
+        var result = await tool.HandleAsync("Zzqxvw Bbdfghj", null, CancellationToken.None);
+
+        var root = StructuredContent(result);
+        Assert.Equal("none", root.GetProperty("matchType").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("confidentMatchXref").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("confidentMatchScore").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("person").ValueKind);
+        Assert.Equal(0, root.GetProperty("totalMatches").GetInt32());
+        Assert.False(root.GetProperty("truncated").GetBoolean());
+        Assert.Empty(root.GetProperty("candidates").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task HandleAsync_NoMatch_SuggestionsCarryMatchScore()
+    {
+        var tool = ToolOver(SparsePersonGed, out _, _dir);
+        var result = await tool.HandleAsync("Zzqxvw Nobody", null, CancellationToken.None);
+
+        var suggestion = Assert.Single(StructuredContent(result).GetProperty("suggestions").EnumerateArray());
+        double score = suggestion.GetProperty("matchScore").GetDouble();
+        Assert.InRange(score, 55.0, 69.0);
+    }
+
+    // -------------------------------------------------------------------
+    // maxResults
+    // -------------------------------------------------------------------
+
+    [Fact]
+    public async Task HandleAsync_MaxResults_Integer_CapsCandidatesAndSetsTruncated()
+    {
+        var tool = ToolOver(TwoCandidatesGed, out _, _dir);
+        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, Json("1"));
+
+        var root = StructuredContent(result);
+        // Still classified as candidates -- capping never fabricates a
+        // confident single classification.
+        Assert.Equal("candidates", root.GetProperty("matchType").GetString());
+        Assert.Single(root.GetProperty("candidates").EnumerateArray());
+        Assert.Equal(2, root.GetProperty("totalMatches").GetInt32());
+        Assert.True(root.GetProperty("truncated").GetBoolean());
+    }
+
+    [Fact]
+    public async Task HandleAsync_MaxResults_All_ReturnsWholeRecallSetUntruncated()
+    {
+        var tool = ToolOver(TwoCandidatesGed, out _, _dir);
+        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, Json("\"all\""));
+
+        var root = StructuredContent(result);
+        Assert.Equal(2, root.GetProperty("candidates").EnumerateArray().Count());
+        Assert.Equal(2, root.GetProperty("totalMatches").GetInt32());
+        Assert.False(root.GetProperty("truncated").GetBoolean());
+    }
+
+    [Fact]
+    public async Task HandleAsync_MaxResults_Omitted_DefaultsToEightLikeBefore()
+    {
+        var tool = ToolOver(TwoCandidatesGed, out _, _dir);
+        var withDefault = await tool.HandleAsync("Jane Doe", null, CancellationToken.None);
+        var withExplicitEight = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, Json("8"));
+
+        Assert.Equal(
+            JsonSerializer.Serialize(StructuredContent(withDefault)),
+            JsonSerializer.Serialize(StructuredContent(withExplicitEight)));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("\"bogus\"")]
+    public async Task HandleAsync_MaxResults_Invalid_ReturnsIsErrorWithoutMutatingMatching(string invalidJson)
+    {
+        var tool = ToolOver(TwoCandidatesGed, out _, _dir);
+        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, Json(invalidJson));
+
+        Assert.True(result.IsError);
+        Assert.Null(result.StructuredContent);
+        Assert.Contains("maxResults", TextOf(result));
+    }
+
+    [Fact]
+    public void ToolMetadata_InputSchema_DeclaresMaxResults()
+    {
+        var tool = ToolOver(SparsePersonGed, out _, _dir).ToMcpServerTool();
+        var properties = tool.ProtocolTool.InputSchema.GetProperty("properties");
+        Assert.True(properties.TryGetProperty("maxResults", out var maxResults));
+        Assert.Equal(8, maxResults.GetProperty("default").GetInt32());
     }
 
     [Fact]

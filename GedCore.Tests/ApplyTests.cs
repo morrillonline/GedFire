@@ -11,12 +11,18 @@ namespace GedCore.Tests;
 /// </summary>
 public class ApplyTests : ApplyTestBase
 {
+    // The three new-record identities this changeset asks apply to mint --
+    // @NewS1@, @NewI1@, @NewF1@ -- happen to mint to @S00002@/@I00005@/@F00004@
+    // given the base fixture's existing @S00001@/@I0000[1-4]@/@F0000[1-3]@
+    // records (sources apply before items; person before family within one
+    // op), which is exactly what this changeset named directly before
+    // placeholders existed -- so every other assertion below is unchanged.
     private const string FullChangesetJson = """
     {
       "proposal": "test",
       "newSources": [
-        { "xref": "@S00002@", "ops": [
-          { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "Test Funeral Home",
+        { "xref": "@NewS1@", "ops": [
+          { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "Test Funeral Home",
             "title": "Test obituary", "url": "https://example.org/obit",
             "accessed": "2026-07-04" } ] }
       ],
@@ -25,30 +31,30 @@ public class ApplyTests : ApplyTestBase
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
             "value": "Albin H. /Test/", "match": "Allen /Test/",
             "substructures": [ { "tag": "NICK", "value": "Babe" } ],
-            "citation": { "source": "@S00002@", "page": "p. 1",
+            "citation": { "source": "@NewS1@", "page": "p. 1",
                           "dataText": "Albin H. Test", "quay": 2 } },
           { "op": "createOrUpdateNote", "record": "@I00001@",
             "text": "Name corrected from census form." } ] },
         { "item": 2, "target": "@I00001@", "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
             "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
-            "citation": { "source": "@S00002@", "page": "p. 1",
+            "citation": { "source": "@NewS1@", "page": "p. 1",
                           "dataText": "born April 2, 1928", "quay": 2 } },
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
             "value": { "date": "9 APR 2009", "place": "Elbow Lake, Minnesota" },
-            "citation": { "source": "@S00002@", "page": "p. 1",
+            "citation": { "source": "@NewS1@", "page": "p. 1",
                           "dataText": "passed away April 9, 2009", "quay": 3 } } ] },
-        { "item": 3, "target": "new @I00005@ / @F00004@", "ops": [
+        { "item": 3, "target": "new @NewI1@ / @NewF1@", "ops": [
           { "op": "createOrUpdateSpouse", "person": "@I00001@",
-            "spouse": { "xref": "@I00005@", "name": "Edith /Spouse/", "sex": "F",
+            "spouse": { "xref": "@NewI1@", "name": "Edith /Spouse/", "sex": "F",
                         "facts": [ { "fact": "DEAT", "value": { "date": "JAN 1971" },
-                                     "citation": { "source": "@S00002@", "page": "p. 1",
+                                     "citation": { "source": "@NewS1@", "page": "p. 1",
                                                    "dataText": "Edith died", "quay": 2 } } ] },
-            "family": "@F00004@",
+            "family": "@NewF1@",
             "marriage": { "date": "2 JUN 1949", "place": "Underwood, Minnesota",
                           "citations": [
                             { "source": "@S00001@", "page": "a", "dataText": "married", "quay": 2 },
-                            { "source": "@S00002@", "page": "b", "dataText": "married too", "quay": 2 } ] },
+                            { "source": "@NewS1@", "page": "b", "dataText": "married too", "quay": 2 } ] },
             "note": "No children recorded." } ] }
       ]
     }
@@ -63,6 +69,9 @@ public class ApplyTests : ApplyTestBase
         Assert.Equal(1, result.Deltas["INDI"]);
         Assert.Equal(1, result.Deltas["FAM"]);
         Assert.Equal(1, result.Deltas["SOUR"]);
+        Assert.Equal(
+            new Dictionary<string, string> { ["@NewS1@"] = "@S00002@", ["@NewI1@"] = "@I00005@", ["@NewF1@"] = "@F00004@" },
+            result.MintedXrefs);
 
         var doc = ReadDoc();
 
@@ -120,16 +129,55 @@ public class ApplyTests : ApplyTestBase
             doc.Records.Select(r => r.Tag).ToList());
     }
 
+    /// <summary>
+    /// Re-submitting the identical placeholder-bearing changeset is caught,
+    /// not silently duplicated: @NewI1@ ("Edith /Spouse/", married to the
+    /// same @I00001@) reconstructs a high-confidence match against the
+    /// person the first run already created, and person duplicate detection
+    /// rejects the whole changeset before any mutation. Source and family
+    /// creation in the same changeset are consequently rejected too — not
+    /// because they carry their own duplicate protection (they don't), but
+    /// because validation never lets any op in a duplicate-flagged changeset
+    /// reach mutation.
+    /// </summary>
     [Fact]
-    public void Apply_SameChangesetTwice_SecondRunIsAllNoOps_AndByteIdentical()
+    public void Apply_SameChangesetTwice_WithPlaceholders_SecondRunIsRejectedAsADuplicate()
     {
         WriteBaseFile();
         RunExpectSuccess(FullChangesetJson);
         byte[] afterFirst = ReadBytes();
 
-        var second = RunExpectSuccess(FullChangesetJson);
+        var second = Run(FullChangesetJson, dryRun: false);
+
+        Assert.False(second.Success);
+        Assert.Contains(second.Errors, e => e.Contains("@NewI1@") && e.Contains("high-confidence match"));
+        Assert.Equal(afterFirst, ReadBytes());
+        Assert.Equal(2, ReadDoc().Records.Count(r => r.Tag == "SOUR"));   // unchanged: @S00001@ + the first run's @S00002@
+    }
+
+    /// <summary>
+    /// Idempotent re-application is still available: address the same edit
+    /// by the real xrefs the first run's MintedXrefs reported, not by
+    /// resubmitting the placeholders. createOrUpdateSpouse's inline-person
+    /// degrade-to-link rule (identical NAME) and createOrUpdate's ordinary
+    /// unconditional-update-to-no-op rule both still apply unchanged once a
+    /// real xref is named.
+    /// </summary>
+    [Fact]
+    public void Apply_SameChangesetTwice_AddressedByRealMintedXrefs_SecondRunIsAllNoOps()
+    {
+        WriteBaseFile();
+        var first = RunExpectSuccess(FullChangesetJson);
+        byte[] afterFirst = ReadBytes();
+
+        string realized = FullChangesetJson
+            .Replace("@NewS1@", first.MintedXrefs["@NewS1@"])
+            .Replace("@NewI1@", first.MintedXrefs["@NewI1@"])
+            .Replace("@NewF1@", first.MintedXrefs["@NewF1@"]);
+        var second = RunExpectSuccess(realized);
 
         Assert.Empty(second.Deltas);
+        Assert.Empty(second.MintedXrefs);
         Assert.Contains(second.Log, l => l.Contains("no changes; file untouched"));
         Assert.DoesNotContain(second.Log,
             l => l.Contains("created") || l.Contains("updated") || l.Contains("→"));
@@ -190,26 +238,29 @@ public class ApplyTests : ApplyTestBase
 
         var result = RunExpectSuccess("""
             { "newSources": [
-                { "xref": "@S00010@", "ops": [
-                  { "op": "createOrUpdateSource", "xref": "@S00010@", "title": "Excluded source" } ] },
-                { "xref": "@S00011@", "ops": [
-                  { "op": "createOrUpdateSource", "xref": "@S00011@", "title": "Included source" } ] } ],
+                { "xref": "@NewS1@", "ops": [
+                  { "op": "createOrUpdateSource", "xref": "@NewS1@", "title": "Excluded source" } ] },
+                { "xref": "@NewS2@", "ops": [
+                  { "op": "createOrUpdateSource", "xref": "@NewS2@", "title": "Included source" } ] } ],
               "items": [
                 { "item": 1, "ops": [
                   { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Item one note.",
-                    "citation": { "source": "@S00010@", "page": "p. 1", "dataText": "x", "quay": 2 } } ] },
+                    "citation": { "source": "@NewS1@", "page": "p. 1", "dataText": "x", "quay": 2 } } ] },
                 { "item": 2, "ops": [
                   { "op": "createOrUpdateNote", "record": "@I00002@", "text": "Item two note.",
-                    "citation": { "source": "@S00011@", "page": "p. 1", "dataText": "y", "quay": 2 } } ] } ] }
+                    "citation": { "source": "@NewS2@", "page": "p. 1", "dataText": "y", "quay": 2 } } ] } ] }
             """, items: [2]);
 
+        // item 1 (the only citer of @NewS1@) was excluded — its group is skipped
+        // entirely, so @NewS1@ never mints at all; @NewS2@ is the only source
+        // actually created, and mints @S00002@ (the first free slot).
+        Assert.Equal(["@NewS2@"], result.MintedXrefs.Keys);
+        Assert.Equal("@S00002@", result.MintedXrefs["@NewS2@"]);
         var doc = ReadDoc();
-        // item 1 (the only citer of @S00010@) was excluded — the source must not
-        // appear as an orphan; item 2's source, actually applied, must be created.
-        Assert.False(doc.ByXref.ContainsKey("@S00010@"));
-        Assert.True(doc.ByXref.ContainsKey("@S00011@"));
-        Assert.Contains(result.Log, l => l.Contains("newSources @S00010@: skipped"));
-        Assert.DoesNotContain(result.Log, l => l.Contains("@S00011@: skipped"));
+        Assert.True(doc.ByXref.ContainsKey("@S00002@"));
+        Assert.Equal(2, doc.Records.Count(r => r.Tag == "SOUR"));   // @S00001@ (existing) + @S00002@ (minted)
+        Assert.Contains(result.Log, l => l.Contains("newSources @NewS1@: skipped"));
+        Assert.DoesNotContain(result.Log, l => l.Contains("@NewS2@: skipped"));
     }
 
     [Fact]
@@ -220,16 +271,16 @@ public class ApplyTests : ApplyTestBase
         // A source with no citing item anywhere in the changeset is prepared ahead
         // of citing it (e.g. a follow-up changeset will add the citation) — it stays
         // always-applied regardless of which items are selected.
-        RunExpectSuccess("""
+        var result = RunExpectSuccess("""
             { "newSources": [
-                { "xref": "@S00010@", "ops": [
-                  { "op": "createOrUpdateSource", "xref": "@S00010@", "title": "Prepared ahead" } ] } ],
+                { "xref": "@NewS1@", "ops": [
+                  { "op": "createOrUpdateSource", "xref": "@NewS1@", "title": "Prepared ahead" } ] } ],
               "items": [
                 { "item": 1, "ops": [
                   { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Unrelated note." } ] } ] }
             """, items: [1]);
 
-        Assert.True(ReadDoc().ByXref.ContainsKey("@S00010@"));
+        Assert.True(ReadDoc().ByXref.ContainsKey(result.MintedXrefs["@NewS1@"]));
     }
 
     [Fact]
@@ -324,7 +375,7 @@ public class ApplyTests : ApplyTestBase
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateSpouse", "person": "@I00002@",
-            "spouse": { "xref": "@I00050@", "name": "New /Wife/", "sex": "F" } } ] } ] }
+            "spouse": { "xref": "@NewI1@", "name": "New /Wife/", "sex": "F" } } ] } ] }
         """, "supply a new family xref")]
     // two shared families, no family xref
     [InlineData("""
@@ -376,18 +427,21 @@ public class ApplyTests : ApplyTestBase
         // though every individual op validated and applied cleanly on its own.
         var result = Run("""
             { "newSources": [
-                { "xref": "@S00010@", "ops": [
-                  { "op": "createOrUpdateSource", "xref": "@S00010@", "title": "Soon uncited" } ] } ],
+                { "xref": "@NewS1@", "ops": [
+                  { "op": "createOrUpdateSource", "xref": "@NewS1@", "title": "Soon uncited" } ] } ],
               "items": [
                 { "item": 1, "ops": [
                   { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Cited note.",
-                    "citation": { "source": "@S00010@", "page": "p. 1", "dataText": "x", "quay": 2 } } ] },
+                    "citation": { "source": "@NewS1@", "page": "p. 1", "dataText": "x", "quay": 2 } } ] },
                 { "item": 2, "ops": [
-                  { "op": "deleteCitation", "record": "@I00001@", "fact": "NOTE", "source": "@S00010@" } ] } ] }
+                  { "op": "deleteCitation", "record": "@I00001@", "fact": "NOTE", "source": "@NewS1@" } ] } ] }
             """, items: [1, 2]);
 
         Assert.False(result.Success);
-        Assert.Contains(result.Errors, e => e.Contains("orphan source @S00010@"));
+        // The orphan check runs against the reparsed post-apply document, so
+        // it names @NewS1@'s minted real xref (@S00002@ given the base
+        // fixture's one existing source), not the placeholder itself.
+        Assert.Contains(result.Errors, e => e.Contains("orphan source @S00002@"));
         Assert.Equal(original, ReadBytes());
     }
 
