@@ -82,6 +82,16 @@ public class GetDocumentStatsToolTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_ReturnsGedFireVersion()
+    {
+        var tool = ToolOver(ThreePersonsTwoFamiliesGed70);
+        var result = await tool.HandleAsync(CancellationToken.None);
+
+        string version = StructuredContent(result).GetProperty("gedFireVersion").GetString()!;
+        Assert.False(string.IsNullOrWhiteSpace(version));
+    }
+
+    [Fact]
     public async Task HandleAsync_ReturnsDeclaredVersion_ForGedcom55()
     {
         const string ged55 = """

@@ -31,6 +31,13 @@ using System.Reflection;
 //   gedfire unpack       --input <gdz>    --output-dir <dir>
 //   gedfire mcp          --input <ged>
 //   gedfire date-calc    --op normalize|add|sub|diff [--date <d>] [--from <d>] [--to <d>] [--age <y/m/d>]
+//   gedfire find-person  --input <ged> --query <name> [--max-results N] [hint flags...]
+//   gedfire get-record   --input <ged> --xref <@I1@>
+//   gedfire get-document-stats --input <ged>
+//
+// find-person, get-record, and get-document-stats are one-shot CLI mirrors
+// of the mcp server's find_person/get_record/get_document_stats tools: same
+// engine, same JSON result shape, no protocol in between.
 // ---------------------------------------------------------------------------
 
 if (args.Length == 0)
@@ -53,6 +60,9 @@ return args[0].ToLowerInvariant() switch
     "unpack"       => RunUnpack(args[1..]),
     "mcp"          => await RunMcp(args[1..]),
     "date-calc"    => RunDateCalc(args[1..]),
+    "find-person"        => await RunFindPerson(args[1..]),
+    "get-record"         => await RunGetRecord(args[1..]),
+    "get-document-stats" => await RunGetDocumentStats(args[1..]),
     "--help" or "-h" or "help" => Help(),
     "--version" or "-v" or "version" => ShowVersion(),
     _ => Unknown(args[0]),
@@ -549,6 +559,7 @@ static async Task<int> RunMcp(string[] args)
     }
 
     var session = new DocumentSession(absoluteInput, initialSnapshot);
+    await using var watcher = new DocumentFileWatcher(session, absoluteInput);
     var gate = new ToolGate();
     var dateCalc = new DateCalcTool(gate);
     var findPerson = new FindPersonTool(session, gate, nicknames);
@@ -587,9 +598,7 @@ static async Task<int> RunMcp(string[] args)
     return 0;
 }
 
-static string GedFireVersion() =>
-    Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-        ?? "unknown";
+static string GedFireVersion() => GedFire.Mcp.ServerVersion.Current;
 
 // gedfire mcp's media resolution: always the GEDCOM's own directory -- the
 // same convention `generate` uses, and not independently configurable.
@@ -702,6 +711,189 @@ static int RunDateCalc(string[] args)
     }
 }
 
+// -----------------------------------------------------------------------
+// One-shot CLI mirrors of the mcp server's read-only tools: find-person,
+// get-record, get-document-stats. Each bootstraps its own single-use
+// DocumentSession/ToolGate exactly like RunMcp does, calls the same tool
+// class's HandleAsync, and prints the identical JSON result (or error text)
+// -- the CLI and MCP surfaces run the same code, not two implementations of
+// the same idea.
+// -----------------------------------------------------------------------
+
+static bool TryLoadOneShotSession(string input, out DocumentSession? session, out string absoluteInput)
+{
+    absoluteInput = Path.GetFullPath(input);
+    try
+    {
+        var doc = GedReader.ReadFile(absoluteInput);
+        var model = ModelBuilder.Build(doc);
+        var info = new FileInfo(absoluteInput);
+        var snapshot = new DocumentSnapshot(model, doc.Version, File.GetLastWriteTimeUtc(absoluteInput), info.Length);
+        session = new DocumentSession(absoluteInput, snapshot);
+        return true;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Failed to read {input}: {ex.Message}");
+        session = null;
+        return false;
+    }
+}
+
+// Prints a tool's CallToolResult the way every other CLI command reports
+// success or failure: informational output (here, the tool's own compact
+// JSON) to stdout with exit 0, error text to stderr with exit 1.
+static int WriteToolResult(CallToolResult result)
+{
+    string text = ((TextContentBlock)result.Content[0]).Text;
+    if (result.IsError is true)
+    {
+        Console.Error.WriteLine(text);
+        return 1;
+    }
+    Console.WriteLine(text);
+    return 0;
+}
+
+static bool TryParseOptionalYear(string? raw, string optionName, out int? value)
+{
+    if (raw is null) { value = null; return true; }
+    if (!int.TryParse(raw, out int parsed))
+    {
+        Console.Error.WriteLine($"{optionName} must be an integer, got: {raw}");
+        value = null;
+        return false;
+    }
+    value = parsed;
+    return true;
+}
+
+static async Task<int> RunFindPerson(string[] args)
+{
+    var cl = CommandLine.Parse(args, [
+        "--input", "--query", "--max-results",
+        "--birth-year", "--birth-place", "--death-year", "--death-place",
+        "--father", "--mother",
+        "--spouse-name", "--marriage-year", "--marriage-place",
+    ]);
+    string? input = cl.Value("--input");
+    string? query = cl.Value("--query");
+
+    const string usage =
+        "Usage: gedfire find-person --input <ged> --query <name> [--max-results N]\n" +
+        "       [--birth-year Y] [--birth-place P] [--death-year Y] [--death-place P]\n" +
+        "       [--father NAME] [--mother NAME]\n" +
+        "       [--spouse-name NAME] [--marriage-year Y] [--marriage-place P]";
+
+    if (cl.Error is not null || input is null || query is null)
+    {
+        if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
+        Console.Error.WriteLine(usage);
+        return 1;
+    }
+
+    if (!File.Exists(input))
+    {
+        Console.Error.WriteLine($"Input file not found: {input}");
+        return 1;
+    }
+
+    int maxResults = 8;
+    string? maxResultsArg = cl.Value("--max-results");
+    if (maxResultsArg is not null && !int.TryParse(maxResultsArg, out maxResults))
+    {
+        Console.Error.WriteLine($"--max-results must be an integer, got: {maxResultsArg}");
+        return 1;
+    }
+
+    if (!TryParseOptionalYear(cl.Value("--birth-year"), "--birth-year", out int? birthYear)) return 1;
+    if (!TryParseOptionalYear(cl.Value("--death-year"), "--death-year", out int? deathYear)) return 1;
+    if (!TryParseOptionalYear(cl.Value("--marriage-year"), "--marriage-year", out int? marriageYear)) return 1;
+
+    string? birthPlace = cl.Value("--birth-place");
+    string? deathPlace = cl.Value("--death-place");
+    string? father = cl.Value("--father");
+    string? mother = cl.Value("--mother");
+    string? spouseName = cl.Value("--spouse-name");
+    string? marriagePlace = cl.Value("--marriage-place");
+
+    FindPersonEventHintArgs? birth = birthYear is not null || birthPlace is not null
+        ? new FindPersonEventHintArgs { Year = birthYear, Place = birthPlace } : null;
+    FindPersonEventHintArgs? death = deathYear is not null || deathPlace is not null
+        ? new FindPersonEventHintArgs { Year = deathYear, Place = deathPlace } : null;
+    FindPersonParentsHintArgs? parents = father is not null || mother is not null
+        ? new FindPersonParentsHintArgs { Father = father, Mother = mother } : null;
+    FindPersonEventHintArgs? marriage = marriageYear is not null || marriagePlace is not null
+        ? new FindPersonEventHintArgs { Year = marriageYear, Place = marriagePlace } : null;
+    FindPersonSpouseHintArgs? spouse = spouseName is not null || marriage is not null
+        ? new FindPersonSpouseHintArgs { Name = spouseName, Marriage = marriage } : null;
+
+    FindPersonHintsArgs? hints = birth is null && death is null && parents is null && spouse is null
+        ? null
+        : new FindPersonHintsArgs { Birth = birth, Death = death, Parents = parents, Spouse = spouse };
+
+    if (!TryLoadOneShotSession(input, out var session, out _)) return 1;
+
+    var gate = new ToolGate();
+    var nicknames = NicknameDirectory.LoadEmbedded();
+    var tool = new FindPersonTool(session!, gate, nicknames);
+    var result = await tool.HandleAsync(query, hints, CancellationToken.None, maxResults).ConfigureAwait(false);
+    return WriteToolResult(result);
+}
+
+static async Task<int> RunGetRecord(string[] args)
+{
+    var cl = CommandLine.Parse(args, ["--input", "--xref"]);
+    string? input = cl.Value("--input");
+    string? xref = cl.Value("--xref");
+
+    if (cl.Error is not null || input is null || xref is null)
+    {
+        if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
+        Console.Error.WriteLine("Usage: gedfire get-record --input <ged> --xref <@I1@>");
+        return 1;
+    }
+
+    if (!File.Exists(input))
+    {
+        Console.Error.WriteLine($"Input file not found: {input}");
+        return 1;
+    }
+
+    if (!TryLoadOneShotSession(input, out var session, out string absoluteInput)) return 1;
+
+    var gate = new ToolGate();
+    var tool = new GetRecordTool(session!, gate, DefaultMcpMediaDir(absoluteInput));
+    var result = await tool.HandleAsync(xref, CancellationToken.None).ConfigureAwait(false);
+    return WriteToolResult(result);
+}
+
+static async Task<int> RunGetDocumentStats(string[] args)
+{
+    var cl = CommandLine.Parse(args, ["--input"]);
+    string? input = cl.Value("--input");
+
+    if (cl.Error is not null || input is null)
+    {
+        if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
+        Console.Error.WriteLine("Usage: gedfire get-document-stats --input <ged>");
+        return 1;
+    }
+
+    if (!File.Exists(input))
+    {
+        Console.Error.WriteLine($"Input file not found: {input}");
+        return 1;
+    }
+
+    if (!TryLoadOneShotSession(input, out var session, out _)) return 1;
+
+    var gate = new ToolGate();
+    var tool = new GetDocumentStatsTool(session!, gate);
+    var result = await tool.HandleAsync(CancellationToken.None).ConfigureAwait(false);
+    return WriteToolResult(result);
+}
+
 static int Help() { PrintHelp(); return 0; }
 static int ShowVersion()
 {
@@ -764,7 +956,9 @@ static void PrintHelp()
                         Start a stdio Model Context Protocol server exposing
                         this GEDCOM to MCP-compatible agent clients. Resident
                         process: stays running until stdin closes. Read-only;
-                        no tool in this release mutates the file.
+                        no tool in this release mutates the file. Watches the
+                        input file and reloads automatically if it changes on
+                        disk.
 
           date-calc --op normalize|add|sub|diff
                         Genealogical date arithmetic using GedCore's GEDCOM
@@ -774,6 +968,23 @@ static void PrintHelp()
                           diff      --from <d> --to <d>    elapsed y/m/d between two dates
                         Dates are exact Gregorian "D MON YYYY"; --age is
                         e.g. "63y 4m 2d". See README/AGENTS.md for details.
+
+          find-person --input <ged> --query <name>
+                        One-shot mirror of the mcp server's find_person tool:
+                        same matcher, same JSON result, no protocol needed.
+                          [--max-results N]                 1-20, default 8
+                          [--birth-year Y] [--birth-place P]
+                          [--death-year Y] [--death-place P]
+                          [--father NAME] [--mother NAME]
+                          [--spouse-name NAME] [--marriage-year Y] [--marriage-place P]
+
+          get-record --input <ged> --xref <@I1@>
+                        One-shot mirror of the mcp server's get_record tool.
+
+          get-document-stats --input <ged>
+                        One-shot mirror of the mcp server's get_document_stats
+                        tool: person/family counts, GEDCOM version, and the
+                        running gedfire version.
 
         Options:
                     --help, -h       Show this help message.
