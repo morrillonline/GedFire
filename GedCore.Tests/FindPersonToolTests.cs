@@ -303,7 +303,9 @@ public class FindPersonToolTests : IDisposable
             .Select(e => e.GetString()).ToList();
 
         var singleResult = await tool.HandleAsync(
-            "Frederick Morrill", new FindPersonHintsArgs { BirthYear = 1841 }, CancellationToken.None);
+            "Frederick Morrill",
+            new FindPersonHintsArgs { Birth = new FindPersonEventHintArgs { Year = 1841 } },
+            CancellationToken.None);
         var singleRoot = StructuredContent(singleResult);
         Assert.Equal("single", singleRoot.GetProperty("matchType").GetString());
         Assert.Equal("@I1@", singleRoot.GetProperty("person").GetProperty("xref").GetString());
@@ -345,12 +347,66 @@ public class FindPersonToolTests : IDisposable
 
         var result = await tool.HandleAsync(
             "Frederick Morrill",
-            new FindPersonHintsArgs { BirthYear = 1841 },
+            new FindPersonHintsArgs { Birth = new FindPersonEventHintArgs { Year = 1841 } },
             CancellationToken.None);
 
         var root = StructuredContent(result);
         Assert.Equal("single", root.GetProperty("matchType").GetString());
         Assert.Equal("@I1@", root.GetProperty("person").GetProperty("xref").GetString());
+    }
+
+    [Fact]
+    public async Task HandleAsync_EmptyHints_ReturnsIsErrorBeforeSnapshotReload()
+    {
+        var tool = ToolOver(SparsePersonGed, out string path, _dir);
+        File.Delete(path);
+
+        var result = await tool.HandleAsync(
+            "Alone Nobody", new FindPersonHintsArgs(), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("at least one", TextOf(result));
+        Assert.DoesNotContain(nameof(DocumentReloadException), TextOf(result));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(10000)]
+    public async Task HandleAsync_OutOfRangeHintYear_ReturnsIsError(int year)
+    {
+        var tool = ToolOver(SparsePersonGed, out _, _dir);
+        var result = await tool.HandleAsync(
+            "Alone Nobody",
+            new FindPersonHintsArgs { Birth = new FindPersonEventHintArgs { Year = year } },
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("between 1 and 9999", TextOf(result));
+    }
+
+    [Fact]
+    public async Task HandleAsync_BlankNestedString_ReturnsIsError()
+    {
+        var tool = ToolOver(SparsePersonGed, out _, _dir);
+        var result = await tool.HandleAsync(
+            "Alone Nobody",
+            new FindPersonHintsArgs { Parents = new FindPersonParentsHintArgs { Mother = "   " } },
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("hints.parents.mother", TextOf(result));
+    }
+
+    [Fact]
+    public async Task HandleAsync_LegacyFlatHintCapturedAsUnknown_ReturnsIsError()
+    {
+        var hints = JsonSerializer.Deserialize<FindPersonHintsArgs>("""{"birthYear":1841}""");
+        var tool = ToolOver(SparsePersonGed, out _, _dir);
+
+        var result = await tool.HandleAsync("Alone Nobody", hints, CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("birthYear", TextOf(result));
     }
 
     // -------------------------------------------------------------------
@@ -445,6 +501,38 @@ public class FindPersonToolTests : IDisposable
             JsonSerializer.Serialize(tool.ProtocolTool.OutputSchema!.Value));
     }
 
+    [Fact]
+    public void Schemas_DescribeEveryObjectProperty()
+    {
+        using var input = JsonDocument.Parse(FindPersonTool.InputSchemaJson);
+        using var output = JsonDocument.Parse(FindPersonTool.OutputSchemaJson);
+
+        AssertPropertyDescriptions(input.RootElement, "input");
+        AssertPropertyDescriptions(output.RootElement, "output");
+    }
+
+    static void AssertPropertyDescriptions(JsonElement schema, string path)
+    {
+        if (schema.TryGetProperty("properties", out var properties))
+        {
+            foreach (var property in properties.EnumerateObject())
+            {
+                Assert.True(
+                    property.Value.TryGetProperty("description", out var description) &&
+                    !string.IsNullOrWhiteSpace(description.GetString()),
+                    $"{path}.{property.Name} needs a description");
+                AssertPropertyDescriptions(property.Value, $"{path}.{property.Name}");
+            }
+        }
+
+        if (schema.TryGetProperty("$defs", out var definitions))
+            foreach (var definition in definitions.EnumerateObject())
+                AssertPropertyDescriptions(definition.Value, $"{path}.$defs.{definition.Name}");
+
+        if (schema.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Object)
+            AssertPropertyDescriptions(items, $"{path}.items");
+    }
+
     // -------------------------------------------------------------------
     // Unified output shape: confidentMatchXref/Score, totalMatches,
     // truncated, and per-candidate/suggestion matchScore are present in
@@ -533,7 +621,7 @@ public class FindPersonToolTests : IDisposable
     public async Task HandleAsync_MaxResults_Integer_CapsCandidatesAndSetsTruncated()
     {
         var tool = ToolOver(TwoCandidatesGed, out _, _dir);
-        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, Json("1"));
+        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, 1);
 
         var root = StructuredContent(result);
         // Still classified as candidates -- capping never fabricates a
@@ -545,10 +633,10 @@ public class FindPersonToolTests : IDisposable
     }
 
     [Fact]
-    public async Task HandleAsync_MaxResults_All_ReturnsWholeRecallSetUntruncated()
+    public async Task HandleAsync_MaxResults_Twenty_IsAccepted()
     {
         var tool = ToolOver(TwoCandidatesGed, out _, _dir);
-        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, Json("\"all\""));
+        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, 20);
 
         var root = StructuredContent(result);
         Assert.Equal(2, root.GetProperty("candidates").EnumerateArray().Count());
@@ -561,7 +649,7 @@ public class FindPersonToolTests : IDisposable
     {
         var tool = ToolOver(TwoCandidatesGed, out _, _dir);
         var withDefault = await tool.HandleAsync("Jane Doe", null, CancellationToken.None);
-        var withExplicitEight = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, Json("8"));
+        var withExplicitEight = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, 8);
 
         Assert.Equal(
             JsonSerializer.Serialize(StructuredContent(withDefault)),
@@ -569,13 +657,13 @@ public class FindPersonToolTests : IDisposable
     }
 
     [Theory]
-    [InlineData("0")]
-    [InlineData("-1")]
-    [InlineData("\"bogus\"")]
-    public async Task HandleAsync_MaxResults_Invalid_ReturnsIsErrorWithoutMutatingMatching(string invalidJson)
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(21)]
+    public async Task HandleAsync_MaxResults_OutsideRange_ReturnsIsErrorWithoutMutatingMatching(int maxResults)
     {
         var tool = ToolOver(TwoCandidatesGed, out _, _dir);
-        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, Json(invalidJson));
+        var result = await tool.HandleAsync("Jane Doe", null, CancellationToken.None, maxResults);
 
         Assert.True(result.IsError);
         Assert.Null(result.StructuredContent);
@@ -587,8 +675,15 @@ public class FindPersonToolTests : IDisposable
     {
         var tool = ToolOver(SparsePersonGed, out _, _dir).ToMcpServerTool();
         var properties = tool.ProtocolTool.InputSchema.GetProperty("properties");
+        Assert.Equal("\\S", properties.GetProperty("query").GetProperty("pattern").GetString());
         Assert.True(properties.TryGetProperty("maxResults", out var maxResults));
+        Assert.Equal("integer", maxResults.GetProperty("type").GetString());
+        Assert.Equal(1, maxResults.GetProperty("minimum").GetInt32());
+        Assert.Equal(20, maxResults.GetProperty("maximum").GetInt32());
         Assert.Equal(8, maxResults.GetProperty("default").GetInt32());
+
+        var candidates = tool.ProtocolTool.OutputSchema!.Value.GetProperty("properties").GetProperty("candidates");
+        Assert.Equal(20, candidates.GetProperty("maxItems").GetInt32());
     }
 
     [Fact]

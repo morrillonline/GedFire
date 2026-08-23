@@ -550,6 +550,7 @@ static async Task<int> RunMcp(string[] args)
 
     var session = new DocumentSession(absoluteInput, initialSnapshot);
     var gate = new ToolGate();
+    var dateCalc = new DateCalcTool(gate);
     var findPerson = new FindPersonTool(session, gate, nicknames);
     var getDocumentStats = new GetDocumentStatsTool(session, gate);
     var getRecord = new GetRecordTool(session, gate, absoluteMediaDir);
@@ -559,6 +560,7 @@ static async Task<int> RunMcp(string[] args)
     // tools/list order.
     var toolCollection = new McpServerPrimitiveCollection<McpServerTool>
     {
+        dateCalc.ToMcpServerTool(),
         findPerson.ToMcpServerTool(),
         getDocumentStats.ToMcpServerTool(),
         getRecord.ToMcpServerTool(),
@@ -694,8 +696,7 @@ static int RunDateCalc(string[] args)
     {
         // Bad input (grammar violation, dates out of the exact-precision
         // scope, reversed --from/--to, or arithmetic leaving the supported
-        // year 1-9999 range): a usage error, not a crash (AGENTS.md "To add
-        // a CLI command").
+        // year 1-9999 range) is a usage error, not a crash.
         Console.Error.WriteLine(ex.Message);
         return 1;
     }

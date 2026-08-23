@@ -5,8 +5,7 @@ namespace GedFire.Gen;
 // ---------------------------------------------------------------------------
 // FamilyUrlResolver — assigns the stable page URL for every child-producing
 // marriage and resolves which page an individual appears on.  Extracted from
-// SiteGenerator so URL policy (which DEPLOY.md's URL-stability pre-flight
-// depends on) is separate from HTML rendering.
+// SiteGenerator so stable URL policy is separate from HTML rendering.
 //
 // URL policy mirrors original Gedfire VB (Family.GetURL + MakePageName):
 // primary spouse's name + birth/death years, plus the secondary spouse's name

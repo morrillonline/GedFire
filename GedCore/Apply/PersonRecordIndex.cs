@@ -27,30 +27,37 @@ internal static class PersonRecordIndex
             if (indi.Xref is null) continue;
             var (given, surname) = SplitName(indi.FirstChild("NAME")?.FullValue());
 
-            var places = new List<string>();
-            AddNormalized(places, indi.FirstChild("BIRT")?.FirstChild("PLAC")?.Value);
-            AddNormalized(places, indi.FirstChild("DEAT")?.FirstChild("PLAC")?.Value);
-            foreach (var census in indi.ChildrenByTag("CENS"))
-                AddNormalized(places, census.FirstChild("PLAC")?.Value);
+            PersonMatchEvent? birth = EventOf(indi.ChildrenByTag("BIRT").LastOrDefault());
+            PersonMatchEvent? death = EventOf(indi.ChildrenByTag("DEAT").LastOrDefault());
 
-            var spouseNames = new List<string>();
-            foreach (var fam in families)
-            {
-                string? husb = fam.FirstChild("HUSB")?.Value;
-                string? wife = fam.FirstChild("WIFE")?.Value;
-                string? otherXref = husb == indi.Xref ? wife : wife == indi.Xref ? husb : null;
-                if (otherXref is null) continue;
-                AddNormalized(spouseNames, NameOf(otherXref));
-            }
-
-            var parentNames = new List<string>();
-            // Matches ModelBuilder's parent-family resolution: last FAMC wins.
             string? famcXref = indi.ChildrenByTag("FAMC").LastOrDefault()?.Value;
             var famc = famcXref is not null ? families.FirstOrDefault(f => f.Xref == famcXref) : null;
+            PersonMatchParents? parents = null;
             if (famc is not null)
             {
-                AddNormalized(parentNames, NameOf(famc.FirstChild("HUSB")?.Value));
-                AddNormalized(parentNames, NameOf(famc.FirstChild("WIFE")?.Value));
+                string? father = NormalizeOrNull(NameOf(famc.FirstChild("HUSB")?.Value));
+                string? mother = NormalizeOrNull(NameOf(famc.FirstChild("WIFE")?.Value));
+                if (father is not null || mother is not null)
+                    parents = new PersonMatchParents(father, mother);
+            }
+
+            var marriages = new List<PersonMatchMarriage>();
+            foreach (var familyLink in indi.ChildrenByTag("FAMS"))
+            {
+                if (familyLink.Value == GedRecord.VoidPointer) continue;
+                var family = families.FirstOrDefault(f => f.Xref == familyLink.Value);
+                if (family is null) continue;
+
+                string? husband = family.FirstChild("HUSB")?.Value;
+                string? wife = family.FirstChild("WIFE")?.Value;
+                string? spouseXref = husband == indi.Xref ? wife : wife == indi.Xref ? husband : null;
+                string? spouseName = NormalizeOrNull(NameOf(spouseXref));
+                var marriage = family.ChildrenByTag("MARR").LastOrDefault();
+                var marriageEvent = EventOf(marriage);
+                marriages.Add(new PersonMatchMarriage(
+                    spouseName,
+                    marriageEvent?.Year,
+                    marriageEvent?.NormalizedPlace));
             }
 
             list.Add(new PersonMatchCandidate(
@@ -58,11 +65,11 @@ internal static class PersonRecordIndex
                 DisplayName(given, surname),
                 PersonNameNormalizer.Normalize(surname),
                 PersonNameNormalizer.Normalize(given),
-                BirthYearOf(indi),
                 SexOf(indi),
-                places,
-                spouseNames,
-                parentNames));
+                birth,
+                death,
+                parents,
+                marriages));
         }
         return list;
     }
@@ -76,22 +83,27 @@ internal static class PersonRecordIndex
     {
         var (given, surname) = SplitName(evidence.Name);
         bool? isMale = evidence.Sex switch { "M" => true, "F" => false, _ => null };
-        List<string> places = [];
-        AddNormalized(places, evidence.Place);
-        // SpouseName/ParentName are already normalized by the evidence gatherer.
-        List<string> spouses = evidence.SpouseName is string s ? [s] : [];
-        List<string> parents = evidence.ParentName is string p ? [p] : [];
+        string? birthPlace = NormalizeOrNull(evidence.BirthPlace);
+        PersonMatchEvent? birth = evidence.BirthYear is not null || birthPlace is not null
+            ? new PersonMatchEvent(evidence.BirthYear, birthPlace)
+            : null;
+        PersonMatchParents? parents = evidence.FatherName is not null || evidence.MotherName is not null
+            ? new PersonMatchParents(evidence.FatherName, evidence.MotherName)
+            : null;
+        IReadOnlyList<PersonMatchMarriage> marriages = evidence.SpouseName is string spouseName
+            ? [new PersonMatchMarriage(spouseName, null, null)]
+            : [];
 
         return new PersonMatchCandidate(
             token,
             DisplayName(given, surname),
             PersonNameNormalizer.Normalize(surname),
             PersonNameNormalizer.Normalize(given),
-            evidence.BirthYear,
             isMale,
-            places,
-            spouses,
-            parents);
+            birth,
+            null,
+            parents,
+            marriages);
     }
 
     // GedNamePayload.Split (GedCore) owns the slash tokenizing; when there is
@@ -112,15 +124,18 @@ internal static class PersonRecordIndex
         _ => null,
     };
 
-    static int? BirthYearOf(GedRecord indi)
+    static PersonMatchEvent? EventOf(GedRecord? gedEvent)
     {
-        int year = GedDate.ParseYear(indi.FirstChild("BIRT")?.FirstChild("DATE")?.FullValue());
-        return year != 0 ? year : null;
+        if (gedEvent is null) return null;
+        int parsedYear = GedDate.ParseYear(gedEvent.ChildrenByTag("DATE").LastOrDefault()?.FullValue());
+        int? year = parsedYear != 0 ? parsedYear : null;
+        string? place = NormalizeOrNull(gedEvent.ChildrenByTag("PLAC").LastOrDefault()?.FullValue());
+        return year is null && place is null ? null : new PersonMatchEvent(year, place);
     }
 
-    static void AddNormalized(List<string> values, string? raw)
+    static string? NormalizeOrNull(string? value)
     {
-        string normalized = PersonNameNormalizer.Normalize(raw);
-        if (normalized.Length > 0) values.Add(normalized);
+        string normalized = PersonNameNormalizer.Normalize(value);
+        return normalized.Length > 0 ? normalized : null;
     }
 }

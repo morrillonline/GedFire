@@ -98,14 +98,14 @@ public class McpServerIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task ToolsList_AdvertisesFindPersonWithTruthfulReadOnlyAnnotations()
+    public async Task ToolsList_AdvertisesAllToolsWithTruthfulReadOnlyAnnotations()
     {
         await using var client = McpStdioTestClient.Start(WriteGed());
         await client.InitializeAsync(ShortTimeout);
 
         var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Equal(3, tools.GetArrayLength());
+        Assert.Equal(4, tools.GetArrayLength());
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
@@ -113,17 +113,21 @@ public class McpServerIntegrationTests : IDisposable
         // separately by ToolsList_IsDeterministicAcrossCalls; here only
         // membership is asserted.
         Assert.Equal(
-            new HashSet<string> { "find_person", "get_document_stats", "get_record" },
+            new HashSet<string> { "date_calc", "find_person", "get_document_stats", "get_record" },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
 
-        var tool = tools.EnumerateArray().Single(t => t.GetProperty("name").GetString() == "find_person");
-        var annotations = tool.GetProperty("annotations");
-        Assert.True(annotations.GetProperty("readOnlyHint").GetBoolean());
-        Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
-        Assert.True(annotations.GetProperty("idempotentHint").GetBoolean());
+        foreach (var tool in tools.EnumerateArray())
+        {
+            var annotations = tool.GetProperty("annotations");
+            Assert.True(annotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.True(annotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.Equal("object", tool.GetProperty("inputSchema").GetProperty("type").GetString());
+            Assert.True(tool.TryGetProperty("outputSchema", out _));
+        }
 
-        Assert.Equal("object", tool.GetProperty("inputSchema").GetProperty("type").GetString());
-        Assert.True(tool.TryGetProperty("outputSchema", out _));
+        var dateCalc = tools.EnumerateArray().Single(t => t.GetProperty("name").GetString() == "date_calc");
+        Assert.Contains("without reading", dateCalc.GetProperty("description").GetString());
     }
 
     [Fact]
@@ -164,6 +168,31 @@ public class McpServerIntegrationTests : IDisposable
     // -------------------------------------------------------------------
     // tools/call
     // -------------------------------------------------------------------
+
+    [Fact]
+    public async Task ToolsCall_DateCalc_ReturnsCanonicalStructuredResult()
+    {
+        await using var client = McpStdioTestClient.Start(WriteGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "date_calc",
+            arguments = new
+            {
+                operation = "diff",
+                from = "27 SEP 1777",
+                to = "29 JAN 1841",
+            },
+        }, ShortTimeout);
+
+        var result = response.GetProperty("result");
+        Assert.False(result.GetProperty("isError").GetBoolean());
+        var structured = result.GetProperty("structuredContent");
+        Assert.Equal("diff", structured.GetProperty("operation").GetString());
+        Assert.Equal(JsonValueKind.Null, structured.GetProperty("date").ValueKind);
+        Assert.Equal("63y 4m 2d", structured.GetProperty("age").GetString());
+    }
 
     [Fact]
     public async Task ToolsCall_Success_UsesStructuredContentAndTextFallback()
@@ -238,7 +267,7 @@ public class McpServerIntegrationTests : IDisposable
         var response = await client.SendRequestAsync("tools/call", new
         {
             name = "find_person",
-            arguments = new { query = "Frederick Morrill", hints = new { birthYear = 1841 } },
+            arguments = new { query = "Frederick Morrill", hints = new { birth = new { year = 1841 } } },
         }, ShortTimeout);
 
         var structured = response.GetProperty("result").GetProperty("structuredContent");
@@ -246,10 +275,26 @@ public class McpServerIntegrationTests : IDisposable
         Assert.Equal("@I1@", structured.GetProperty("person").GetProperty("xref").GetString());
     }
 
+    [Fact]
+    public async Task ToolsCall_WithLegacyFlatHint_ReturnsIsError()
+    {
+        string path = WriteGed();
+        await using var client = McpStdioTestClient.Start(path);
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "find_person",
+            arguments = new { query = "Frederick Morrill", hints = new { birthYear = 1841 } },
+        }, ShortTimeout);
+
+        Assert.True(response.GetProperty("result").GetProperty("isError").GetBoolean());
+    }
+
     // -------------------------------------------------------------------
-    // maxResults, over real stdio JSON-RPC: proves the wire-level
-    // integer/"all" union actually binds through the SDK's argument
-    // binder, not just FindPersonTool.HandleAsync called in-process.
+    // maxResults, over real stdio JSON-RPC: proves the wire-level integer
+    // binds through the SDK's argument binder, not just
+    // FindPersonTool.HandleAsync called in-process.
     // -------------------------------------------------------------------
 
     string WriteTenJaneDoesGed()
@@ -290,7 +335,7 @@ public class McpServerIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task ToolsCall_MaxResultsAll_ReturnsWholeRecallSetOverRealJsonRpc()
+    public async Task ToolsCall_MaxResultsTwenty_IsAcceptedOverRealJsonRpc()
     {
         await using var client = McpStdioTestClient.Start(WriteTenJaneDoesGed());
         await client.InitializeAsync(ShortTimeout);
@@ -298,7 +343,7 @@ public class McpServerIntegrationTests : IDisposable
         var response = await client.SendRequestAsync("tools/call", new
         {
             name = "find_person",
-            arguments = new { query = "Jane Doe", maxResults = "all" },
+            arguments = new { query = "Jane Doe", maxResults = 20 },
         }, ShortTimeout);
 
         var structured = response.GetProperty("result").GetProperty("structuredContent");
@@ -307,16 +352,20 @@ public class McpServerIntegrationTests : IDisposable
         Assert.False(structured.GetProperty("truncated").GetBoolean());
     }
 
-    [Fact]
-    public async Task ToolsCall_MaxResultsInvalid_ReturnsIsErrorOverRealJsonRpc()
+    [Theory]
+    [InlineData("0")]
+    [InlineData("21")]
+    [InlineData("\"all\"")]
+    public async Task ToolsCall_MaxResultsInvalid_ReturnsIsErrorOverRealJsonRpc(string maxResultsJson)
     {
         await using var client = McpStdioTestClient.Start(WriteGed());
         await client.InitializeAsync(ShortTimeout);
 
+        using var arguments = JsonDocument.Parse($$"""{"query":"Frederick Morrill","maxResults":{{maxResultsJson}}}""");
         var response = await client.SendRequestAsync("tools/call", new
         {
             name = "find_person",
-            arguments = new { query = "Frederick Morrill", maxResults = 0 },
+            arguments = arguments.RootElement,
         }, ShortTimeout);
 
         var result = response.GetProperty("result");

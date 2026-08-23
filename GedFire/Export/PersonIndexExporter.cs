@@ -8,8 +8,8 @@ using GedFire.Gen;
 namespace GedFire.Export;
 
 // ---------------------------------------------------------------------------
-// Research person index (researchplan.md §6.1) — serializes the ModelBuilder
-// model to the JSON consumed by the research pipeline's correlation stage:
+// Serializes the ModelBuilder model to the research pipeline's correlation
+// index:
 // every individual with xref, normalized name, birth/death (raw date + year +
 // qualifier + place), parents' xrefs, and per-marriage spouse/children xrefs.
 //

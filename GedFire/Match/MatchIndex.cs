@@ -15,11 +15,11 @@ public sealed record PersonIndexEntry(
     GedIndividual Individual,
     string NormalizedSurname,
     string NormalizedGiven,
-    int? BirthYear,
     bool? IsMale,
-    IReadOnlyList<string> NormalizedPlaces,
-    IReadOnlyList<string> NormalizedSpouseNames,
-    IReadOnlyList<string> NormalizedParentNames);
+    PersonMatchEvent? Birth,
+    PersonMatchEvent? Death,
+    PersonMatchParents? Parents,
+    IReadOnlyList<PersonMatchMarriage> Marriages);
 
 public sealed class MatchIndex
 {
@@ -35,61 +35,52 @@ public sealed class MatchIndex
         Individual: indi,
         NormalizedSurname: PersonNameNormalizer.Normalize(indi.LastName),
         NormalizedGiven: PersonNameNormalizer.Normalize(indi.FirstMiddle()),
-        BirthYear: BirthYearOf(indi),
         IsMale: indi.SexRecorded ? indi.IsMale : null,
-        NormalizedPlaces: CollectPlaces(indi),
-        NormalizedSpouseNames: CollectSpouseNames(indi),
-        NormalizedParentNames: CollectParentNames(indi));
+        Birth: EventOf(indi.Birth),
+        Death: EventOf(indi.Death),
+        Parents: ParentsOf(indi.FamChild),
+        Marriages: MarriagesOf(indi));
 
-    static int? BirthYearOf(GedIndividual indi)
+    static PersonMatchEvent? EventOf(GedEvent? gedEvent)
     {
-        if (indi.Birth is null) return null;
-        int year = GedDate.ParseYear(indi.Birth.Date);
-        return year != 0 ? year : null;
+        if (gedEvent is null) return null;
+        int parsedYear = GedDate.ParseYear(gedEvent.Date);
+        int? year = parsedYear != 0 ? parsedYear : null;
+        string? place = NormalizeOrNull(gedEvent.Place);
+        return year is null && place is null ? null : new PersonMatchEvent(year, place);
     }
 
-    static List<string> CollectPlaces(GedIndividual indi)
+    static PersonMatchParents? ParentsOf(GedFamily? family)
     {
-        var places = new List<string>();
-        AddPlace(places, indi.Birth?.Place);
-        AddPlace(places, indi.Death?.Place);
-        foreach (var census in indi.Census) AddPlace(places, census.Place);
-        return places;
+        if (family is null) return null;
+        string? father = family.Husband is { } husband
+            ? NormalizeOrNull(PersonDisplay.FullName(husband))
+            : null;
+        string? mother = family.Wife is { } wife
+            ? NormalizeOrNull(PersonDisplay.FullName(wife))
+            : null;
+        return father is null && mother is null ? null : new PersonMatchParents(father, mother);
     }
 
-    static void AddPlace(List<string> places, string? rawPlace)
+    static List<PersonMatchMarriage> MarriagesOf(GedIndividual individual)
     {
-        string normalized = PersonNameNormalizer.Normalize(rawPlace);
-        if (normalized.Length > 0) places.Add(normalized);
-    }
-
-    static List<string> CollectSpouseNames(GedIndividual indi)
-    {
-        var names = new List<string>();
-        foreach (var fam in indi.FamSpouse)
+        var marriages = new List<PersonMatchMarriage>(individual.FamSpouse.Count);
+        foreach (var family in individual.FamSpouse)
         {
-            var spouse = fam.SpouseOf(indi);
-            if (spouse is null) continue;
-            string normalized = PersonNameNormalizer.Normalize(PersonDisplay.FullName(spouse));
-            if (normalized.Length > 0) names.Add(normalized);
+            string? spouseName = family.SpouseOf(individual) is { } spouse
+                ? NormalizeOrNull(PersonDisplay.FullName(spouse))
+                : null;
+            int parsedYear = GedDate.ParseYear(family.Marriage?.Date);
+            int? year = parsedYear != 0 ? parsedYear : null;
+            string? place = NormalizeOrNull(family.Marriage?.Place);
+            marriages.Add(new PersonMatchMarriage(spouseName, year, place));
         }
-        return names;
+        return marriages;
     }
 
-    static List<string> CollectParentNames(GedIndividual indi)
+    static string? NormalizeOrNull(string? value)
     {
-        var names = new List<string>();
-        var famChild = indi.FamChild;
-        if (famChild?.Husband is { } father)
-        {
-            string normalized = PersonNameNormalizer.Normalize(PersonDisplay.FullName(father));
-            if (normalized.Length > 0) names.Add(normalized);
-        }
-        if (famChild?.Wife is { } mother)
-        {
-            string normalized = PersonNameNormalizer.Normalize(PersonDisplay.FullName(mother));
-            if (normalized.Length > 0) names.Add(normalized);
-        }
-        return names;
+        string normalized = PersonNameNormalizer.Normalize(value);
+        return normalized.Length > 0 ? normalized : null;
     }
 }

@@ -16,7 +16,7 @@ public class DateCalcCliTests
         McpStdioTestClient.RunToCompletionAsync(Timeout, ["date-calc", .. args]);
 
     // -------------------------------------------------------------------
-    // The design document's own four worked examples, verbatim.
+    // Representative examples covering all four operations.
     // -------------------------------------------------------------------
 
     [Fact]
@@ -75,7 +75,7 @@ public class DateCalcCliTests
     [Fact]
     public async Task Diff_WithAgeFlag_IsUsageError()
     {
-        // The design's own example of a disallowed flag/op combination.
+        // diff accepts only --from and --to date operands.
         var (exitCode, _, stderr) = await Run("--op", "diff", "--from", "1 JAN 2000", "--to", "1 JAN 2001", "--age", "1y");
         Assert.Equal(1, exitCode);
         Assert.Contains("--age", stderr);

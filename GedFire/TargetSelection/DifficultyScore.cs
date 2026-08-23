@@ -30,7 +30,7 @@ public sealed record DifficultyScore
     public int RawDifficulty => EraWeight + GeoWeight + ContextAdjustment;
 
     /// <summary>
-    /// Bands the sum of the three weights per the design's table:
+    /// Bands the sum of the three weights:
     /// 0 -> Common (+0), 1-2 -> Uncommon (+5), 3-4 -> Rare (+10), 5-7 -> Legendary (+15).
     /// </summary>
     public static DifficultyScore Compute(int eraWeight, int geoWeight, int contextAdjustment)

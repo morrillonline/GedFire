@@ -90,17 +90,19 @@ no environment variables, API keys, or other credentials.
 
 Restart or reload the client after changing its configuration, approve the
 local server if prompted, and confirm that it discovers `find_person`,
-`get_document_stats`, and `get_record`.
+`date_calc`, `get_document_stats`, and `get_record`.
 
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
-The server binds to one document over stdio and exposes three read-only
-tools:
+The server binds to one document over stdio and exposes four read-only tools.
+Three inspect that document; `date_calc` is a pure calculation over its own
+arguments and does not read the document:
 
 | Tool | What it does |
 |---|---|
-| `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to scored candidates, a confident match when one exists, and family handoff identifiers. Set `maxResults` to a positive integer (default `8`) or `"all"` to inspect the complete recall set without changing the matcher's confidence decision. |
+| `date_calc` | Normalize a dual-dated year, add or subtract a genealogical age, or calculate elapsed years/months/days. Uses exact Gregorian dates supplied in the call and never reads or changes the bound document. |
+| `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to scored candidates, a confident match when one exists, and family handoff identifiers. Optional structured hints distinguish birth from death, father from mother, and one marriage from another. Set `maxResults` to an integer from `1` through `20` (default `8`) without changing the matcher's confidence decision. |
 | `get_document_stats` | Report person/family counts and the declared GEDCOM version, for a quick orientation before other work. |
 | `get_record` | Fetch the full detail of a specific person, family, or source by xref. |
 
@@ -109,10 +111,24 @@ For example, an MCP client can call `find_person` with:
 ```json
 {
   "query": "Frederick Morrill",
-  "hints": { "birthYear": 1841, "place": "New Hampshire" },
-  "maxResults": "all"
+  "hints": {
+    "birth": { "year": 1841, "place": "New Hampshire" },
+    "parents": { "father": "Wyman Morrill" },
+    "spouse": {
+      "name": "Sarah Blake",
+      "marriage": { "year": 1865, "place": "Maine" }
+    }
+  },
+  "maxResults": 20
 }
 ```
+
+Every hint leaf is optional, but each supplied object must contain at least
+one fact. Birth and death places are event-specific; census or otherwise
+unclassified places are not hints. Parent names require a known `father` or
+`mother` role. All fields under `spouse` describe one marriage and are never
+combined across different marriages. Hints rank only people already recalled
+by the name query, and missing candidate data is not penalized.
 
 Every result has the same top-level fields: `matchType`,
 `confidentMatchXref`, `confidentMatchScore`, `person`, `candidates`,
@@ -304,6 +320,22 @@ qualified, partial, BCE, and non-Gregorian dates are rejected rather than
 having uncertainty invented or discarded. GEDCOM reading, writing, and HTML
 generation continue to preserve original date text such as `1860`, `BEF
 1860`, and dual dates.
+
+The MCP server exposes the same operations through `date_calc`. Its
+`operation` is `normalize`, `add`, `sub`, or `diff`; the advertised schema
+describes which fields each operation requires. For example:
+
+```json
+{
+  "operation": "diff",
+  "from": "27 SEP 1777",
+  "to": "29 JAN 1841"
+}
+```
+
+The result is `{ "operation": "diff", "date": null, "age": "63y 4m 2d" }`.
+The other operations return the canonical result in `date` and set `age` to
+`null`.
 
 ## Command reference
 

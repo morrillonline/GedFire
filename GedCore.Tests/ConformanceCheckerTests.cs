@@ -4,8 +4,8 @@ using GedCore.Validate;
 namespace GedCore.Tests;
 
 /// <summary>
-/// Subproject D (SPEC-ged7-conformance.md): one test per GED001-GED014 rule,
-/// each built from a minimal in-memory document exhibiting exactly that
+/// One test per GED001-GED014 rule, each built from a minimal in-memory
+/// document exhibiting exactly that
 /// violation, plus two "clean document" tests proving the checker doesn't
 /// false-positive on real, valid GEDCOM 7 content.
 /// </summary>

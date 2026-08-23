@@ -42,8 +42,8 @@ public static class ExactnessRules
     /// True when a city/town <b>and</b> a state (or, outside the US, the
     /// equivalent first-level jurisdiction below the country) are both
     /// present in the PLAC value's comma hierarchy. Country is optional.
-    /// A blunt heuristic by design — see the design doc's own caveat about
-    /// unusual PLAC formats.
+    /// This deliberately blunt heuristic can misclassify unusual PLAC
+    /// formats.
     /// </summary>
     public static bool IsExactPlace(string? place)
     {
@@ -52,10 +52,9 @@ public static class ExactnessRules
     }
 
     /// <summary>
-    /// Difficulty weight for the era of a core-event year, per the design's
-    /// era-weight table. An unknown year is treated leniently as weight 0 —
-    /// mirroring how "no place recorded" defaults to 0 for geography below,
-    /// since the design has no separate "unknown" bucket for either signal.
+    /// Difficulty weight for the era of a core-event year. An unknown year
+    /// is treated leniently as weight 0, matching the geography default for
+    /// an unrecorded place; neither signal has a separate unknown bucket.
     /// </summary>
     public static int EraWeight(int? year) => year switch
     {
@@ -67,10 +66,9 @@ public static class ExactnessRules
     };
 
     /// <summary>
-    /// Difficulty weight for the region of a core-event place, per the
-    /// design's geography-weight table: parsed from the last comma-separated
-    /// token against a small static list. Blunt by design — see the design
-    /// doc's own caveat about unusual PLAC formats.
+    /// Difficulty weight for the region of a core-event place, parsed from
+    /// the last comma-separated token against a small static list. This
+    /// deliberately blunt heuristic can misclassify unusual PLAC formats.
     /// </summary>
     public static int GeographyWeight(string? place)
     {

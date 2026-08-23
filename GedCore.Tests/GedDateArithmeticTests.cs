@@ -97,7 +97,7 @@ public class GedDateArithmeticTests
     // -------------------------------------------------------------------
 
     [Theory]
-    [InlineData("1691/2", 1692)]   // the design's own worked example
+    [InlineData("1691/2", 1692)]   // representative dual-year date
     [InlineData("1745/46", 1746)]
     [InlineData("5/6", 6)]         // single-digit years on both sides
     [InlineData("1800", 1800)]     // no slash: passes through unchanged
@@ -176,8 +176,8 @@ public class GedDateArithmeticTests
     [Fact]
     public void AddAge_AppliesYearsMonthsDaysInThatOrder()
     {
-        // 27 SEP 1777 + 63y 4m 2d = 29 JAN 1841 (the design's own worked
-        // example, gravestone birth -> inscribed-age death date).
+        // Gravestone calculation: birth date plus inscribed age gives the
+        // death date.
         var result = GedDate.AddAge(new DateTime(1777, 9, 27), new GedAge(63, 4, 2));
         Assert.Equal(new DateTime(1841, 1, 29), result);
     }

@@ -62,11 +62,11 @@ public sealed class PersonMatcher
         PersonDisplay.FullName(e.Individual),
         e.NormalizedSurname,
         e.NormalizedGiven,
-        e.BirthYear,
         e.IsMale,
-        e.NormalizedPlaces,
-        e.NormalizedSpouseNames,
-        e.NormalizedParentNames);
+        e.Birth,
+        e.Death,
+        e.Parents,
+        e.Marriages);
 
     static ScoredMatch ToScoredMatch(PersonMatchScore m, Dictionary<string, PersonIndexEntry> byId) =>
         new(byId[m.Id].Individual, m.FinalScore, m.RawScore, m.NameOnlyScore);

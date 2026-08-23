@@ -11,10 +11,8 @@ namespace GedCore.Tests;
 /// structures rather than stripping them as a side effect of editing a
 /// sibling fact.
 ///
-/// The fixture (GedCore.Tests/TestData/Extensions-7.0.ged) is seeded once
-/// rather than rebuilt per test; see TestData/README.md for its provenance
-/// and the official FamilySearch GEDCOM 7 extension-tag example file its
-/// syntax follows.
+/// The fixture is seeded once rather than rebuilt per test and follows the
+/// syntax of the official FamilySearch GEDCOM 7 extension-tag example.
 /// </summary>
 public class ExtensionTagPreservationTests
 {

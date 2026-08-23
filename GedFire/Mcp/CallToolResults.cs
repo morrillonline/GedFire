@@ -7,8 +7,8 @@ namespace GedFire.Mcp;
 // Shared CallToolResult construction for every tool on this server: a
 // successful result carries structuredContent plus the identical compact
 // JSON as a text fallback; an error result carries one text block and
-// isError: true. FindPersonTool and GetDocumentStatsTool both build their
-// results this way rather than duplicating the shape.
+// isError: true. Every tool builds results this way rather than duplicating
+// the shape.
 // ---------------------------------------------------------------------------
 
 public static class CallToolResults

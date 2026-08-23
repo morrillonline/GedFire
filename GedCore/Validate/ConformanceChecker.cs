@@ -16,9 +16,7 @@ public sealed record GedDiagnostic(
 /// <summary>
 /// GEDCOM 7.0.18 conformance checks the codebase otherwise performs nowhere.
 /// Each rule is implemented by its own private <c>Check&lt;RuleName&gt;</c>
-/// method so rules stay independently testable; see
-/// SPEC-ged7-conformance.md Subproject D for the rule catalog (GED001-GED014)
-/// this class implements.
+/// method so the GED001-GED014 rules stay independently testable.
 /// </summary>
 public static class ConformanceChecker
 {
