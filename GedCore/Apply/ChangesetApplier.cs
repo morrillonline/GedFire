@@ -41,18 +41,42 @@ public static class ChangesetApplier
 {
     private static readonly Regex PointerPayload = new(@"^@[A-Za-z0-9_]+@$", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Apply a changeset to a file on disk, holding one exclusive file handle
+    /// from the initial read through verified replacement. FileShare.None
+    /// denies every other handle for the whole call, so a concurrent
+    /// path-based apply against the same file throws IOException immediately
+    /// instead of racing this one -- callers should treat that as a normal
+    /// apply failure, not let it propagate unhandled. A dry run only needs
+    /// read access since nothing is written.
+    /// </summary>
     public static ApplyResult Run(string gedcomPath, Changeset changeset,
                                   IReadOnlyCollection<int> itemNumbers, bool dryRun, DateTime? utcNow = null)
     {
-        byte[] originalBytes = File.ReadAllBytes(gedcomPath);
+        using var handle = new FileStream(gedcomPath, FileMode.Open,
+            dryRun ? FileAccess.Read : FileAccess.ReadWrite, FileShare.None);
+
+        byte[] originalBytes = new byte[handle.Length];
+        handle.ReadExactly(originalBytes);
+
         var result = Run(originalBytes, changeset, itemNumbers, dryRun, utcNow);
         if (!result.Success || result.OutputBytes is null) return result;
 
-        File.WriteAllBytes(gedcomPath, result.OutputBytes);
-        if (!File.ReadAllBytes(gedcomPath).SequenceEqual(result.OutputBytes))
+        handle.Seek(0, SeekOrigin.Begin);
+        handle.Write(result.OutputBytes);
+        handle.SetLength(result.OutputBytes.Length);
+        handle.Flush(flushToDisk: true);
+
+        handle.Seek(0, SeekOrigin.Begin);
+        byte[] writtenBytes = new byte[result.OutputBytes.Length];
+        handle.ReadExactly(writtenBytes);
+        if (!writtenBytes.SequenceEqual(result.OutputBytes))
         {
             result.Errors.Add("re-read after write does not match written bytes");
-            File.WriteAllBytes(gedcomPath, originalBytes);
+            handle.Seek(0, SeekOrigin.Begin);
+            handle.Write(originalBytes);
+            handle.SetLength(originalBytes.Length);
+            handle.Flush(flushToDisk: true);
             result.Success = false;
         }
         return result;
@@ -106,6 +130,14 @@ public static class ChangesetApplier
         foreach (var op in selectedOps)
             op.Validate(ctx, result.Errors);
         if (result.Errors.Count > 0) return result;
+
+        // New-person duplicate detection runs after every op's own Validate,
+        // once ResolutionContext.Placeholders is fully populated and every
+        // selected op is available to gather evidence from — a per-op check
+        // couldn't see operations after the creating PersonRef.
+        PersonDuplicateDetector.Check(doc, ctx, selectedOps, result.Errors);
+        if (result.Errors.Count > 0) return result;
+
         result.Log.Add($"validation OK ({selectedOps.Count} ops, items {string.Join(",", itemNumbers.OrderBy(n => n))})");
         if (dryRun) { result.Success = true; return result; }
 
@@ -164,11 +196,18 @@ public static class ChangesetApplier
         Ged70Formatter.Write(doc, ms);
         byte[] newBytes = ms.ToArray();
 
+        // citedByAnyItem was gathered from the ops' own fields before apply
+        // ran, so a placeholder-keyed entry is still placeholder text; resolve
+        // it to the real minted xref (state.CreatedSourceXrefs already holds
+        // real xrefs) before checking which created sources are the ones
+        // some item actually meant to cite.
+        var citedByAnyItemResolved = citedByAnyItem.Select(state.Resolve).ToHashSet(StringComparer.Ordinal);
         Verify(newBytes, beforeCounts, state.Deltas,
-               state.CreatedSourceXrefs.Intersect(citedByAnyItem), result);
+               state.CreatedSourceXrefs.Intersect(citedByAnyItemResolved), result);
         if (result.Errors.Count > 0) return result;
 
         result.Deltas = state.Deltas;
+        result.MintedXrefs = state.MintedXrefs;
         result.OutputBytes = newBytes;
         result.Success = true;
         return result;
@@ -342,4 +381,11 @@ public sealed class ApplyResult
     public List<string> Errors { get; } = [];
     public Dictionary<string, int> Deltas { get; internal set; } = [];
     public byte[]? OutputBytes { get; internal set; }
+
+    /// <summary>
+    /// Placeholder token → real minted xref for every new record this run
+    /// created. Empty for a dry run, a validation failure, or a run whose
+    /// ops were all no-ops.
+    /// </summary>
+    public Dictionary<string, string> MintedXrefs { get; internal set; } = new(StringComparer.Ordinal);
 }

@@ -3,6 +3,7 @@ using GedCore.Apply;
 using GedCore.Ged55;
 using GedCore.Ged70;
 using GedCore.Gedzip;
+using GedCore.Matching;
 using GedCore.Validate;
 using GedFire;
 using GedFire.Export;
@@ -29,6 +30,7 @@ using System.Reflection;
 //   gedfire pack         --input <ged>    --media-dir <dir> --output <gdz>
 //   gedfire unpack       --input <gdz>    --output-dir <dir>
 //   gedfire mcp          --input <ged>    [--media-dir <dir>]
+//   gedfire date-calc    --op normalize|add|sub|diff [--date <d>] [--from <d>] [--to <d>] [--age <y/m/d>]
 // ---------------------------------------------------------------------------
 
 if (args.Length == 0)
@@ -50,6 +52,7 @@ return args[0].ToLowerInvariant() switch
     "pack"         => RunPack(args[1..]),
     "unpack"       => RunUnpack(args[1..]),
     "mcp"          => await RunMcp(args[1..]),
+    "date-calc"    => RunDateCalc(args[1..]),
     "--help" or "-h" or "help" => Help(),
     "--version" or "-v" or "version" => ShowVersion(),
     _ => Unknown(args[0]),
@@ -350,7 +353,16 @@ static int RunApply(string[] args)
         }
     }
 
-    var result = ChangesetApplier.Run(input, changeset, itemNumbers, dryRun);
+    ApplyResult result;
+    try
+    {
+        result = ChangesetApplier.Run(input, changeset, itemNumbers, dryRun);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"APPLY FAILED — could not open {input}: {ex.Message}");
+        return 1;
+    }
 
     foreach (var entry in result.Log)
         Console.WriteLine(dryRun ? entry : $"applied: {entry}");
@@ -515,7 +527,7 @@ static async Task<int> RunMcp(string[] args)
 
     // Startup: load the nickname directory and build the first snapshot.
     // Any failure here is the startup-error path -- stderr, exit 1, no
-    // protocol output written (docs/design/mcp-server.md "Lifecycle").
+    // protocol output written.
     NicknameDirectory nicknames;
     DocumentSnapshot initialSnapshot;
     try
@@ -541,8 +553,7 @@ static async Task<int> RunMcp(string[] args)
 
     // Listed alphabetically by name for readability; the SDK's own
     // McpServerPrimitiveCollection does not preserve this as the advertised
-    // tools/list order (docs/design/mcp-server.md "Tool registration and
-    // server guidance").
+    // tools/list order.
     var toolCollection = new McpServerPrimitiveCollection<McpServerTool>
     {
         findPerson.ToMcpServerTool(),
@@ -556,8 +567,7 @@ static async Task<int> RunMcp(string[] args)
         Capabilities = new ServerCapabilities { Tools = new ToolsCapability { ListChanged = false } },
         ToolCollection = toolCollection,
         // States once that returned xrefs belong only to this server's bound
-        // document and that no initial-release tool mutates the file
-        // (docs/design/mcp-server.md "Tool registration and server guidance").
+        // document and that no initial-release tool mutates the file.
         // Tool-specific calling guidance remains on the tool itself.
         ServerInstructions =
             "Every xref returned by a tool on this server (an individual or family reference such as \"@I123@\" " +
@@ -576,9 +586,8 @@ static string GedFireVersion() =>
     Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
         ?? "unknown";
 
-// gedfire mcp's --media-dir default (docs/design/mcp-server.md
-// "Architecture"): the GEDCOM's own directory -- the same default
-// `generate` has always used. Every FILE payload CreateOrUpdateMediaOp
+// gedfire mcp's --media-dir default: the GEDCOM's own directory -- the same
+// default `generate` has always used. Every FILE payload CreateOrUpdateMediaOp
 // writes is now self-describing (MediaFileRequest.NormalizePath prepends
 // "media/" per GEDCOM 7 §2.12's recommendation), so resolution needs no
 // special-casing here: a payload of "media/photo.jpg" already names its
@@ -589,6 +598,104 @@ static string GedFireVersion() =>
 // something this tool should paper over by guessing a different base.
 static string DefaultMcpMediaDir(string absoluteInput) =>
     Path.GetDirectoryName(absoluteInput) ?? ".";
+
+static int RunDateCalc(string[] args)
+{
+    var cl = CommandLine.Parse(args, ["--op", "--date", "--from", "--to", "--age"]);
+    string? op   = cl.Value("--op");
+    string? date = cl.Value("--date");
+    string? from = cl.Value("--from");
+    string? to   = cl.Value("--to");
+    string? age  = cl.Value("--age");
+
+    const string usage =
+        "Usage: gedfire date-calc --op normalize --date <d>\n" +
+        "       gedfire date-calc --op add|sub   --date <d> --age <y/m/d>\n" +
+        "       gedfire date-calc --op diff      --from <d> --to <d>";
+
+    if (cl.Error is not null || op is null)
+    {
+        if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
+        Console.Error.WriteLine(usage);
+        return 1;
+    }
+
+    try
+    {
+        switch (op)
+        {
+            case "normalize":
+                if (from is not null || to is not null || age is not null)
+                {
+                    Console.Error.WriteLine("--op normalize accepts only --date");
+                    Console.Error.WriteLine(usage);
+                    return 1;
+                }
+                if (date is null)
+                {
+                    Console.Error.WriteLine("--op normalize requires --date");
+                    Console.Error.WriteLine(usage);
+                    return 1;
+                }
+                Console.WriteLine(GedDate.NormalizeDualDate(date));
+                return 0;
+
+            case "add":
+            case "sub":
+                if (from is not null || to is not null)
+                {
+                    Console.Error.WriteLine($"--op {op} accepts only --date and --age");
+                    Console.Error.WriteLine(usage);
+                    return 1;
+                }
+                if (date is null || age is null)
+                {
+                    Console.Error.WriteLine($"--op {op} requires --date and --age");
+                    Console.Error.WriteLine(usage);
+                    return 1;
+                }
+                var baseDate = GedDate.ParseExactGregorianDate(date);
+                var ageValue = GedAge.Parse(age);
+                var result = op == "add"
+                    ? GedDate.AddAge(baseDate, ageValue)
+                    : GedDate.SubtractAge(baseDate, ageValue);
+                Console.WriteLine(GedDate.FormatExactGregorianDate(result));
+                return 0;
+
+            case "diff":
+                if (date is not null || age is not null)
+                {
+                    Console.Error.WriteLine("--op diff accepts only --from and --to");
+                    Console.Error.WriteLine(usage);
+                    return 1;
+                }
+                if (from is null || to is null)
+                {
+                    Console.Error.WriteLine("--op diff requires --from and --to");
+                    Console.Error.WriteLine(usage);
+                    return 1;
+                }
+                var fromDate = GedDate.ParseExactGregorianDate(from);
+                var toDate = GedDate.ParseExactGregorianDate(to);
+                Console.WriteLine(GedDate.Diff(fromDate, toDate).ToString());
+                return 0;
+
+            default:
+                Console.Error.WriteLine($"Unrecognized --op: {op} (expected normalize, add, sub, or diff)");
+                Console.Error.WriteLine(usage);
+                return 1;
+        }
+    }
+    catch (Exception ex) when (ex is FormatException or ArgumentException)
+    {
+        // Bad input (grammar violation, dates out of the exact-precision
+        // scope, reversed --from/--to, or arithmetic leaving the supported
+        // year 1-9999 range): a usage error, not a crash (AGENTS.md "To add
+        // a CLI command").
+        Console.Error.WriteLine(ex.Message);
+        return 1;
+    }
+}
 
 static int Help() { PrintHelp(); return 0; }
 static int ShowVersion()
@@ -653,6 +760,15 @@ static void PrintHelp()
                         this GEDCOM to MCP-compatible agent clients. Resident
                         process: stays running until stdin closes. Read-only;
                         no tool in this release mutates the file.
+
+          date-calc --op normalize|add|sub|diff
+                        Genealogical date arithmetic using GedCore's GEDCOM
+                        date grammar -- no GEDCOM file read or required.
+                          normalize --date <d>            resolve a dual-dated year
+                          add|sub   --date <d> --age <y/m/d>   date +/- age
+                          diff      --from <d> --to <d>    elapsed y/m/d between two dates
+                        Dates are exact Gregorian "D MON YYYY"; --age is
+                        e.g. "63y 4m 2d". See README/AGENTS.md for details.
 
         Options:
                     --help, -h       Show this help message.

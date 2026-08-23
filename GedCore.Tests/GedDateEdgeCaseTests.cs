@@ -1,3 +1,4 @@
+using GedCore;
 using GedFire.Gen;
 
 namespace GedCore.Tests;
@@ -29,6 +30,65 @@ public class GedDateEdgeCaseTests
     [InlineData("", null)]
     public void Qualifier_RecognizesLeadingToken(string date, string? expected) =>
         Assert.Equal(expected, GedDate.Qualifier(date));
+}
+
+// ---------------------------------------------------------------------------
+// ExactFullDateIdentity: the canonical date identity used by the
+// same-partner-same-date marriage conflict check.
+// ---------------------------------------------------------------------------
+public class ExactFullDateIdentityTests
+{
+    [Fact]
+    public void ExactDate_ResolvesCalendarDayMonthYear()
+    {
+        var id = GedDate.ExactFullDateIdentity("2 JUN 1949");
+        Assert.Equal(new GedDate.ExactDateIdentity("GREGORIAN", 2, 6, 1949), id);
+    }
+
+    [Fact]
+    public void DayPadding_IsInsignificant()
+    {
+        Assert.Equal(GedDate.ExactFullDateIdentity("2 JUN 1949"), GedDate.ExactFullDateIdentity("02 JUN 1949"));
+    }
+
+    [Fact]
+    public void OmittedCalendar_MeansGregorian()
+    {
+        Assert.Equal(GedDate.ExactFullDateIdentity("2 JUN 1949"), GedDate.ExactFullDateIdentity("GREGORIAN 2 JUN 1949"));
+    }
+
+    [Fact]
+    public void ExplicitNonGregorianCalendar_IsPartOfTheIdentity_NoConversionInvented()
+    {
+        var julian = GedDate.ExactFullDateIdentity("JULIAN 2 JUN 1949");
+        Assert.Equal(new GedDate.ExactDateIdentity("JULIAN", 2, 6, 1949), julian);
+        Assert.NotEqual(GedDate.ExactFullDateIdentity("2 JUN 1949"), julian);
+    }
+
+    [Fact]
+    public void DualYear_UsesResolvedRightHandYear()
+    {
+        Assert.Equal(GedDate.ExactFullDateIdentity("11 FEB 1692"), GedDate.ExactFullDateIdentity("11 FEB 1691/2"));
+    }
+
+    [Theory]
+    [InlineData("1949")]                    // year-only: partial
+    [InlineData("JUN 1949")]                // month-year: partial
+    [InlineData("ABT 2 JUN 1949")]          // qualified
+    [InlineData("BEF 2 JUN 1949")]          // qualified
+    [InlineData("BET 1 JUN 1949 AND 3 JUN 1949")]  // range
+    [InlineData("FROM 2 JUN 1949")]         // period
+    [InlineData("2 JUN 1949 BCE")]          // BCE epoch
+    [InlineData("")]
+    [InlineData(null)]
+    public void AnythingLessThanAnExactFullDate_ReturnsNull(string? date) =>
+        Assert.Null(GedDate.ExactFullDateIdentity(date));
+
+    [Fact]
+    public void DifferentDates_AreNotEqual()
+    {
+        Assert.NotEqual(GedDate.ExactFullDateIdentity("2 JUN 1949"), GedDate.ExactFullDateIdentity("3 JUN 1949"));
+    }
 }
 
 // ---------------------------------------------------------------------------

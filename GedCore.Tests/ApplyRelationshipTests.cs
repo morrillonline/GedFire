@@ -97,7 +97,7 @@ public class ApplyRelationshipTests : ApplyTestBase
         const string json = """
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateChild", "family": "@F00002@",
-                "child": { "xref": "@I00006@", "name": "Junior /Test/", "sex": "M",
+                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
                            "facts": [ { "fact": "BIRT", "value": { "date": "1951" },
                                         "citation": { "source": "@S00001@", "page": "p. 5",
                                                       "dataText": "son, born 1951", "quay": 3 } } ] },
@@ -108,18 +108,15 @@ public class ApplyRelationshipTests : ApplyTestBase
         var result = RunExpectSuccess(json);
 
         Assert.Equal(1, result.Deltas["INDI"]);
+        Assert.Equal("@I00005@", result.MintedXrefs["@NewI1@"]);
         var doc = ReadDoc();
         var fam = doc.ByXref["@F00002@"];
-        Assert.Equal("@I00006@", fam.ChildrenByTag("CHIL").Single().Value);
+        Assert.Equal("@I00005@", fam.ChildrenByTag("CHIL").Single().Value);
         Assert.Equal("@S00001@", fam.FirstChild("SOUR")!.Value);   // FAM-level provenance
-        var junior = doc.ByXref["@I00006@"];
+        var junior = doc.ByXref["@I00005@"];
         Assert.Equal("@F00002@", junior.ChildrenByTag("FAMC").Single().Value);
         Assert.Equal("1951", junior.FirstChild("BIRT")!.FirstChild("DATE")!.Value);
         Assert.NotNull(junior.FirstChild("UID"));
-
-        // re-run: inline xref exists with the identical name → degrades to a no-op link
-        var second = RunExpectSuccess(json);
-        Assert.Contains(second.Log, l => l.Contains("no changes; file untouched"));
     }
 
     [Fact]
@@ -130,13 +127,13 @@ public class ApplyRelationshipTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateChild", "family": "@F00002@",
-                "child": { "xref": "@I00006@", "name": "Junior /Test/", "sex": "M",
+                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
                            "facts": [ { "fact": "BIRT", "value": { "date": "1951" } } ] },
                 "citation": { "source": "@S00001@", "page": "p. 5",
                               "dataText": "surviving children include Junior", "quay": 3 } } ] } ] }
             """);
 
-        var birth = ReadDoc().ByXref["@I00006@"].FirstChild("BIRT")!;
+        var birth = ReadDoc().ByXref["@I00005@"].FirstChild("BIRT")!;
         Assert.Equal("1951", birth.FirstChild("DATE")!.Value);
         Assert.Null(birth.FirstChild("SOUR"));
     }
@@ -148,22 +145,24 @@ public class ApplyRelationshipTests : ApplyTestBase
 
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateChild", "family": "@F00005@",
+              { "op": "createOrUpdateChild", "family": "@NewF1@",
                 "husb": "@I00002@", "wife": "@I00004@",
-                "child": { "xref": "@I00006@", "name": "Kid /Test/", "sex": "F" } } ] } ] }
+                "child": { "xref": "@NewI1@", "name": "Kid /Test/", "sex": "F" } } ] } ] }
             """);
 
         Assert.Equal(1, result.Deltas["INDI"]);
         Assert.Equal(1, result.Deltas["FAM"]);
+        Assert.Equal("@F00004@", result.MintedXrefs["@NewF1@"]);
+        Assert.Equal("@I00005@", result.MintedXrefs["@NewI1@"]);
         var doc = ReadDoc();
-        var fam = doc.ByXref["@F00005@"];
+        var fam = doc.ByXref["@F00004@"];
         Assert.Equal("@I00002@", fam.FirstChild("HUSB")!.Value);
         Assert.Equal("@I00004@", fam.FirstChild("WIFE")!.Value);
-        Assert.Equal("@I00006@", fam.ChildrenByTag("CHIL").Single().Value);
+        Assert.Equal("@I00005@", fam.ChildrenByTag("CHIL").Single().Value);
         Assert.NotNull(fam.FirstChild("UID"));
-        Assert.Contains("@F00005@", doc.ByXref["@I00002@"].ChildrenByTag("FAMS").Select(c => c.Value));
-        Assert.Contains("@F00005@", doc.ByXref["@I00004@"].ChildrenByTag("FAMS").Select(c => c.Value));
-        Assert.Equal("@F00005@", doc.ByXref["@I00006@"].ChildrenByTag("FAMC").Single().Value);
+        Assert.Contains("@F00004@", doc.ByXref["@I00002@"].ChildrenByTag("FAMS").Select(c => c.Value));
+        Assert.Contains("@F00004@", doc.ByXref["@I00004@"].ChildrenByTag("FAMS").Select(c => c.Value));
+        Assert.Equal("@F00004@", doc.ByXref["@I00005@"].ChildrenByTag("FAMC").Single().Value);
     }
 
     [Fact]
@@ -209,18 +208,19 @@ public class ApplyRelationshipTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateParent", "person": "@I00001@", "role": "father",
-                "parent": { "xref": "@I00006@", "name": "Newman /Test/", "sex": "M" },
+                "parent": { "xref": "@NewI1@", "name": "Newman /Test/", "sex": "M" },
                 "citation": { "source": "@S00001@", "page": "p. 7",
                               "dataText": "son of Newman Test", "quay": 2 } } ] } ] }
             """);
 
+        Assert.Equal("@I00005@", result.MintedXrefs["@NewI1@"]);
         var doc = ReadDoc();
         var fam = doc.ByXref["@F00001@"];
-        Assert.Equal("@I00006@", fam.FirstChild("HUSB")!.Value);
+        Assert.Equal("@I00005@", fam.FirstChild("HUSB")!.Value);
         Assert.Equal("@S00001@", fam.FirstChild("SOUR")!.Value);   // FAM-level provenance
         Assert.Empty(doc.ByXref["@I00002@"].ChildrenByTag("FAMS"));            // replaced father
-        Assert.Contains("@F00001@", doc.ByXref["@I00006@"].ChildrenByTag("FAMS").Select(c => c.Value));
-        Assert.Contains(result.Log, l => l.Contains("@I00002@ → @I00006@"));
+        Assert.Contains("@F00001@", doc.ByXref["@I00005@"].ChildrenByTag("FAMS").Select(c => c.Value));
+        Assert.Contains(result.Log, l => l.Contains("@I00002@ → @I00005@"));
     }
 
     [Fact]
@@ -231,18 +231,20 @@ public class ApplyRelationshipTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother",
-                "parent": { "xref": "@I00006@", "name": "Grandma /Test/", "sex": "F" },
-                "family": "@F00005@" } ] } ] }
+                "parent": { "xref": "@NewI1@", "name": "Grandma /Test/", "sex": "F" },
+                "family": "@NewF1@" } ] } ] }
             """);
 
         Assert.Equal(1, result.Deltas["INDI"]);
         Assert.Equal(1, result.Deltas["FAM"]);
+        Assert.Equal("@I00005@", result.MintedXrefs["@NewI1@"]);
+        Assert.Equal("@F00004@", result.MintedXrefs["@NewF1@"]);
         var doc = ReadDoc();
-        var fam = doc.ByXref["@F00005@"];
-        Assert.Equal("@I00006@", fam.FirstChild("WIFE")!.Value);
+        var fam = doc.ByXref["@F00004@"];
+        Assert.Equal("@I00005@", fam.FirstChild("WIFE")!.Value);
         Assert.Equal("@I00004@", fam.ChildrenByTag("CHIL").Single().Value);
-        Assert.Equal("@F00005@", doc.ByXref["@I00004@"].ChildrenByTag("FAMC").Single().Value);
-        Assert.Contains("@F00005@", doc.ByXref["@I00006@"].ChildrenByTag("FAMS").Select(c => c.Value));
+        Assert.Equal("@F00004@", doc.ByXref["@I00004@"].ChildrenByTag("FAMC").Single().Value);
+        Assert.Contains("@F00004@", doc.ByXref["@I00005@"].ChildrenByTag("FAMS").Select(c => c.Value));
     }
 
     /// <summary>
@@ -264,16 +266,20 @@ public class ApplyRelationshipTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                "parent": { "xref": "@I00006@", "name": "Grandpa /Test/", "sex": "M" },
-                "family": "@F00005@" },
+                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "family": "@NewF1@" },
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother",
-                "parent": { "xref": "@I00007@", "name": "Grandma /Test/", "sex": "F" },
-                "family": "@F00005@" } ] } ] }
+                "parent": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                "family": "@NewF1@" } ] } ] }
             """);
 
         Assert.False(result.Success);
+        // @F00004@ is the real xref @NewF1@ mints during the first op — the
+        // second op's apply-time re-resolution disagrees with validation's
+        // plan-based one, exactly as it did under the old caller-chosen-xref
+        // dialect, just reported by the now-real minted xref.
         Assert.Contains(result.Errors, e =>
-            e.Contains("apply-time invariant violated") && e.Contains("@F00005@"));
+            e.Contains("apply-time invariant violated") && e.Contains("@F00004@"));
         Assert.Equal(original, ReadBytes());   // untouched, not a partial write
     }
 
@@ -285,17 +291,20 @@ public class ApplyRelationshipTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                "parent": { "xref": "@I00006@", "name": "Grandpa /Test/", "sex": "M" },
-                "family": "@F00005@" },
-              { "op": "createOrUpdateSpouse", "person": "@I00006@",
-                "spouse": { "xref": "@I00007@", "name": "Grandma /Test/", "sex": "F" },
-                "family": "@F00005@" } ] } ] }
+                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "family": "@NewF1@" },
+              { "op": "createOrUpdateSpouse", "person": "@NewI1@",
+                "spouse": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                "family": "@NewF1@" } ] } ] }
             """);
 
+        Assert.Equal("@I00005@", result.MintedXrefs["@NewI1@"]);
+        Assert.Equal("@I00006@", result.MintedXrefs["@NewI2@"]);
+        Assert.Equal("@F00004@", result.MintedXrefs["@NewF1@"]);
         var doc = ReadDoc();
-        var fam = doc.ByXref["@F00005@"];
-        Assert.Equal("@I00006@", fam.FirstChild("HUSB")!.Value);
-        Assert.Equal("@I00007@", fam.FirstChild("WIFE")!.Value);
+        var fam = doc.ByXref["@F00004@"];
+        Assert.Equal("@I00005@", fam.FirstChild("HUSB")!.Value);
+        Assert.Equal("@I00006@", fam.FirstChild("WIFE")!.Value);
         Assert.Equal("@I00004@", fam.ChildrenByTag("CHIL").Single().Value);
         Assert.Equal(2, result.Deltas["INDI"]);
         Assert.Equal(1, result.Deltas["FAM"]);
@@ -316,15 +325,15 @@ public class ApplyRelationshipTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                "parent": { "xref": "@I00006@", "name": "Grandpa /Test/", "sex": "M" },
-                "family": "@F00005@",
+                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "family": "@NewF1@",
                 "citation": { "source": "@S00001@", "page": "p. 4",
-                              "dataText": "father: Grandpa", "quay": 2 } },
-              { "op": "createOrUpdateSpouse", "person": "@I00006@",
-                "spouse": { "xref": "@I00007@", "name": "Grandma /Test/", "sex": "F" },
-                "family": "@F00005@",
+                              "dataText": "father: Cornelius", "quay": 2 } },
+              { "op": "createOrUpdateSpouse", "person": "@NewI1@",
+                "spouse": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                "family": "@NewF1@",
                 "citation": { "source": "@S00001@", "page": "p. 4",
-                              "dataText": "mother: Grandma", "quay": 2 } } ] } ] }
+                              "dataText": "mother: Beatrice", "quay": 2 } } ] } ] }
             """);
 
         Assert.False(result.Success);

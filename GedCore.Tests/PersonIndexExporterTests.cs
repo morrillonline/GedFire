@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore;
 using GedCore.Ged55;
 using GedFire.Export;
 using GedFire.Gen;

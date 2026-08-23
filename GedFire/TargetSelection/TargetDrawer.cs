@@ -18,10 +18,9 @@ public sealed record DrawResult
 
 /// <summary>
 /// Draws a pack of targets from the full candidate set: uniform odds for
-/// every card, with a hard cap of one Legendary-band card per pack
-/// (docs/design/target-selection.md, "Draw — equal odds for every card,
-/// one hard exception"). A second Legendary in the draw is discarded, not
-/// replaced by a redraw, so the pack can land short of the requested count.
+/// every card, with a hard cap of one Legendary-band card per pack. A
+/// second Legendary in the draw is discarded, not replaced by a redraw, so
+/// the pack can land short of the requested count.
 /// </summary>
 public static class TargetDrawer
 {

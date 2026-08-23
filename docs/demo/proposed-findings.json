@@ -1,8 +1,8 @@
 {
   "proposal": "mercy-whitfield-death-record",
   "newSources": [
-    { "xref": "@S3@", "ops": [
-      { "op": "createOrUpdateSource", "xref": "@S3@",
+    { "xref": "@NewSource1@", "ops": [
+      { "op": "createOrUpdateSource", "xref": "@NewSource1@",
         "auth": "New Hampshire Bureau of Vital Records (fictional)",
         "title": "Death certificate, Mercy (Whitfield) Ash, 1870",
         "accessed": "2026-07-22" } ] }
@@ -13,7 +13,7 @@
       "ops": [
         { "op": "createOrUpdateVital", "record": "@I2@", "fact": "DEAT",
           "value": { "date": "19 JAN 1870", "place": "Salisbury, Hartwell County, New Hampshire" },
-          "citation": { "source": "@S3@", "page": "cert. 1870-0114",
+          "citation": { "source": "@NewSource1@", "page": "cert. 1870-0114",
                         "dataText": "Mercy Ash, widow of Nathaniel, died 19 Jan 1870, aged 75", "quay": 2 } } ] },
     { "item": 2,
       "target": "@I4@ Levi Ash -> record where the loss of the Corinth is reported",

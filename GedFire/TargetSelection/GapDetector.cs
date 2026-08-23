@@ -1,12 +1,13 @@
+using GedCore;
 using GedFire.Gen;
 
 namespace GedFire.TargetSelection;
 
 /// <summary>
 /// Detects every candidate gap in a GedModel and scores it (card type,
-/// nominal points, difficulty), per docs/design/target-selection.md.
-/// Does not filter by count or apply the Legendary cap — TargetDrawer
-/// does that once the full candidate set is known.
+/// nominal points, difficulty). Does not filter by count or apply the
+/// Legendary cap — TargetDrawer does that once the full candidate set is
+/// known.
 /// </summary>
 public static class GapDetector
 {

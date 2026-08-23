@@ -25,21 +25,26 @@ public class ProposalStyleChangesetTests : ApplyTestBase
         Assert.Equal(2, result.Deltas["SOUR"]);
         var doc = ReadDoc();
 
+        // @New1@/@New2@ mint @S00002@/@S00003@, given the base fixture's one
+        // existing source and the newSources group applying before items.
+        Assert.Equal("@S00002@", result.MintedXrefs["@New1@"]);
+        Assert.Equal("@S00003@", result.MintedXrefs["@New2@"]);
+
         var allen = doc.ByXref["@I00001@"];
         var allenDeat = allen.FirstChild("DEAT")!;
         Assert.Equal("09 APR 1998", allenDeat.FirstChild("DATE")!.Value);
         Assert.Equal("Elbow Lake, Minnesota", allenDeat.FirstChild("PLAC")!.Value);
-        Assert.Equal(["@S00001@", "@S00010@"], allenDeat.ChildrenByTag("SOUR").Select(s => s.Value).ToList());
+        Assert.Equal(["@S00001@", "@S00002@"], allenDeat.ChildrenByTag("SOUR").Select(s => s.Value).ToList());
 
         var edna = doc.ByXref["@I00004@"];
         var ednaDeat = edna.FirstChild("DEAT")!;
         Assert.Equal("Elbow Lake, Minnesota", ednaDeat.FirstChild("PLAC")!.Value);
         Assert.Null(ednaDeat.FirstChild("DATE"));
-        Assert.Equal("@S00011@", ednaDeat.FirstChild("SOUR")!.Value);
+        Assert.Equal("@S00003@", ednaDeat.FirstChild("SOUR")!.Value);
         Assert.Contains("Not reconciled", edna.ChildrenByTag("NOTE").Single().Value);
 
-        Assert.Equal("Test Grave Index", doc.ByXref["@S00010@"].FirstChild("AUTH")!.Value);
-        Assert.Equal("Test Grave Index", doc.ByXref["@S00011@"].FirstChild("AUTH")!.Value);
+        Assert.Equal("Test Grave Index", doc.ByXref["@S00002@"].FirstChild("AUTH")!.Value);
+        Assert.Equal("Test Grave Index", doc.ByXref["@S00003@"].FirstChild("AUTH")!.Value);
     }
 
     [Fact]
@@ -51,27 +56,38 @@ public class ProposalStyleChangesetTests : ApplyTestBase
 
         Assert.Equal(2, result.Deltas["INDI"]);
         Assert.Equal(1, result.Deltas["FAM"]);
+        // George (@New1@) before family (@New2@) before Martha (@New3@) --
+        // createOrUpdateParent mints person then family, then
+        // createOrUpdateSpouse mints only the still-new spouse -- and the
+        // source (@New4@) mints first of all since newSources applies before items.
+        Assert.Equal(
+            new Dictionary<string, string>
+            {
+                ["@New4@"] = "@S00002@", ["@New1@"] = "@I00005@",
+                ["@New2@"] = "@F00004@", ["@New3@"] = "@I00006@",
+            },
+            result.MintedXrefs);
         var doc = ReadDoc();
 
-        var fam = doc.ByXref["@F00020@"];
-        Assert.Equal("@I00020@", fam.FirstChild("HUSB")!.Value);
-        Assert.Equal("@I00021@", fam.FirstChild("WIFE")!.Value);
+        var fam = doc.ByXref["@F00004@"];
+        Assert.Equal("@I00005@", fam.FirstChild("HUSB")!.Value);
+        Assert.Equal("@I00006@", fam.FirstChild("WIFE")!.Value);
         Assert.Equal("@I00002@", fam.FirstChild("CHIL")!.Value);
         // father's and mother's ops cite the same source with the same combined
         // text, so they land on one shared citation node rather than duplicating it
-        Assert.Equal("@S00020@", fam.ChildrenByTag("SOUR").Single().Value);
+        Assert.Equal("@S00002@", fam.ChildrenByTag("SOUR").Single().Value);
 
         var harvey = doc.ByXref["@I00002@"];
-        Assert.Contains("@F00020@", harvey.ChildrenByTag("FAMC").Select(c => c.Value));
+        Assert.Contains("@F00004@", harvey.ChildrenByTag("FAMC").Select(c => c.Value));
         Assert.Contains(harvey.ChildrenByTag("NOTE"), n => n.Value.Contains("1900 census"));
 
-        var george = doc.ByXref["@I00020@"];
+        var george = doc.ByXref["@I00005@"];
         Assert.Equal("George /Test/", george.FirstChild("NAME")!.Value);
-        Assert.Equal("@F00020@", george.ChildrenByTag("FAMS").Single().Value);
+        Assert.Equal("@F00004@", george.ChildrenByTag("FAMS").Single().Value);
 
-        var martha = doc.ByXref["@I00021@"];
+        var martha = doc.ByXref["@I00006@"];
         Assert.Equal("Martha /Test/", martha.FirstChild("NAME")!.Value);
-        Assert.Equal("@F00020@", martha.ChildrenByTag("FAMS").Single().Value);
+        Assert.Equal("@F00004@", martha.ChildrenByTag("FAMS").Single().Value);
     }
 
     [Fact]
@@ -79,16 +95,19 @@ public class ProposalStyleChangesetTests : ApplyTestBase
     {
         WriteBaseFile();
         // seed a duplicate pair descending from Harvey, as ApplyMergeTests does,
-        // standing in for "the same man entered twice"
+        // standing in for "the same man entered twice"; @New1@/@New2@ mint
+        // @F00004@/@I00005@, @New3@/@New4@ mint @F00005@/@I00006@ (person
+        // before family within each op, base fixture's existing max is
+        // @I00004@/@F00003@).
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateChild", "family": "@F00010@", "husb": "@I00002@",
-                "child": { "xref": "@I00010@", "name": "John Lorenzo Dow /Test/", "sex": "M",
+              { "op": "createOrUpdateChild", "family": "@New1@", "husb": "@I00002@",
+                "child": { "xref": "@New2@", "name": "John Lorenzo Dow /Test/", "sex": "M",
                            "facts": [ { "fact": "BIRT", "value": { "date": "14 JUL 1846" },
                                         "citation": { "source": "@S00001@", "page": "a",
                                                       "dataText": "born 1846", "quay": 1 } } ] } },
-              { "op": "createOrUpdateChild", "family": "@F00011@", "husb": "@I00002@",
-                "child": { "xref": "@I00011@", "name": "Lorenzo D. /Test/", "sex": "M",
+              { "op": "createOrUpdateChild", "family": "@New3@", "husb": "@I00002@",
+                "child": { "xref": "@New4@", "name": "Lorenzo D. /Test/", "sex": "M",
                            "facts": [ { "fact": "BIRT", "value": { "date": "1849" },
                                         "citation": { "source": "@S00001@", "page": "b",
                                                       "dataText": "born abt 1849", "quay": 1 } } ] } } ] } ] }
@@ -98,10 +117,10 @@ public class ProposalStyleChangesetTests : ApplyTestBase
 
         Assert.Equal(-1, result.Deltas["INDI"]);
         var doc = ReadDoc();
-        Assert.False(doc.ByXref.ContainsKey("@I00011@"));
+        Assert.False(doc.ByXref.ContainsKey("@I00006@"));
 
         // merge: explicit NAME resolution, BIRT kept from survivor, merge note attached
-        var survivor = doc.ByXref["@I00010@"];
+        var survivor = doc.ByXref["@I00005@"];
         Assert.Equal("John Lorenzo Dow /Test/", survivor.FirstChild("NAME")!.Value);
         Assert.Equal("14 JUL 1846", survivor.FirstChild("BIRT")!.FirstChild("DATE")!.Value);
         Assert.Contains(survivor.ChildrenByTag("NOTE"), n => n.Value.Contains("Merged duplicate"));
@@ -125,9 +144,12 @@ public class ProposalStyleChangesetTests : ApplyTestBase
         Assert.Contains(result.Log, l => l.Contains("item 1: applied"));   // the empty-ops annotation item still logs
         var doc = ReadDoc();
 
+        // @New1@ mints @S00002@ given the base fixture's one existing source.
+        Assert.Equal("@S00002@", result.MintedXrefs["@New1@"]);
+
         // citation consolidated onto BIRT, then the superseded one dropped
         var birt = doc.ByXref["@I00001@"].FirstChild("BIRT")!;
-        Assert.Equal("@S00030@", birt.ChildrenByTag("SOUR").Single().Value);
+        Assert.Equal("@S00002@", birt.ChildrenByTag("SOUR").Single().Value);
 
         Assert.Contains(doc.ByXref["@I00003@"].ChildrenByTag("NOTE"),
             n => n.Value.Contains("Identity anchor for Nellie"));
@@ -143,12 +165,18 @@ public class ProposalStyleChangesetTests : ApplyTestBase
         var result = RunExpectSuccess(ChangesetFixtures.Load("batch-add-family-photos"));
 
         Assert.Equal(3, result.Deltas["OBJE"]);
+        // @New1@/@New2@ mint @M00001@/@M00002@ (the base fixture carries no
+        // OBJE at all); the omitted-xref tintype op is content-addressed,
+        // unaffected by placeholders, and allocates the next free @M...@
+        // once those two already exist: @M00003@.
+        Assert.Equal("@M00001@", result.MintedXrefs["@New1@"]);
+        Assert.Equal("@M00002@", result.MintedXrefs["@New2@"]);
         var doc = ReadDoc();
 
-        // @M00010@ — title, two files; the space-containing path is percent-escaped
+        // @M00001@ — title, two files; the space-containing path is percent-escaped
         // on write, and the composer's bare "photos/..." path gains the GEDCOM 7
         // §2.12-recommended "media/" prefix it omitted (MediaFileRequest.NormalizePath).
-        var wedding = doc.ByXref["@M00010@"];
+        var wedding = doc.ByXref["@M00001@"];
         Assert.Equal("Allen and Edna's wedding, 1902", wedding.FirstChild("TITL")!.Value);
         var files = wedding.ChildrenByTag("FILE").ToList();
         Assert.Equal(2, files.Count);
@@ -158,27 +186,42 @@ public class ProposalStyleChangesetTests : ApplyTestBase
         Assert.Equal("Wedding portrait", files[0].FirstChild("TITL")!.Value);
         Assert.Equal("media/documents/wedding%20program%201902.pdf", files[1].Value);
 
-        // @M00011@ — absolute URL stored verbatim, never escaped, never prefixed
+        // @M00002@ — absolute URL stored verbatim, never escaped, never prefixed
         Assert.Equal("https://example.org/photos/edna-1990.jpg",
-            doc.ByXref["@M00011@"].ChildrenByTag("FILE").Single().Value);
+            doc.ByXref["@M00002@"].ChildrenByTag("FILE").Single().Value);
 
         // omitted xref — content-addressed op allocated the next free @M…@
-        var tintype = doc.ByXref["@M00012@"];
+        var tintype = doc.ByXref["@M00003@"];
         Assert.Equal("media/photos/harvey-tintype.jpg", tintype.ChildrenByTag("FILE").Single().Value);
 
         // portrait attach = first OBJE link on the person
-        Assert.Equal("@M00010@", doc.ByXref["@I00001@"].ChildrenByTag("OBJE").First().Value);
-        Assert.Equal("@M00011@", doc.ByXref["@I00004@"].ChildrenByTag("OBJE").First().Value);
-        Assert.Equal("@M00012@", doc.ByXref["@I00002@"].ChildrenByTag("OBJE").Single().Value);
+        Assert.Equal("@M00001@", doc.ByXref["@I00001@"].ChildrenByTag("OBJE").First().Value);
+        Assert.Equal("@M00002@", doc.ByXref["@I00004@"].ChildrenByTag("OBJE").First().Value);
+        Assert.Equal("@M00003@", doc.ByXref["@I00002@"].ChildrenByTag("OBJE").Single().Value);
 
         // family link carries its per-link title override
         var famLink = doc.ByXref["@F00002@"].ChildrenByTag("OBJE").Single();
-        Assert.Equal("@M00010@", famLink.Value);
+        Assert.Equal("@M00001@", famLink.Value);
         Assert.Equal("Wedding day", famLink.FirstChild("TITL")!.Value);
 
-        // the whole batch is idempotent — a second run changes nothing
+        // The omitted-xref (content-addressed) op is still fully idempotent —
+        // re-submitting just that one op resolves to the same @M00003@ record.
+        var tintypeRerun = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateMedia",
+                "files": [ { "path": "photos/harvey-tintype.jpg", "mediaType": "image/jpeg", "medium": "PHOTO" } ],
+                "attachTo": [ { "person": "@I00002@" } ] } ] } ] }
+            """);
+        Assert.Equal(0, tintypeRerun.Deltas.GetValueOrDefault("OBJE"));
+        Assert.Contains(tintypeRerun.Log, l => l.Contains("no-op (already matches)"));
+
+        // The explicit-placeholder-xref media in newSources is not idempotent
+        // across separate apply invocations (rerun identity is scoped to
+        // person duplicate detection): re-running the whole batch mints a
+        // second wedding photo and a second later-years photo, distinct from
+        // the first run's @M00001@/@M00002@.
         var rerun = RunExpectSuccess(ChangesetFixtures.Load("batch-add-family-photos"));
-        Assert.Equal(0, rerun.Deltas.GetValueOrDefault("OBJE"));
-        Assert.Contains(rerun.Log, l => l.Contains("no-op (already matches)"));
+        Assert.Equal("@M00004@", rerun.MintedXrefs["@New1@"]);
+        Assert.Equal("@M00005@", rerun.MintedXrefs["@New2@"]);
     }
 }

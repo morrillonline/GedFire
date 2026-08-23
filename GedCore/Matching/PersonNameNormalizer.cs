@@ -1,14 +1,12 @@
 using System.Text;
 
-namespace GedFire.Match;
+namespace GedCore.Matching;
 
 // ---------------------------------------------------------------------------
-// Shared name normalization (docs/design/mcp-server.md "Shared normalization").
-// Extracted from the private routine PersonIndexExporter used to own, with
-// one deliberate behavior change: a hyphen is kept as a literal character
-// within a name instead of being collapsed to a token boundary, so a
-// hyphenated surname ("Smith-Jones") stays one token. PersonIndexExporter
-// now delegates here instead of normalizing independently (requirement 1).
+// Shared name normalization, used by both GedCore.Apply's duplicate
+// detection and GedFire.Match.PersonMatcher. A hyphen is kept as a literal
+// character within a name instead of being collapsed to a token boundary,
+// so a hyphenated surname ("Smith-Jones") stays one token.
 // ---------------------------------------------------------------------------
 
 public static class PersonNameNormalizer

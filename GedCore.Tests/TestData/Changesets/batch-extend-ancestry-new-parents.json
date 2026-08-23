@@ -1,8 +1,8 @@
 {
   "proposal": "test-extend-ancestry",
   "newSources": [
-    { "xref": "@S00020@", "ops": [
-      { "op": "createOrUpdateSource", "xref": "@S00020@", "auth": "Test Family Search",
+    { "xref": "@New4@", "ops": [
+      { "op": "createOrUpdateSource", "xref": "@New4@", "auth": "Test Family Search",
         "title": "United States Census, 1900 (Harvey Test household)",
         "url": "https://example.org/ark/1", "accessed": "2026-07-11" } ] }
   ],
@@ -10,14 +10,14 @@
     { "item": 1, "target": "@I00002@ Harvey -> add parents from 1900 census",
       "ops": [
         { "op": "createOrUpdateParent", "person": "@I00002@", "role": "father",
-          "parent": { "xref": "@I00020@", "name": "George /Test/", "sex": "M" },
-          "family": "@F00020@",
-          "citations": [ { "source": "@S00020@", "page": "household 12",
+          "parent": { "xref": "@New1@", "name": "George /Test/", "sex": "M" },
+          "family": "@New2@",
+          "citations": [ { "source": "@New4@", "page": "household 12",
                            "dataText": "Harvey Test's Parents and Siblings: George Test (Father, M); Martha Test (Mother, F)", "quay": 2 } ] },
-        { "op": "createOrUpdateSpouse", "person": "@I00020@",
-          "spouse": { "xref": "@I00021@", "name": "Martha /Test/", "sex": "F" },
-          "family": "@F00020@",
-          "citations": [ { "source": "@S00020@", "page": "household 12",
+        { "op": "createOrUpdateSpouse", "person": "@New1@",
+          "spouse": { "xref": "@New3@", "name": "Martha /Test/", "sex": "F" },
+          "family": "@New2@",
+          "citations": [ { "source": "@New4@", "page": "household 12",
                            "dataText": "Harvey Test's Parents and Siblings: George Test (Father, M); Martha Test (Mother, F)", "quay": 2 } ] },
         { "op": "createOrUpdateNote", "record": "@I00002@",
           "text": "1900 census (S00020) names both of Harvey's parents, extending this line one generation." }

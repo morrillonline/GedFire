@@ -105,13 +105,21 @@ public sealed class MergePersonOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
+        // Survivor could in principle name a record ctx.Known() accepted via
+        // the placeholder plan; resolve defensively even though a genuine
+        // merge target is always pre-existing in practice.
+        string survivorXref = state.Resolve(Survivor);
         if (!state.Doc.ByXref.TryGetValue(Duplicate, out var duplicate))
         {
             log.Add($"{Context}: no-op (duplicate already gone)");
             return;
         }
-        var survivor = state.Doc.ByXref[Survivor];
-        var resolved = Facts.ToDictionary(f => f.Fact);
+        var survivor = state.Doc.ByXref[survivorXref];
+        // A fact resolution's citation may name a source another op in this
+        // same changeset just created via placeholder.
+        var resolved = Facts
+            .Select(f => f with { Citations = state.ResolveCitations(f.Citations) })
+            .ToDictionary(f => f.Fact);
         var changes = new List<string>();
 
         foreach (var tag in duplicate.Children.Select(c => c.Tag).Distinct().ToList())
@@ -148,11 +156,11 @@ public sealed class MergePersonOp : ChangeOp
                 state.Touch(survivor);
             }
 
-        int redirected = RedirectPointers(state, Duplicate, Survivor);
+        int redirected = RedirectPointers(state, Duplicate, survivorXref);
         if (redirected > 0)
         {
-            DedupeChilLinks(state.Doc, Survivor);
-            changes.Add($"{redirected} pointer(s) redirected {Duplicate} -> {Survivor}");
+            DedupeChilLinks(state.Doc, survivorXref);
+            changes.Add($"{redirected} pointer(s) redirected {Duplicate} -> {survivorXref}");
         }
 
         state.RemoveRecord(duplicate);

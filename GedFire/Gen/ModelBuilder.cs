@@ -260,14 +260,13 @@ public static class ModelBuilder
 
         static void SetFullname(GedIndividual indi, string nameValue)
         {
-            int slash1 = nameValue.IndexOf('/');
-            if (slash1 >= 0)
+            // GedNamePayload.Split (GedCore) owns the slash tokenizing; the
+            // no-slash fallback below (whole value as last name) is this
+            // caller's own longstanding policy choice, unchanged.
+            var (fm, ln) = GedNamePayload.Split(nameValue);
+            if (ln is not null)
             {
-                string fm = nameValue[..slash1].Trim();
-                string rest = nameValue[(slash1 + 1)..];
-                int slash2 = rest.IndexOf('/');
-                string ln = slash2 >= 0 ? rest[..slash2].Trim() : rest.Trim();
-                indi.LastNameRaw = ln.Length == 0 ? "" : ln;
+                indi.LastNameRaw = ln;
                 int sp = fm.IndexOf(' ');
                 if (sp < 0) { indi.FirstName = fm; indi.MiddleName = ""; }
                 else { indi.FirstName = fm[..sp].Trim(); indi.MiddleName = fm[(sp + 1)..].Trim(); }

@@ -1,4 +1,5 @@
 using System.Text;
+using GedCore.Matching;
 using GedFire.Match;
 
 namespace GedCore.Tests;
@@ -16,7 +17,7 @@ public class PersonMatcherTests
     [InlineData("", "", "", true)]
     [InlineData("   ", "", "", true)]
     // A hyphenated surname stays one token: it is never mistaken for a
-    // separate given-name token (docs/design/mcp-server.md query splitting).
+    // separate given-name token.
     [InlineData("Smith-Jones", "SMITH-JONES", "SMITH-JONES", true)]
     [InlineData("Mary Smith-Jones", "SMITH-JONES", "MARY", false)]
     public void SplitQuery_MatchesSpec(string query, string surname, string given, bool oneToken)
@@ -31,9 +32,8 @@ public class PersonMatcherTests
     // Fixtures
     // -------------------------------------------------------------------
 
-    // Mirrors docs/design/mcp-server.md's own worked example: two Frederick
-    // Morrills distinguishable only by parents/spouse, so an exact-name
-    // query is a genuine tie that only a hint can break.
+    // Two Frederick Morrills distinguishable only by parents/spouse, so an
+    // exact-name query is a genuine tie that only a hint can break.
     const string MorrillGed = """
         0 @I1@ INDI
         1 NAME Frederick /Morrill/
@@ -550,8 +550,152 @@ public class PersonMatcherTests
         Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
         Assert.Equal(8, outcome.Matches.Count);
         Assert.True(outcome.Truncated);
+        Assert.Equal(10, outcome.TotalMatches);
         Assert.Equal(
             ["@I01@", "@I02@", "@I03@", "@I04@", "@I05@", "@I06@", "@I07@", "@I08@"],
             outcome.Matches.Select(XrefOf));
+    }
+
+    // -------------------------------------------------------------------
+    // maxResults: the recall set, its classification, and TotalMatches
+    // never move; only how much of it comes back does.
+    // -------------------------------------------------------------------
+
+    static string TenJaneDoesGed()
+    {
+        var ged = new StringBuilder();
+        for (int i = 1; i <= 10; i++)
+        {
+            ged.AppendLine($"0 @I{i:D2}@ INDI");
+            ged.AppendLine("1 NAME Jane /Doe/");
+            ged.AppendLine("1 SEX F");
+        }
+        return ged.ToString();
+    }
+
+    [Fact]
+    public void MaxResults_Null_ReturnsWholeRecallSetUncapped()
+    {
+        var outcome = Matcher().Match(IndexOf(TenJaneDoesGed()), "Jane Doe", maxResults: null);
+
+        Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
+        Assert.Equal(10, outcome.Matches.Count);
+        Assert.Equal(10, outcome.TotalMatches);
+        Assert.False(outcome.Truncated);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(10)]
+    public void MaxResults_Integer_CapsListWithoutChangingTotalOrClassification(int cap)
+    {
+        var outcome = Matcher().Match(IndexOf(TenJaneDoesGed()), "Jane Doe", maxResults: cap);
+
+        Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
+        Assert.Equal(Math.Min(cap, 10), outcome.Matches.Count);
+        Assert.Equal(10, outcome.TotalMatches);
+        Assert.Equal(cap < 10, outcome.Truncated);
+    }
+
+    [Fact]
+    public void MaxResults_Integer_LargerThanRecallSet_IsNotTruncated()
+    {
+        var outcome = Matcher().Match(IndexOf(TenJaneDoesGed()), "Jane Doe", maxResults: 100);
+
+        Assert.Equal(10, outcome.Matches.Count);
+        Assert.Equal(10, outcome.TotalMatches);
+        Assert.False(outcome.Truncated);
+    }
+
+    [Fact]
+    public void MaxResults_One_OnADecisiveSingleWinner_StillClassifiesAsSingle()
+    {
+        // I1 has a hint-earned decisive win over the other Fredericks, but
+        // more than one person is in the recall set: capping to 1 must not
+        // change matchType away from Single, and TotalMatches must still
+        // report the full recall set the classifier actually saw.
+        var outcome = Matcher().Match(IndexOf(MorrillGedWithRivalSpouse), "Frederick Morrill",
+            new MatchHints(BirthYear: null, Place: null, SpouseName: "Sarah Blake", ParentName: null),
+            maxResults: 1);
+
+        Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
+        Assert.Single(outcome.Matches);
+        Assert.Equal("@I1@", outcome.Matches[0].Individual.Xref);
+        Assert.Equal(2, outcome.TotalMatches);
+        Assert.True(outcome.Truncated);
+    }
+
+    [Fact]
+    public void MaxResults_One_OnUnresolvedCandidates_ReturnsOneCandidateButStaysCandidates()
+    {
+        // Design's own example: maxResults: 1 can return one scored
+        // candidate while matchType stays "candidates", totalMatches is
+        // greater than 1, and truncated is true -- list length never
+        // fabricates a confident classification.
+        var outcome = Matcher().Match(IndexOf(TenJaneDoesGed()), "Jane Doe", maxResults: 1);
+
+        Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
+        Assert.Single(outcome.Matches);
+        Assert.Equal(10, outcome.TotalMatches);
+        Assert.True(outcome.Truncated);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void MaxResults_ZeroOrNegative_Throws(int badCap)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => Matcher().Match(IndexOf(TenJaneDoesGed()), "Jane Doe", maxResults: badCap));
+    }
+
+    [Fact]
+    public void MaxResults_Omitted_DefaultsToEight()
+    {
+        // No maxResults argument at all behaves exactly like the historical
+        // fixed-8 cap (mirrors CandidateList_CapsAtEightAndSetsTruncated,
+        // but calling the 3-arg overload to pin down the default itself).
+        var outcome = Matcher().Match(IndexOf(TenJaneDoesGed()), "Jane Doe");
+
+        Assert.Equal(8, outcome.Matches.Count);
+        Assert.Equal(10, outcome.TotalMatches);
+        Assert.True(outcome.Truncated);
+    }
+
+    [Fact]
+    public void TotalMatches_ForNoMatch_IsZero()
+    {
+        var outcome = Matcher().Match(IndexOf(MorrillGed), "Zzqxvw Bbdfgh");
+        Assert.Equal(PersonMatchType.None, outcome.PersonMatchType);
+        Assert.Equal(0, outcome.TotalMatches);
+        Assert.False(outcome.Truncated);
+    }
+
+    [Fact]
+    public void TotalMatches_ForSingle_CanExceedOne_WhenADecisiveWinnerBeatsWeakerAlternatives()
+    {
+        var outcome = Matcher().Match(IndexOf(MorrillGedWithRivalSpouse), "Frederick Morrill",
+            new MatchHints(BirthYear: null, Place: null, SpouseName: "Sarah Blake", ParentName: null));
+
+        Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
+        Assert.Equal(2, outcome.TotalMatches);
+        // Matches now consistently carries the capped recall set, including
+        // the weaker alternative, not just the winner.
+        Assert.Equal(2, outcome.Matches.Count);
+        Assert.Equal(["@I1@", "@I5@"], outcome.Matches.Select(XrefOf));
+    }
+
+    [Fact]
+    public void Suggestion_CarriesTheNameOnlyScoreThatPlacedIt()
+    {
+        // Exact surname (35) + zero-overlap given name (0) over a 60-point
+        // two-token weight = 58.333...: the same PersonMatcherTests fixture
+        // as SurnameOnlyMatch_LandsInSuggestionBand_WithCloseSpellingReason.
+        var outcome = Matcher().Match(IndexOf(SmithGed), "Xvqz Smith");
+
+        var suggestion = Assert.Single(outcome.Suggestions);
+        Assert.Equal(35.0 * 100.0 / 60.0, suggestion.Score, 6);
+        Assert.InRange(suggestion.Score, 55.0, 69.0);
     }
 }

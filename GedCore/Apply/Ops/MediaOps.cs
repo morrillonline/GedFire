@@ -42,6 +42,8 @@ public sealed class CreateOrUpdateMediaOp : ChangeOp
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
         if (Xref is not null && OpChecks.RejectVoid(Kind, Xref, errors)) return;
+        if (Xref is not null && Placeholder.RejectRealRecordCollision(ctx, Xref) is string collision)
+        { errors.Add($"{Context}: {collision}"); return; }
 
         if (Files.Count == 0)
             errors.Add($"{Context}: files required (a media object needs at least one file)");
@@ -59,7 +61,34 @@ public sealed class CreateOrUpdateMediaOp : ChangeOp
         if (existing is not null && existing.Tag != "OBJE")
             errors.Add($"{Context}: not an OBJE record");
         else if (existing is null)
-            ctx.Planned.Add(Xref ?? MediaResolve.NextFreeXref(ctx));
+        {
+            // Creating a new media object with an explicit xref requires a
+            // placeholder, alongside the omit-xref/key-by-files-list path.
+            if (Xref is not null)
+            {
+                if (!ctx.Planned.Contains(Xref))
+                {
+                    if (!Placeholder.IsPlaceholder(Xref))
+                        errors.Add($"{Context}: not a placeholder — an explicit create xref requires " +
+                                   "@New<token>@ (apply mints the real identity), or omit xref to key by files");
+                    else
+                    {
+                        var registerError = ctx.Placeholders.Register(Xref, PlaceholderKind.Media);
+                        if (registerError is not null) errors.Add($"{Context}: {registerError}");
+                    }
+                }
+                else if (Placeholder.IsPlaceholder(Xref) &&
+                         (!ctx.Placeholders.TryGetKind(Xref, out var kind) || kind != PlaceholderKind.Media))
+                {
+                    errors.Add($"{Context}: registered as a different kind of placeholder");
+                }
+                ctx.Planned.Add(Xref);
+            }
+            else
+            {
+                ctx.Planned.Add(MediaResolve.NextFreeXref(ctx));
+            }
+        }
 
         foreach (var attach in AttachTo)
             ValidateAttach(ctx, attach, errors);
@@ -76,7 +105,18 @@ public sealed class CreateOrUpdateMediaOp : ChangeOp
         if (OpChecks.RejectVoid(Context, target, errors)) return;
         if (!ctx.Known(target)) { errors.Add($"{Context}: attachTo target {target} not in file"); return; }
         var record = ctx.Existing(target);
-        if (record is null) return;   // planned by an earlier op this run; exists by apply time
+        if (record is null)
+        {
+            // Planned by an earlier op this run; exists by apply time. If it's
+            // a placeholder, its registered kind must still match this link.
+            if (Placeholder.IsPlaceholder(target))
+            {
+                var expectedKind = attach.IsPerson ? PlaceholderKind.Person : PlaceholderKind.Family;
+                if (ctx.Placeholders.TryGetKind(target, out var kind) && kind != expectedKind)
+                    errors.Add($"{Context}: attachTo target {target} is registered as a different kind of placeholder");
+            }
+            return;
+        }
         string expectedTag = attach.IsPerson ? "INDI" : "FAM";
         if (record.Tag != expectedTag)
             errors.Add($"{Context}: attachTo target {target} is not a{(attach.IsPerson ? "n INDI" : " FAM")} record");
@@ -85,19 +125,22 @@ public sealed class CreateOrUpdateMediaOp : ChangeOp
     internal override void Apply(ApplyState state, List<string> log)
     {
         var ctx = new ResolutionContext(state.Doc);
-        var existing = Xref is not null
-            ? state.Doc.ByXref.GetValueOrDefault(Xref)
+        string? xref = state.ResolveOptional(Xref);
+        var existing = xref is not null
+            ? state.Doc.ByXref.GetValueOrDefault(xref)
             : MediaResolve.FindByFiles(ctx, Files);
 
         GedRecord media;
         if (existing is null)
         {
-            string xref = Xref ?? MediaResolve.NextFreeXref(ctx);
-            media = new GedRecord(0, xref, "OBJE", "");
+            string realXref = xref is not null
+                ? state.MintIfPlaceholder("M", xref)
+                : MediaResolve.NextFreeXref(ctx);
+            media = new GedRecord(0, realXref, "OBJE", "");
             if (Title is not null) NodeBuilder.Attach(media, NodeBuilder.NewNode(1, "TITL", Title));
             foreach (var file in Files) NodeBuilder.Attach(media, FileNode(file));
             state.AddRecord("OBJE", media);
-            log.Add($"{Kind} {xref}: created ({Files.Count} file(s))");
+            log.Add($"{Kind} {realXref}: created ({Files.Count} file(s))");
         }
         else
         {
@@ -112,7 +155,7 @@ public sealed class CreateOrUpdateMediaOp : ChangeOp
         }
 
         foreach (var attach in AttachTo)
-            AttachLink(state, state.Doc.ByXref[attach.Xref], media, attach, log);
+            AttachLink(state, state.Doc.ByXref[state.Resolve(attach.Xref)], media, attach, log);
     }
 
     private static GedRecord FileNode(MediaFileRequest file)
@@ -288,8 +331,6 @@ public sealed class DeleteMediaOp : ChangeOp
 /// </summary>
 internal static class MediaResolve
 {
-    private static readonly Regex MediaXrefNumber = new(@"^@M(\d+)@$", RegexOptions.Compiled);
-
     /// <summary>The existing OBJE record whose file paths (unescaped) exactly match the requested set, if any.</summary>
     public static GedRecord? FindByFiles(ResolutionContext ctx, IReadOnlyList<MediaFileRequest> files)
     {
@@ -299,20 +340,13 @@ internal static class MediaResolve
     }
 
     /// <summary>
-    /// The next unused <c>@M…@</c> xref, 5-digit zero-padded, accounting for
-    /// both existing OBJE records and xrefs earlier ops in this run plan to
-    /// create (<see cref="ResolutionContext.Planned"/>) — so two omitted-xref
-    /// media ops in one changeset don't collide.
+    /// The next unused <c>@M…@</c> xref (<see cref="XrefMinter"/>'s width-aware
+    /// allocation rule), accounting for both existing OBJE records and xrefs
+    /// earlier ops in this run plan to create (<see cref="ResolutionContext.Planned"/>)
+    /// — so two omitted-xref media ops in one changeset don't collide. This is
+    /// the content-addressed path: omitting xref keys the operation off its
+    /// files list, not off a placeholder.
     /// </summary>
-    public static string NextFreeXref(ResolutionContext ctx)
-    {
-        int max = ctx.RecordsOfType("OBJE").Select(r => r.Xref ?? "")
-            .Concat(ctx.Planned)
-            .Select(x => MediaXrefNumber.Match(x))
-            .Where(m => m.Success)
-            .Select(m => int.Parse(m.Groups[1].Value))
-            .DefaultIfEmpty(0)
-            .Max();
-        return $"@M{(max + 1).ToString().PadLeft(5, '0')}@";
-    }
+    public static string NextFreeXref(ResolutionContext ctx) =>
+        XrefMinter.MintNext(ctx.RecordsOfType("OBJE").Select(r => r.Xref ?? "").Concat(ctx.Planned), "M");
 }

@@ -2,9 +2,7 @@ namespace GedFire.TargetSelection;
 
 /// <summary>
 /// One self-contained research target — enough detail that an agent can
-/// immediately start work with no further context (docs/design/target-
-/// selection.md, "Problem" and the 2026-08-09 wanted.json schema
-/// revision: cardType/difficulty/score added, gap/goal/queries dropped).
+/// immediately start work with no further context.
 /// Exactly one of <see cref="KnownParent"/>, <see cref="SpouseFamily"/>,
 /// <see cref="Enrichment"/> is populated, matching <see cref="CardType"/>.
 /// </summary>

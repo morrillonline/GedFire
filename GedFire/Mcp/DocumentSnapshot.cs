@@ -4,8 +4,7 @@ using GedFire.Match;
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// A construct-once carrier for one resident-document snapshot
-// (docs/design/mcp-server.md "Resident document and reload policy"): the
+// A construct-once carrier for one resident-document snapshot: the
 // GedModel, the MatchIndex built from it, the document's declared GEDCOM
 // version, and the source file's UTC last-write time and byte length used
 // for the staleness check. No behavior beyond construction — DocumentSession

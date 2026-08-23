@@ -1,9 +1,8 @@
 namespace GedFire.TargetSelection;
 
 /// <summary>
-/// The fixed set of detectable gap types (docs/design/target-selection.md,
-/// "Card type — determines point value"). Each carries its own flat
-/// per-unit point value; card types no longer group into tiers.
+/// The fixed set of detectable gap types. Each carries its own flat
+/// per-unit point value; card types do not group into tiers.
 /// </summary>
 public enum CardType
 {

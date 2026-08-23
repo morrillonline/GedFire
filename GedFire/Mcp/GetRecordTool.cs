@@ -9,12 +9,11 @@ using ModelContextProtocol.Server;
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// The get_record MCP tool (docs/design/mcp-server.md "The third tool:
-// get_record"). Declares the tool's metadata and schemas verbatim from that
-// addendum; trims and validates xref; obtains the snapshot from
-// DocumentSession; looks the xref up across Individuals/Families/Sources and
-// maps whichever resolves. No matching or scoring logic — there is none to
-// have, only a dictionary lookup.
+// The get_record MCP tool. Declares the tool's metadata and schemas; trims
+// and validates xref; obtains the snapshot from DocumentSession; looks the
+// xref up across Individuals/Families/Sources and maps whichever resolves.
+// No matching or scoring logic — there is none to have, only a dictionary
+// lookup.
 // ---------------------------------------------------------------------------
 
 public sealed class GetRecordTool
@@ -34,7 +33,6 @@ public sealed class GetRecordTool
         "does not make network requests); false means the file could not be located, so do not guess at where " +
         "it might be.";
 
-    // Verbatim from docs/design/mcp-server.md "The third tool: get_record" — Input.
     public const string InputSchemaJson = """
         {
           "type": "object",
@@ -51,7 +49,6 @@ public sealed class GetRecordTool
         }
         """;
 
-    // Verbatim from docs/design/mcp-server.md "The third tool: get_record" — Output.
     public const string OutputSchemaJson = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -425,9 +422,8 @@ public sealed class GetRecordTool
         [.. link.Target.Files.Select(MapMediaFile)]);
 
     // Resolves a raw GEDCOM FILE payload the same way SiteGenerator's
-    // ResolveMediaSrc does for HTML generation (docs/design/mcp-server.md
-    // "The third tool: get_record" — the paragraph on MediaFile.resolved):
-    // an absolute URL passes through unchanged; a relative path becomes an
+    // ResolveMediaSrc does for HTML generation: an absolute URL passes
+    // through unchanged; a relative path becomes an
     // absolute local path when it resolves to an existing file under
     // _mediaDir without escaping it; anything else keeps the raw payload,
     // flagged unresolved rather than left looking usable.

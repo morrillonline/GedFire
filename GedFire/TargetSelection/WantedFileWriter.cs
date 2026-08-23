@@ -7,9 +7,7 @@ namespace GedFire.TargetSelection;
 
 // ---------------------------------------------------------------------------
 // Serializes a target-selection draw to wanted.json: enough per target that
-// a research assistant can start work without further context. Replaces the
-// external study script's gap/goal/queries shape with cardType/difficulty/
-// score (docs/design/target-selection.md).
+// a research assistant can start work without further context.
 // ---------------------------------------------------------------------------
 
 public static class WantedFileWriter

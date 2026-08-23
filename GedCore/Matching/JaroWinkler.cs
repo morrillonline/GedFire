@@ -1,10 +1,9 @@
-namespace GedFire.Match;
+namespace GedCore.Matching;
 
 // ---------------------------------------------------------------------------
-// Jaro-Winkler string similarity (docs/design/mcp-server.md "Name similarity").
-// Standard Jaro similarity plus the Winkler common-prefix bonus. Static, one
-// public method, no dependencies — operates on whatever strings it is given;
-// callers normalize first.
+// Jaro-Winkler string similarity: standard Jaro similarity plus the
+// Winkler common-prefix bonus. Static, one public method, no dependencies —
+// operates on whatever strings it is given; callers normalize first.
 // ---------------------------------------------------------------------------
 
 public static class JaroWinkler

@@ -1,4 +1,4 @@
-using GedFire.Match;
+using GedCore.Matching;
 
 namespace GedCore.Tests;
 

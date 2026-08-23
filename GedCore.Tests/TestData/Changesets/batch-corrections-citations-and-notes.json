@@ -1,8 +1,8 @@
 {
   "proposal": "test-corrections",
   "newSources": [
-    { "xref": "@S00030@", "ops": [
-      { "op": "createOrUpdateSource", "xref": "@S00030@", "auth": "Test Vital Records",
+    { "xref": "@New1@", "ops": [
+      { "op": "createOrUpdateSource", "xref": "@New1@", "auth": "Test Vital Records",
         "title": "Birth record for Allen Test, 1928",
         "url": "https://example.org/ark/2", "accessed": "2026-07-12" } ] }
   ],
@@ -14,7 +14,7 @@
         { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
           "citations": [
             { "source": "@S00001@", "page": "p. 1", "dataText": "born 1928", "quay": 1 },
-            { "source": "@S00030@", "page": "certificate 4",
+            { "source": "@New1@", "page": "certificate 4",
               "dataText": "Birth of Allen Test, 1928, Minnesota", "quay": 2 }
           ] },
         { "op": "createOrUpdateNote", "record": "@I00003@",

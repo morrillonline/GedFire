@@ -30,11 +30,29 @@ public sealed class CreateOrUpdateSourceOp : ChangeOp
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
         if (OpChecks.RejectVoid(Kind, Xref, errors)) return;
+        if (Placeholder.RejectRealRecordCollision(ctx, Xref) is string collision)
+        { errors.Add($"{Kind} {Xref}: {collision}"); return; }
         var existing = ctx.Existing(Xref);
         if (existing is null)
         {
-            if (Title is null && !ctx.Planned.Contains(Xref))
-                errors.Add($"{Kind} {Xref}: title required to create a source");
+            if (!ctx.Planned.Contains(Xref))
+            {
+                if (Title is null)
+                    errors.Add($"{Kind} {Xref}: title required to create a source");
+                if (!Placeholder.IsPlaceholder(Xref))
+                    errors.Add($"{Kind} {Xref}: not a placeholder — creating a new source requires an " +
+                               "@New<token>@ xref (apply mints the real identity), not a caller-chosen one");
+                else
+                {
+                    var registerError = ctx.Placeholders.Register(Xref, PlaceholderKind.Source);
+                    if (registerError is not null) errors.Add($"{Kind} {Xref}: {registerError}");
+                }
+            }
+            else if (Placeholder.IsPlaceholder(Xref) &&
+                     (!ctx.Placeholders.TryGetKind(Xref, out var kind) || kind != PlaceholderKind.Source))
+            {
+                errors.Add($"{Kind} {Xref}: registered as a different kind of placeholder");
+            }
             ctx.Planned.Add(Xref);
         }
         else if (existing.Tag != "SOUR")
@@ -43,15 +61,17 @@ public sealed class CreateOrUpdateSourceOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var existing = state.Doc.ByXref.GetValueOrDefault(Xref);
+        string xref = state.Resolve(Xref);
+        var existing = state.Doc.ByXref.GetValueOrDefault(xref);
         if (existing is null)
         {
-            var rec = new GedRecord(0, Xref, "SOUR", "");
+            string realXref = state.MintIfPlaceholder("S", xref);
+            var rec = new GedRecord(0, realXref, "SOUR", "");
             if (Auth is not null) NodeBuilder.Attach(rec, NodeBuilder.NewNode(1, "AUTH", Auth));
             NodeBuilder.Attach(rec, NodeBuilder.NewNode(1, "TITL", Title!));
             NodeBuilder.Attach(rec, NodeBuilder.NewNode(1, "NOTE", ComposedNote(Title!)));
             state.AddRecord("SOUR", rec);
-            log.Add($"{Kind} {Xref}: created");
+            log.Add($"{Kind} {realXref}: created");
             return;
         }
 
@@ -68,8 +88,8 @@ public sealed class CreateOrUpdateSourceOp : ChangeOp
 
         if (changes.Count > 0) { state.Mutated(); state.Touch(existing); }
         log.Add(changes.Count > 0
-            ? $"{Kind} {Xref}: updated ({string.Join("; ", changes)})"
-            : $"{Kind} {Xref}: no-op (already matches)");
+            ? $"{Kind} {xref}: updated ({string.Join("; ", changes)})"
+            : $"{Kind} {xref}: no-op (already matches)");
     }
 
     private string ComposedNote(string title)

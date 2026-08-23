@@ -14,7 +14,8 @@ supports. It can then generate a static family-page site from the result.
 agent research -> JSON proposal -> your review -> verified GEDCOM -> static HTML
 ```
 
-Everything runs on local files. No family data leaves your machine.
+GedFire works only with local files and makes no network requests. Your chosen
+AI client controls where tool results are processed.
 
 Why not just let the agent edit the file? GEDCOM looks like plain text, but
 the level hierarchy, cross-record pointers, and continuation rules are easy to
@@ -31,30 +32,110 @@ hover-popover footnotes in the HTML.*
 
 ## MCP server
 
-GedFire also runs as a Model Context Protocol server, so an MCP-compatible
-agent (Claude Desktop, Claude Code, and similar) can query your GEDCOM
-directly, in conversation, instead of shelling out to the CLI:
+GedFire also runs as a Model Context Protocol server, so clients including
+Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, and Codex can query
+your GEDCOM directly, in conversation, instead of shelling out to the CLI:
 
 ```powershell
 gedfire mcp --input family.ged
 ```
+
+Install the [global .NET tool](#install-as-a-net-tool) before configuring a
+client. The command above starts a long-running stdio server, so waiting
+silently for a client connection is normal.
+
+Most MCP clients accept the same local stdio server entry. Add this block to
+the client's MCP configuration, replacing the GEDCOM path with an absolute
+path:
+
+```json
+{
+  "mcpServers": {
+    "gedfire": {
+      "command": "gedfire",
+      "args": [
+        "mcp",
+        "--input",
+        "/absolute/path/to/family.ged"
+      ]
+    }
+  }
+}
+```
+
+Use that `mcpServers` entry in the location your client supports:
+
+| Client | Configuration |
+|---|---|
+| Claude Desktop | Open **Settings → Developer → Edit Config** and add it to `claude_desktop_config.json`. |
+| Claude Code | Add it to `.mcp.json` in the project root, or run `claude mcp add --scope project --transport stdio gedfire -- gedfire mcp --input <absolute-path>`. |
+| Cursor | Add it to `.cursor/mcp.json` for the project or the client's global `mcp.json`. |
+| Windsurf | Add it to `~/.codeium/windsurf/mcp_config.json`. |
+| Gemini CLI | Add it to `.gemini/settings.json` for the project or `~/.gemini/settings.json`. |
+
+Codex uses TOML instead of the JSON wrapper above. Add this to
+`.codex/config.toml` in the project or `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.gedfire]
+command = "gedfire"
+args = ["mcp", "--input", "/absolute/path/to/family.ged"]
+```
+
+On Windows, JSON paths use escaped backslashes such as
+`C:\\Users\\me\\family.ged`; forward slashes also work. The `gedfire`
+command must be available on the environment `PATH` inherited by the client,
+or `command` must contain the absolute path of the executable. GedFire needs
+no environment variables, API keys, or other credentials.
+
+Restart or reload the client after changing its configuration, approve the
+local server if prompted, and confirm that it discovers `find_person`,
+`get_document_stats`, and `get_record`.
+
+As a smoke test, ask "How many people and families are in this file?" The
+client should call `get_document_stats` and report both counts.
 
 The server binds to one document over stdio and exposes three read-only
 tools:
 
 | Tool | What it does |
 |---|---|
-| `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to a person's xref, family handoff identifiers, and disambiguation candidates when more than one plausible match exists. |
+| `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to scored candidates, a confident match when one exists, and family handoff identifiers. Set `maxResults` to a positive integer (default `8`) or `"all"` to inspect the complete recall set without changing the matcher's confidence decision. |
 | `get_document_stats` | Report person/family counts and the declared GEDCOM version, for a quick orientation before other work. |
 | `get_record` | Fetch the full detail of a specific person, family, or source by xref. |
+
+For example, an MCP client can call `find_person` with:
+
+```json
+{
+  "query": "Frederick Morrill",
+  "hints": { "birthYear": 1841, "place": "New Hampshire" },
+  "maxResults": "all"
+}
+```
+
+Every result has the same top-level fields: `matchType`,
+`confidentMatchXref`, `confidentMatchScore`, `person`, `candidates`,
+`suggestions`, `totalMatches`, and `truncated`. Candidates and suggestions
+always include `matchScore`. Scores rank evidence within this matcher; they
+are not statistical probabilities. Use `matchType` and
+`confidentMatchXref` to decide whether the lookup resolved one person.
+`maxResults` changes only the returned comparison-list length, never recall,
+ranking, or confidence classification.
 
 No tool in this release writes to the file. An agent that finds something
 worth adding still produces a JSON changeset for you to review — the same
 `apply` workflow described below, not a second, unreviewed path to your
 data. GedFire itself makes no network requests and sends no telemetry; the
 MCP client you choose is responsible for what it does with tool results.
-See [`docs/design/mcp-server.md`](docs/design/mcp-server.md) for the full
-design, including the matching algorithm behind `find_person`.
+Every returned xref belongs to the one GEDCOM bound by `--input`; do not
+reuse it against another file.
+
+If the server does not start, run `gedfire --version` in a new terminal to
+confirm that the installed command is available, then verify the input path
+exists. Check the client's MCP status or server log for startup errors. An
+absolute executable path in `command` avoids `PATH` differences between a
+terminal and a desktop application.
 
 ## Why should I use GedFire?
 
@@ -129,8 +210,8 @@ validation OK (3 ops, items 1,2)
 The real apply reports each approved operation and verifies the written file:
 
 ```text
-applied: createOrUpdateSource @S3@: created
-applied: createOrUpdateVital DEAT on @I2@: updated (cited @S3@)
+applied: createOrUpdateSource @S00003@: created
+applied: createOrUpdateVital DEAT on @I2@: updated (cited @S00003@)
 applied: item 1: applied (@I2@ Mercy Whitfield -> cite her death, currently uncited)
 ...
 verify OK: round-trip byte-stable, pointers resolve, deltas {SOUR +1}
@@ -144,6 +225,14 @@ records, places, and sources are entirely fictional.
 - `--dry-run` validates selected items without touching the GEDCOM.
 - You can apply all numbered items or just the ones you accept.
 - If any operation fails validation, nothing is written.
+- A path-based `apply` holds an exclusive file lock from its initial read
+  through validation and verified write, preventing two GedFire writers from
+  racing to allocate the same record identity.
+- Before creating a person, validation uses the same identity matcher as
+  `find_person` and rejects a high-confidence duplicate. Creating families,
+  sources, and media does not use person duplicate detection.
+- Multiple marriages between the same people are allowed, but creating a
+  second marriage to the same person on the same exact date is rejected.
 - After a successful write, the file is reparsed and checked: the round trip
   must be byte-stable, pointers must resolve, and record counts must change by
   exactly the expected amounts.
@@ -159,8 +248,8 @@ a source and a numbered claim in JSON:
 {
   "proposal": "mercy-whitfield-death-record",
   "newSources": [
-    { "xref": "@S3@", "ops": [
-      { "op": "createOrUpdateSource", "xref": "@S3@",
+    { "xref": "@NewSource1@", "ops": [
+      { "op": "createOrUpdateSource", "xref": "@NewSource1@",
         "auth": "New Hampshire Bureau of Vital Records (fictional)",
         "title": "Death certificate, Mercy (Whitfield) Ash, 1870",
         "accessed": "2026-07-22" } ] }
@@ -171,16 +260,50 @@ a source and a numbered claim in JSON:
       "ops": [
         { "op": "createOrUpdateVital", "record": "@I2@", "fact": "DEAT",
           "value": { "date": "19 JAN 1870", "place": "Salisbury, Hartwell County, New Hampshire" },
-          "citation": { "source": "@S3@", "page": "cert. 1870-0114",
+          "citation": { "source": "@NewSource1@", "page": "cert. 1870-0114",
                         "dataText": "Mercy Ash, widow of Nathaniel, died 19 Jan 1870, aged 75",
                         "quay": 2 } } ] }
   ]
 }
 ```
 
+New records use reserved `@New<token>@` placeholders rather than
+caller-selected GEDCOM xrefs. The token can contain letters, digits, and
+underscores. Its first creating operation fixes the record kind, and every
+later use of that placeholder in the changeset resolves to the same real
+xref. Here, `apply` allocates `@S00003@` for `@NewSource1@`, creates the
+source once, and resolves the citation to it. Library callers receive the
+complete placeholder-to-xref map in `ApplyResult.MintedXrefs`; the CLI names
+the minted xrefs in its operation log.
+
+Creating a new person is additionally checked against existing and other
+planned people using the `find_person` matcher. A high-confidence match is a
+validation error, so an already-applied person-creation proposal cannot
+silently create another copy on retry. Ambiguous candidates do not block a
+reviewed creation.
+
 The complete demo proposal adds a second item as well. More examples covering
 relationships, notes, media, deletion, and person merges live in
 [`GedCore.Tests/TestData/Changesets`](GedCore.Tests/TestData/Changesets).
+
+### Date arithmetic
+
+`date-calc` performs genealogical calendar arithmetic without reading a
+GEDCOM file:
+
+```powershell
+gedfire date-calc --op normalize --date "11 FEB 1691/2"
+gedfire date-calc --op add --date "27 SEP 1777" --age "63y 4m 2d"
+gedfire date-calc --op sub --date "29 JAN 1841" --age "63y 4m 2d"
+gedfire date-calc --op diff --from "27 SEP 1777" --to "29 JAN 1841"
+```
+
+The commands print `11 FEB 1692`, `29 JAN 1841`, `27 SEP 1777`, and
+`63y 4m 2d`, respectively. Arithmetic requires exact Gregorian dates;
+qualified, partial, BCE, and non-Gregorian dates are rejected rather than
+having uncertainty invented or discarded. GEDCOM reading, writing, and HTML
+generation continue to preserve original date text such as `1860`, `BEF
+1860`, and dual dates.
 
 ## Command reference
 
@@ -194,6 +317,8 @@ relationships, notes, media, deletion, and person merges live in
 | `generate` | Generate static family-page HTML, with optional media staging. |
 | `export-index` | Export a JSON person-name index. |
 | `select-targets` | Detect research gaps for given surnames, score them, and draw a self-contained `wanted.json` pack. |
+| `date-calc` | Normalize dual-dated years, add or subtract a genealogical age, or calculate elapsed years/months/days. |
+| `mcp` | Start the read-only stdio MCP server bound to one GEDCOM document. |
 | `pack` | Create a GEDZIP archive from GEDCOM and referenced media. |
 | `unpack` | Extract a GEDZIP archive. |
 

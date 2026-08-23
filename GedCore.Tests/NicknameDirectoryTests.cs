@@ -1,5 +1,5 @@
 using System.Text;
-using GedFire.Match;
+using GedCore.Matching;
 
 namespace GedCore.Tests;
 
@@ -111,7 +111,6 @@ public class NicknameDirectoryTests
     {
         var dir = NicknameDirectory.LoadEmbedded();
 
-        // docs/design/mcp-server.md's own reference pairs.
         Assert.True(dir.AreEquivalent("Fred", "Frederick", isMale: true));
         Assert.True(dir.AreEquivalent("Bill", "William", isMale: true));
 

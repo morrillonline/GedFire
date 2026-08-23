@@ -2,10 +2,10 @@ namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
 // get_record's four result shapes, mirroring GetRecordTool.OutputSchemaJson
-// property-for-property (docs/design/mcp-server.md "The third tool:
-// get_record"). Serialized with the shared CallToolResults.JsonOptions.
-// Pure data — every mapping from a GedIndividual/GedFamily/GedSourceRecord
-// to these records happens in GetRecordTool, not here.
+// property-for-property. Serialized with the shared
+// CallToolResults.JsonOptions. Pure data — every mapping from a
+// GedIndividual/GedFamily/GedSourceRecord to these records happens in
+// GetRecordTool, not here.
 // ---------------------------------------------------------------------------
 
 public sealed record MediaFileDetail(string Path, string MediaType, string? Medium, string? Title, bool Resolved);

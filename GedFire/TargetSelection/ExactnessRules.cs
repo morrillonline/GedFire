@@ -1,12 +1,11 @@
+using GedCore;
 using GedFire.Gen;
 
 namespace GedFire.TargetSelection;
 
 /// <summary>
-/// "Exact date" / "exact place" and the era/geography difficulty weights,
-/// as defined by docs/design/target-selection.md ("Exact date, exact
-/// place" and "Difficulty — a second, independent axis"). A fact is exact
-/// only when both its date and its place pass these tests.
+/// "Exact date" / "exact place" and the era/geography difficulty weights.
+/// A fact is exact only when both its date and its place pass these tests.
 /// </summary>
 public static class ExactnessRules
 {

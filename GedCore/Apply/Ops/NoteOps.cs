@@ -57,7 +57,8 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var target = state.Doc.ByXref[Record];
+        var target = state.Doc.ByXref[state.Resolve(Record)];
+        var citations = state.ResolveCitations(Citations);
         string requestedText = NodeBuilder.NormalizeText(Text);
         string? requestedMime = Mime is null ? null : NormalizeMime(Mime);
 
@@ -102,10 +103,10 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
             state.Touch(target);
             action = action == "no-op (already present)" ? "updated (MIME changed)" : action;
         }
-        state.NotesAddedThisItem[Record] = note;
+        state.NotesAddedThisItem[target.Xref!] = note;
 
         var citeChanges = new List<string>();
-        foreach (var cit in Citations)
+        foreach (var cit in citations)
         {
             var change = NodeBuilder.UpsertCitation(state, note, cit);
             if (change is not null) citeChanges.Add(change);
@@ -115,7 +116,7 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
             action = action == "no-op (already present)"
                 ? string.Join("; ", citeChanges)
                 : $"{action}; {string.Join("; ", citeChanges)}";
-        log.Add($"{Kind} on {Record}: {action}");
+        log.Add($"{Kind} on {target.Xref}: {action}");
     }
 
     static string? NormalizeMime(string mime) => mime.Trim().ToLowerInvariant() switch
@@ -152,17 +153,21 @@ public sealed class DeleteNoteOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var target = state.Doc.ByXref[Record];
+        // Validate accepts a Record that ctx.Known() resolves through the
+        // placeholder plan (a record an earlier op in this changeset
+        // created), so Apply must resolve it before using it as a doc key.
+        var record = state.Resolve(Record);
+        var target = state.Doc.ByXref[record];
         string requestedText = NodeBuilder.NormalizeText(Text);
         var note = target.ChildrenByTag("NOTE").FirstOrDefault(note => note.FullValue() == requestedText);
         if (note is null)
         {
-            log.Add($"{Kind} on {Record}: no-op (absent)");
+            log.Add($"{Kind} on {record}: no-op (absent)");
             return;
         }
         target.Children.Remove(note);
         state.Mutated();
         state.Touch(target);
-        log.Add($"{Kind} on {Record}: deleted");
+        log.Add($"{Kind} on {record}: deleted");
     }
 }

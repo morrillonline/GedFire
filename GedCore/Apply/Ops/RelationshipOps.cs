@@ -80,39 +80,75 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
         OpChecks.CitationsValid(ctx, Context, Citations, errors);
         OpChecks.InlineFactsValid(ctx, Context, Spouse, errors);
 
+        // Same-partner-same-date marriage conflict: only relevant when this
+        // op would create a new family and supplies an exact, fully-specified
+        // marriage date. A different date, an inexact/partial one, or a
+        // family that already exists never triggers it.
+        if (family.CreateXref is not null && Marriage?.Date is string marriageDate &&
+            GedDate.ExactFullDateIdentity(marriageDate) is { } dateIdentity)
+        {
+            var conflicts = Resolve.SameDateMarriageConflicts(ctx, Person, Spouse.Xref, dateIdentity);
+            if (conflicts.Count > 0)
+                errors.Add($"{Context}: {Person} and {Spouse.Xref} already have a marriage dated " +
+                           $"{marriageDate} in {string.Join(", ", conflicts)} — a person cannot marry " +
+                           "the same partner twice on the same date");
+        }
+
         if (person.Hit == PersonHit.Create) ctx.Planned.Add(Spouse.Xref);
-        if (family.CreateXref is not null) ctx.Planned.Add(family.CreateXref);
+        if (family.CreateXref is not null)
+        {
+            ctx.Planned.Add(family.CreateXref);
+            if (Marriage?.Date is string date && GedDate.ExactFullDateIdentity(date) is { } identity)
+                ctx.PlannedMarriages.Add(new PlannedMarriage(Person, Spouse.Xref, identity, family.CreateXref));
+        }
     }
 
     internal override void Apply(ApplyState state, List<string> log)
     {
         int before = state.Mutations;
-        Kin.EnsurePerson(state, Spouse, log);
+        // Resolve every placeholder-bearing field to its real, already-minted
+        // (or still-to-be-minted-by-this-op) form before anything downstream
+        // reads or writes it.
+        // Person is a bare-xref reference, not a creation position, but it can
+        // still name someone an earlier op in this same changeset created via
+        // placeholder (e.g. add a second parent to a person the first op just
+        // created), so it needs resolving too.
+        string person = state.Resolve(Person);
+        var spouse = state.ResolvePersonRef(Spouse);
+        string? family = state.ResolveOptional(Family);
+        var citations = state.ResolveCitations(Citations);
+        var marriageCitations = state.ResolveCitations(MarriageCitations);
+
+        Kin.EnsurePerson(state, spouse, log);
+        // EnsurePerson may have just minted spouse's real xref; re-resolve so
+        // everything below (family sharing, partner links) uses it, not the
+        // still-placeholder-shaped value captured before minting happened.
+        spouse = spouse with { Xref = state.Resolve(spouse.Xref) };
 
         var ctx = new ResolutionContext(state.Doc);
-        var resolution = Resolve.SpouseFamily(ctx, Person, Spouse, Family);
+        var resolution = Resolve.SpouseFamily(ctx, person, spouse, family);
         GedRecord fam;
         if (resolution.CreateXref is not null)
         {
             fam = Kin.CreateFamily(state, resolution.CreateXref);
-            log.Add($"created family {resolution.CreateXref}");
+            log.Add($"created family {fam.Xref}");
         }
         else
             fam = resolution.RequireFamily(Context);
 
         var changes = new List<string>();
-        var (personTag, spouseTag) = Kin.PartnerTags(ctx, fam, Person, Spouse);
-        if (Kin.SetPartner(state, fam, personTag, Person) is string p) changes.Add(p);
-        if (Kin.SetPartner(state, fam, spouseTag, Spouse.Xref) is string s) changes.Add(s);
+        var (personTag, spouseTag) = Kin.PartnerTags(ctx, fam, person, spouse);
+        if (Kin.SetPartner(state, fam, personTag, person) is string p) changes.Add(p);
+        if (Kin.SetPartner(state, fam, spouseTag, spouse.Xref) is string s) changes.Add(s);
 
         if (Marriage is not null)
             new CreateOrUpdateVitalOp
             {
                 Record = fam.Xref!, Fact = "MARR",
-                Value = Marriage, Citations = MarriageCitations,
+                Value = Marriage, Citations = marriageCitations,
             }.Apply(state, log);
 
-        foreach (var cit in Citations)
+        foreach (var cit in citations)
             if (NodeBuilder.UpsertCitation(state, fam, cit) is string c) changes.Add(c);
         if (Note is not null && Kin.UpsertNote(state, fam, Note) is string n) changes.Add(n);
 
@@ -187,24 +223,31 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        Kin.EnsurePerson(state, Child, log);
+        var child = state.ResolvePersonRef(Child);
+        string family = state.Resolve(Family);
+        var citations = state.ResolveCitations(Citations);
+        string? husb = state.ResolveOptional(Husb);
+        string? wife = state.ResolveOptional(Wife);
+
+        Kin.EnsurePerson(state, child, log);
+        child = child with { Xref = state.Resolve(child.Xref) };
 
         var ctx = new ResolutionContext(state.Doc);
-        var resolution = Resolve.ChildFamily(ctx, Family);
+        var resolution = Resolve.ChildFamily(ctx, family);
         GedRecord fam;
         var changes = new List<string>();
         if (resolution.CreateXref is not null)
         {
             fam = Kin.CreateFamily(state, resolution.CreateXref);
-            log.Add($"created family {resolution.CreateXref}");
-            if (Husb is not null && Kin.SetPartner(state, fam, "HUSB", Husb) is string h) changes.Add(h);
-            if (Wife is not null && Kin.SetPartner(state, fam, "WIFE", Wife) is string w) changes.Add(w);
+            log.Add($"created family {fam.Xref}");
+            if (husb is not null && Kin.SetPartner(state, fam, "HUSB", husb) is string h) changes.Add(h);
+            if (wife is not null && Kin.SetPartner(state, fam, "WIFE", wife) is string w) changes.Add(w);
         }
         else
             fam = resolution.RequireFamily(Context);
 
-        if (Kin.EnsureChild(state, fam, Child.Xref) is string c) changes.Add(c);
-        foreach (var cit in Citations)
+        if (Kin.EnsureChild(state, fam, child.Xref) is string c) changes.Add(c);
+        foreach (var cit in citations)
             if (NodeBuilder.UpsertCitation(state, fam, cit) is string cc) changes.Add(cc);
 
         log.Add(changes.Count > 0
@@ -277,25 +320,34 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        Kin.EnsurePerson(state, Parent, log);
+        // See the note in CreateOrUpdateSpouseOp.Apply: Person is a reference,
+        // not a creation position, but may still name a placeholder an
+        // earlier op in this changeset created.
+        string person = state.Resolve(Person);
+        var parent = state.ResolvePersonRef(Parent);
+        string? family = state.ResolveOptional(Family);
+        var citations = state.ResolveCitations(Citations);
+
+        Kin.EnsurePerson(state, parent, log);
+        parent = parent with { Xref = state.Resolve(parent.Xref) };
 
         var ctx = new ResolutionContext(state.Doc);
-        var personRec = state.Doc.ByXref[Person];
-        var resolution = Resolve.ParentFamily(ctx, personRec, Family);
+        var personRec = state.Doc.ByXref[person];
+        var resolution = Resolve.ParentFamily(ctx, personRec, family);
         GedRecord fam;
         var changes = new List<string>();
         if (resolution.CreateXref is not null)
         {
             fam = Kin.CreateFamily(state, resolution.CreateXref);
-            log.Add($"created family {resolution.CreateXref}");
-            if (Kin.EnsureChild(state, fam, Person) is string c) changes.Add(c);
+            log.Add($"created family {fam.Xref}");
+            if (Kin.EnsureChild(state, fam, person) is string c) changes.Add(c);
         }
         else
             fam = resolution.RequireFamily(Context);
 
         string roleTag = Role == "father" ? "HUSB" : "WIFE";
-        if (Kin.SetPartner(state, fam, roleTag, Parent.Xref) is string p) changes.Add(p);
-        foreach (var cit in Citations)
+        if (Kin.SetPartner(state, fam, roleTag, parent.Xref) is string p) changes.Add(p);
+        foreach (var cit in citations)
             if (NodeBuilder.UpsertCitation(state, fam, cit) is string cc) changes.Add(cc);
 
         log.Add(changes.Count > 0
@@ -340,23 +392,32 @@ public sealed class DeleteSpouseOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
+        // Validate accepts a Person that ctx.Known() resolves through the
+        // placeholder plan, and Spouse/Family can equally name a record an
+        // earlier op in this changeset created, so all three must resolve
+        // before use as a doc key or a comparison against an
+        // already-written pointer value.
+        string person = state.Resolve(Person);
+        string spouse = state.Resolve(Spouse);
+        string? family = state.ResolveOptional(Family);
+
         var ctx = new ResolutionContext(state.Doc);
-        var fam = Family is not null
-            ? ctx.Existing(Family)
-            : Kin.SharedFamilies(ctx, Person, Spouse).SingleOrDefault();
+        var fam = family is not null
+            ? ctx.Existing(family)
+            : Kin.SharedFamilies(ctx, person, spouse).SingleOrDefault();
         var link = fam?.Children.FirstOrDefault(
-            c => c.Tag is "HUSB" or "WIFE" && c.Value == Spouse);
+            c => c.Tag is "HUSB" or "WIFE" && c.Value == spouse);
         if (fam is null || link is null)
         {
-            log.Add($"{Kind} {Spouse} of {Person}: no-op (no such spouse link)");
+            log.Add($"{Kind} {spouse} of {person}: no-op (no such spouse link)");
             return;
         }
 
         fam.Children.Remove(link);
         state.Mutated();
         state.Touch(fam);
-        Kin.RemoveFamsBackLink(state, Spouse, fam.Xref!);
-        log.Add($"{Kind} {Spouse} of {Person}: removed {link.Tag} from {fam.Xref}");
+        Kin.RemoveFamsBackLink(state, spouse, fam.Xref!);
+        log.Add($"{Kind} {spouse} of {person}: removed {link.Tag} from {fam.Xref}");
         Kin.CleanupFamilyIfEmpty(state, fam, log);
     }
 }
@@ -386,19 +447,26 @@ public sealed class DeleteChildOp : ChangeOp
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var fam = state.Doc.ByXref.GetValueOrDefault(Family);
-        var link = fam?.Children.FirstOrDefault(c => c.Tag == "CHIL" && c.Value == Child);
+        // Family/Child can equally name a record an earlier op in this
+        // changeset created (Validate's ctx.Existing check is silently
+        // skipped for a not-yet-real placeholder, same as any other planned
+        // record), so both must resolve before use as a doc key or a
+        // comparison against an already-written CHIL pointer value.
+        string family = state.Resolve(Family);
+        string child = state.Resolve(Child);
+        var fam = state.Doc.ByXref.GetValueOrDefault(family);
+        var link = fam?.Children.FirstOrDefault(c => c.Tag == "CHIL" && c.Value == child);
         if (fam is null || link is null)
         {
-            log.Add($"{Kind} {Child} from {Family}: no-op (no such child link)");
+            log.Add($"{Kind} {child} from {family}: no-op (no such child link)");
             return;
         }
 
         fam.Children.Remove(link);
         state.Mutated();
         state.Touch(fam);
-        Kin.RemoveFamcBackLink(state, Child, Family);
-        log.Add($"{Kind} {Child} from {Family}: removed");
+        Kin.RemoveFamcBackLink(state, child, family);
+        log.Add($"{Kind} {child} from {family}: removed");
         Kin.CleanupFamilyIfEmpty(state, fam, log);
     }
 }
@@ -432,19 +500,24 @@ public sealed class DeleteParentOp : ChangeOp
         { errors.Add($"{Context}: role must be father or mother"); return; }
         var personRec = ctx.Existing(Person);
         if (personRec is null) return;
-        var famcs = ParentFamilies(personRec);
+        var famcs = ParentFamilies(personRec, Family);
         if (famcs.Count > 1)
             errors.Add($"{Context}: {famcs.Count} parent families; supply the family xref");
     }
 
-    private List<string> ParentFamilies(GedRecord person) =>
+    private static List<string> ParentFamilies(GedRecord person, string? family) =>
         [.. person.ChildrenByTag("FAMC").Select(f => f.Value)
-                  .Where(f => Family is null || f == Family)];
+                  .Where(f => family is null || f == family)];
 
     internal override void Apply(ApplyState state, List<string> log)
     {
-        var personRec = state.Doc.ByXref[Person];
-        var famXref = ParentFamilies(personRec).SingleOrDefault();
+        // Validate accepts a Person/Family that ctx.Known() resolves through
+        // the placeholder plan, so Apply must resolve them before using them
+        // as a doc key or comparing against an already-written FAMC pointer.
+        string person = state.Resolve(Person);
+        string? family = state.ResolveOptional(Family);
+        var personRec = state.Doc.ByXref[person];
+        var famXref = ParentFamilies(personRec, family).SingleOrDefault();
         var fam = famXref is null ? null : state.Doc.ByXref.GetValueOrDefault(famXref);
         string roleTag = Role == "father" ? "HUSB" : "WIFE";
         var link = fam?.FirstChild(roleTag);
