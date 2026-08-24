@@ -103,6 +103,38 @@ public class DocumentFileWatcherTests : IDisposable
         Assert.Equal(1, watcher.ReloadCount);
     }
 
+    /// <summary>
+    /// The scenario the user asked to bulletproof: the watcher notices the
+    /// file changed while a writer (simulated here the same way
+    /// apply_changeset's own ChangesetApplier.Run holds the file --
+    /// FileShare.None, content already written) still has it open. The
+    /// debounced reload must wait the writer out and eventually succeed,
+    /// not fail and give up.
+    /// </summary>
+    [Fact]
+    public async Task FileLockedByAWriterWhenTheChangeIsNoticed_WaitsThenReloadsRatherThanFailing()
+    {
+        var (session, path) = NewSession(OnePersonGed);
+        await using var watcher = new DocumentFileWatcher(session, path);
+        await Task.Delay(50); // let the watcher finish arming
+
+        byte[] newBytes = System.Text.Encoding.UTF8.GetBytes(TwoPersonGed);
+        using (var writer = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            writer.Write(newBytes);
+            writer.SetLength(newBytes.Length);
+            writer.Flush(flushToDisk: true); // fires the FileSystemWatcher event
+
+            // Give the watcher's debounce and at least one retry-while-
+            // locked attempt a real chance to run before the lock releases.
+            await Task.Delay(600);
+        } // lock released here
+
+        await WaitUntilAsync(() => watcher.ReloadCount >= 1, TimeSpan.FromSeconds(10));
+        var snapshot = await session.GetSnapshotAsync(CancellationToken.None);
+        Assert.Equal(2, snapshot.Model.Individuals.Count);
+    }
+
     [Fact]
     public async Task DisposeAsync_StopsWatching_NoFurtherReloads()
     {

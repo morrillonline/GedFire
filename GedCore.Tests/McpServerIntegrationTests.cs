@@ -105,7 +105,7 @@ public class McpServerIntegrationTests : IDisposable
 
         var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Equal(4, tools.GetArrayLength());
+        Assert.Equal(7, tools.GetArrayLength());
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
@@ -113,15 +113,23 @@ public class McpServerIntegrationTests : IDisposable
         // separately by ToolsList_IsDeterministicAcrossCalls; here only
         // membership is asserted.
         Assert.Equal(
-            new HashSet<string> { "date_calc", "find_person", "get_document_stats", "get_record" },
+            new HashSet<string> {
+                "apply_changeset", "date_calc", "describe_changeset_ops", "find_person",
+                "get_document_stats", "get_record", "validate_changeset",
+            },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
 
+        // apply_changeset is the one tool on this server that writes to the
+        // file, so it alone carries the opposite annotations; every other
+        // tool — including validate_changeset, its dry-run twin — is
+        // read-only, non-destructive, and idempotent.
         foreach (var tool in tools.EnumerateArray())
         {
+            bool isApply = tool.GetProperty("name").GetString() == "apply_changeset";
             var annotations = tool.GetProperty("annotations");
-            Assert.True(annotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.False(annotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.True(annotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.Equal(!isApply, annotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.Equal(isApply, annotations.GetProperty("destructiveHint").GetBoolean());
+            Assert.Equal(!isApply, annotations.GetProperty("idempotentHint").GetBoolean());
             Assert.Equal("object", tool.GetProperty("inputSchema").GetProperty("type").GetString());
             Assert.True(tool.TryGetProperty("outputSchema", out _));
         }
@@ -556,5 +564,122 @@ public class McpServerIntegrationTests : IDisposable
         var structured = after.GetProperty("result").GetProperty("structuredContent");
         Assert.Equal("single", structured.GetProperty("matchType").GetString());
         Assert.Equal("@I1@", structured.GetProperty("person").GetProperty("xref").GetString());
+    }
+
+    // -------------------------------------------------------------------
+    // validate_changeset / apply_changeset
+    // -------------------------------------------------------------------
+
+    string WriteChangeset(string json)
+    {
+        string path = Path.Combine(_dir, "changeset.json");
+        File.WriteAllText(path, json);
+        return path;
+    }
+
+    const string AddNoteToI1Changeset = """
+        { "items": [ { "item": 1, "ops": [
+          { "op": "createOrUpdateNote", "record": "@I1@", "text": "A note." } ] } ] }
+        """;
+
+    [Fact]
+    public async Task ToolsCall_DescribeChangesetOps_ReturnsTheDialectCatalog()
+    {
+        await using var client = McpStdioTestClient.Start(WriteGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "describe_changeset_ops",
+            arguments = new { },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.True(structured.GetProperty("envelope").TryGetProperty("example", out _));
+        var ops = structured.GetProperty("ops");
+        Assert.True(ops.GetArrayLength() >= 17);
+        Assert.Contains(
+            ops.EnumerateArray().Select(o => o.GetProperty("op").GetString()),
+            name => name == "createOrUpdateVital");
+    }
+
+    [Fact]
+    public async Task ToolsCall_ValidateChangeset_SucceedsAndLeavesTheFileUntouched()
+    {
+        string gedPath = WriteGed();
+        byte[] before = File.ReadAllBytes(gedPath);
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        await using var client = McpStdioTestClient.Start(gedPath);
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "validate_changeset",
+            arguments = new { changesetPath, items = "all" },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.True(structured.GetProperty("success").GetBoolean());
+        Assert.Equal(before, File.ReadAllBytes(gedPath));
+    }
+
+    [Fact]
+    public async Task ToolsCall_ApplyChangeset_WritesTheBoundFile()
+    {
+        string gedPath = WriteGed();
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        await using var client = McpStdioTestClient.Start(gedPath);
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "apply_changeset",
+            arguments = new { changesetPath, items = "all" },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.True(structured.GetProperty("success").GetBoolean());
+        Assert.Contains("A note.", File.ReadAllText(gedPath));
+    }
+
+    [Fact]
+    public async Task ToolsCall_ApplyChangeset_OnReadOnlyServer_RefusesAndLeavesTheFileUntouched()
+    {
+        string gedPath = WriteGed();
+        byte[] before = File.ReadAllBytes(gedPath);
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        await using var client = McpStdioTestClient.Start(gedPath, "--read-only");
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "apply_changeset",
+            arguments = new { changesetPath, items = "all" },
+        }, ShortTimeout);
+
+        var result = response.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Contains("--read-only", result.GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Equal(before, File.ReadAllBytes(gedPath));
+    }
+
+    [Fact]
+    public async Task ToolsCall_ValidateChangeset_OnReadOnlyServer_StillWorks()
+    {
+        // --read-only disables the write path only; the dry-run preview
+        // tool stays available so an agent can still check a changeset.
+        string gedPath = WriteGed();
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        await using var client = McpStdioTestClient.Start(gedPath, "--read-only");
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "validate_changeset",
+            arguments = new { changesetPath, items = "all" },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.True(structured.GetProperty("success").GetBoolean());
     }
 }
