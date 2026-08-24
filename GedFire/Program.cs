@@ -29,7 +29,7 @@ using System.Reflection;
 //   gedfire validate     <file> [--warnings-as-errors]
 //   gedfire pack         --input <ged>    --media-dir <dir> --output <gdz>
 //   gedfire unpack       --input <gdz>    --output-dir <dir>
-//   gedfire mcp          --input <ged>
+//   gedfire mcp          --input <ged> [--read-only] [--enforce-privacy]
 //   gedfire date-calc    --op normalize|add|sub|diff [--date <d>] [--from <d>] [--to <d>] [--age <y/m/d>]
 //   gedfire find-person  --input <ged> --query <name> [--max-results N] [hint flags...]
 //   gedfire get-record   --input <ged> --xref <@I1@>
@@ -349,22 +349,10 @@ static int RunApply(string[] args)
 
     var changeset = Changeset.LoadFile(changes);
 
-    int[] itemNumbers;
-    if (items == "all")
+    if (!ItemSelector.TryParse(items, changeset, out int[] itemNumbers, out string? itemsError))
     {
-        itemNumbers = [.. changeset.Items.Select(i => i.Number)];
-    }
-    else
-    {
-        try
-        {
-            itemNumbers = [.. items.Split(',').Select(int.Parse)];
-        }
-        catch (FormatException)
-        {
-            Console.Error.WriteLine($"--items must be 'all' or comma-separated numbers, got: {items}");
-            return 1;
-        }
+        Console.Error.WriteLine($"--{itemsError}");
+        return 1;
     }
 
     ApplyResult result;
@@ -519,13 +507,15 @@ static int RunUnpack(string[] args)
 
 static async Task<int> RunMcp(string[] args)
 {
-    var cl = CommandLine.Parse(args, ["--input"]);
+    var cl = CommandLine.Parse(args, ["--input"], ["--read-only", "--enforce-privacy"]);
     string? input = cl.Value("--input");
+    bool readOnly = cl.Has("--read-only");
+    bool enforcePrivacy = cl.Has("--enforce-privacy");
 
     if (cl.Error is not null || input is null)
     {
         if (cl.Error is not null) Console.Error.WriteLine(cl.Error);
-        Console.Error.WriteLine("Usage: gedfire mcp --input <ged>");
+        Console.Error.WriteLine("Usage: gedfire mcp --input <ged> [--read-only] [--enforce-privacy]");
         return 1;
     }
 
@@ -549,6 +539,8 @@ static async Task<int> RunMcp(string[] args)
 
         var doc = GedReader.ReadFile(absoluteInput);
         var model = ModelBuilder.Build(doc);
+        if (enforcePrivacy)
+            PrivacyFilter.Apply(model, DateTime.UtcNow.Year);
         var info = new FileInfo(absoluteInput);
         initialSnapshot = new DocumentSnapshot(model, doc.Version, File.GetLastWriteTimeUtc(absoluteInput), info.Length);
     }
@@ -558,24 +550,56 @@ static async Task<int> RunMcp(string[] args)
         return 1;
     }
 
-    var session = new DocumentSession(absoluteInput, initialSnapshot);
+    var session = new DocumentSession(absoluteInput, initialSnapshot, enforcePrivacy);
     await using var watcher = new DocumentFileWatcher(session, absoluteInput);
     var gate = new ToolGate();
     var dateCalc = new DateCalcTool(gate);
     var findPerson = new FindPersonTool(session, gate, nicknames);
     var getDocumentStats = new GetDocumentStatsTool(session, gate);
     var getRecord = new GetRecordTool(session, gate, absoluteMediaDir);
+    var validateChangeset = new ValidateChangesetTool(absoluteInput, gate);
+    var applyChangeset = new ApplyChangesetTool(absoluteInput, gate, readOnly);
+    var describeChangesetOps = new DescribeChangesetOpsTool(gate);
 
     // Listed alphabetically by name for readability; the SDK's own
     // McpServerPrimitiveCollection does not preserve this as the advertised
-    // tools/list order.
+    // tools/list order. apply_changeset is always registered, even under
+    // --read-only -- it refuses each call itself (see ApplyChangesetTool)
+    // rather than disappearing from the advertised tool list, so a client
+    // that cached the list before a config change still gets an explicit
+    // refusal instead of an unknown-tool error.
     var toolCollection = new McpServerPrimitiveCollection<McpServerTool>
     {
+        applyChangeset.ToMcpServerTool(),
         dateCalc.ToMcpServerTool(),
+        describeChangesetOps.ToMcpServerTool(),
         findPerson.ToMcpServerTool(),
         getDocumentStats.ToMcpServerTool(),
         getRecord.ToMcpServerTool(),
+        validateChangeset.ToMcpServerTool(),
     };
+
+    string instructions =
+        "Every xref returned by a tool on this server (an individual or family reference such as \"@I123@\" " +
+        "or \"@F45@\") belongs only to the single GEDCOM document this server was started against, and is " +
+        "meaningless to any other document or provider. date_calc, find_person, get_document_stats, get_record, " +
+        "describe_changeset_ops, and validate_changeset never modify that file. apply_changeset is the only " +
+        "tool that writes to it, and only after validation and in-memory verification both pass; call " +
+        "validate_changeset first with the same arguments to preview a changeset without writing. Call " +
+        "describe_changeset_ops before composing a changeset from scratch -- it returns the full op dialect, " +
+        "so there is no need to know the changeset format in advance or discover it by trial and error.";
+    if (readOnly)
+        instructions +=
+            " This server was started with --read-only: every call to apply_changeset is refused. " +
+            "validate_changeset remains available to preview changesets.";
+    if (enforcePrivacy)
+        instructions +=
+            " This server was started with --enforce-privacy: individuals with an RESN of CONFIDENTIAL or " +
+            "PRIVACY, and individuals plausibly still living (no death-class fact, born within the last " +
+            $"{PrivacyFilter.PlausiblyLivingAgeYears} years), are reduced to a \"{PrivacyFilter.LivingGivenName} " +
+            "<Surname>\" placeholder with no dates, places, notes, or media -- the same treatment `gedfire " +
+            "generate` applies before publishing a site. Do not treat a placeholder as the whole record; it is " +
+            "withheld, not absent.";
 
     var serverOptions = new McpServerOptions
     {
@@ -583,13 +607,10 @@ static async Task<int> RunMcp(string[] args)
         Capabilities = new ServerCapabilities { Tools = new ToolsCapability { ListChanged = false } },
         ToolCollection = toolCollection,
         // States once that returned xrefs belong only to this server's bound
-        // document and that no initial-release tool mutates the file.
-        // Tool-specific calling guidance remains on the tool itself.
-        ServerInstructions =
-            "Every xref returned by a tool on this server (an individual or family reference such as \"@I123@\" " +
-            "or \"@F45@\") belongs only to the single GEDCOM document this server was started against, and is " +
-            "meaningless to any other document or provider. No tool in this release mutates that file; every tool " +
-            "is read-only.",
+        // document and which tool is the write path (and when it's
+        // disabled). Tool-specific calling guidance remains on the tool
+        // itself.
+        ServerInstructions = instructions,
     };
 
     await using var transport = new StdioServerTransport(serverOptions, loggerFactory: null);
@@ -952,13 +973,27 @@ static void PrintHelp()
                         Extract a GEDZIP archive's gedcom.ged and media files
                         into a directory.
 
-          mcp       --input <ged>
+          mcp       --input <ged> [--read-only] [--enforce-privacy]
                         Start a stdio Model Context Protocol server exposing
                         this GEDCOM to MCP-compatible agent clients. Resident
-                        process: stays running until stdin closes. Read-only;
-                        no tool in this release mutates the file. Watches the
-                        input file and reloads automatically if it changes on
-                        disk.
+                        process: stays running until stdin closes. Six tools:
+                        date_calc, find_person, get_document_stats,
+                        get_record, and validate_changeset never modify the
+                        file; apply_changeset is the only one that writes,
+                        after validation and in-memory verification pass.
+                        Watches the input file and reloads automatically if
+                        it changes on disk.
+                          --read-only        Disable apply_changeset: every
+                                              call to it is refused.
+                                              validate_changeset and every
+                                              read-only tool stay available.
+                          --enforce-privacy   Apply the same privacy filter
+                                              `generate` uses before
+                                              publishing a site: RESN
+                                              CONFIDENTIAL/PRIVACY and
+                                              plausibly-living individuals
+                                              are reduced to a placeholder
+                                              in every tool's output.
 
           date-calc --op normalize|add|sub|diff
                         Genealogical date arithmetic using GedCore's GEDCOM

@@ -148,6 +148,77 @@ public class DocumentSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task GetSnapshotAsync_AppliesPrivacyFilter_OnReload_WhenEnforcePrivacyEnabled()
+    {
+        string path = Path.Combine(_dir, "priv.ged");
+        File.WriteAllText(path, """
+            0 @I1@ INDI
+            1 NAME Alpha /Test/
+            1 SEX M
+
+            """);
+        var initial = InitialSnapshot(path);
+        var session = new DocumentSession(path, initial, enforcePrivacy: true);
+
+        // A living-looking replacement: no death fact, born well within the
+        // last 100 years -- PrivacyFilter reduces this to "Living <Surname>".
+        File.WriteAllText(path, $"""
+            0 @I1@ INDI
+            1 NAME Bravo /Test/
+            1 SEX M
+            1 BIRT
+            2 DATE 1 JAN {DateTime.UtcNow.Year - 30}
+
+            """);
+        File.SetLastWriteTimeUtc(path, initial.LastWriteTimeUtc.AddSeconds(5));
+
+        var snapshot = await session.GetSnapshotAsync(CancellationToken.None);
+
+        Assert.Equal("LIVING", GivenNameOf(snapshot));
+    }
+
+    /// <summary>
+    /// The scenario this whole retry exists for: a writer (e.g.
+    /// apply_changeset's own ChangesetApplier.Run) has the file open
+    /// exclusively (FileShare.None) with the new content already written,
+    /// exactly as the file watcher would see it mid-write. GetSnapshotAsync
+    /// must wait the writer out and reload the new content, not throw or
+    /// silently keep serving the old snapshot.
+    /// </summary>
+    [Fact]
+    public async Task GetSnapshotAsync_FileLockedByAnotherWriter_WaitsThenReloadsTheNewContent()
+    {
+        string path = WriteGed("a.ged", "Alpha");
+        var initial = InitialSnapshot(path);
+        var session = new DocumentSession(path, initial);
+
+        byte[] newBytes = System.Text.Encoding.UTF8.GetBytes("""
+            0 @I1@ INDI
+            1 NAME Bravo /Test/
+            1 SEX M
+
+            """);
+
+        Task<DocumentSnapshot> reload;
+        using (var writer = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            writer.Write(newBytes);
+            writer.SetLength(newBytes.Length);
+            writer.Flush(flushToDisk: true);
+            File.SetLastWriteTimeUtc(path, initial.LastWriteTimeUtc.AddSeconds(5));
+
+            // Start the reload while the lock is still held: it must block
+            // on the lock rather than fail outright.
+            reload = session.GetSnapshotAsync(CancellationToken.None);
+            await Task.Delay(300); // several retry intervals' worth
+            Assert.False(reload.IsCompleted);
+        } // lock released here
+
+        var snapshot = await reload.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("BRAVO", GivenNameOf(snapshot));
+    }
+
+    [Fact]
     public void Constructor_RejectsNullInitialSnapshot()
         => Assert.Throws<ArgumentNullException>(() => new DocumentSession("x.ged", null!));
 

@@ -82,6 +82,14 @@ command = "gedfire"
 args = ["mcp", "--input", "/absolute/path/to/family.ged"]
 ```
 
+Two optional flags follow `--input` in `args` (or after `--input <path>` on
+the `claude mcp add` / TOML command lines above):
+
+| Flag | Effect |
+|---|---|
+| `--read-only` | Disable `apply_changeset`: every call to it is refused with an error, and the bound file is never written. `validate_changeset` and every other (already read-only) tool stay available — an agent can still preview changesets, it just can't apply them. Use this for a client you trust to look and propose, but not to write, even after review. |
+| `--enforce-privacy` | Run every tool's view of the document through the same privacy filter `generate` applies before publishing a site: individuals with an RESN of CONFIDENTIAL or PRIVACY, and individuals plausibly still living (no death-class fact, born within the last 100 years), are reduced to a "Living \<Surname\>" placeholder — no dates, places, notes, or media. Use this when the MCP client is one you don't want seeing the living branches of the file. |
+
 On Windows, JSON paths use escaped backslashes such as
 `C:\\Users\\me\\family.ged`; forward slashes also work. The `gedfire`
 command must be available on the environment `PATH` inherited by the client,
@@ -90,16 +98,18 @@ no environment variables, API keys, or other credentials.
 
 Restart or reload the client after changing its configuration, approve the
 local server if prompted, and confirm that it discovers `find_person`,
-`date_calc`, `get_document_stats`, and `get_record`.
+`date_calc`, `get_document_stats`, `get_record`, `describe_changeset_ops`,
+`validate_changeset`, and `apply_changeset`.
 
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
-The server binds to one document over stdio and exposes four read-only tools.
-Three inspect that document; `date_calc` is a pure calculation over its own
-arguments and does not read the document. The server also watches the bound
-file and reloads automatically if it changes on disk — no restart needed
-after editing the GEDCOM outside the client:
+The server binds to one document over stdio and exposes seven tools. Six
+are read-only; `apply_changeset` is the only one that writes to the file,
+and only after validation and in-memory verification both pass (or not at
+all, if the server was started with `--read-only`). The server also watches
+the bound file and reloads automatically if it changes on disk — including
+a change `apply_changeset` itself just wrote — no restart needed:
 
 | Tool | What it does |
 |---|---|
@@ -107,11 +117,16 @@ after editing the GEDCOM outside the client:
 | `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to scored candidates, a confident match when one exists, and family handoff identifiers. Optional structured hints distinguish birth from death, father from mother, and one marriage from another. Set `maxResults` to an integer from `1` through `20` (default `8`) without changing the matcher's confidence decision. |
 | `get_document_stats` | Report person/family counts, the declared GEDCOM version, and the running gedfire version, for a quick orientation before other work. |
 | `get_record` | Fetch the full detail of a specific person, family, or source by xref. |
+| `describe_changeset_ops` | Return the changeset envelope shape and the full v2 op dialect (every `createOrUpdate`/`delete`/`merge` op, its required and optional fields, and one worked example) — so an agent can compose a valid changeset without external documentation or trial-and-error against `validate_changeset`'s error text. Takes no arguments. |
+| `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but nothing is written. Always available, even under `--read-only`. |
+| `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. Refuses to run under `--read-only`. |
 
-Every one of these four tools also has a one-shot CLI mirror — `find-person`,
-`get-record`, `get-document-stats`, and `date-calc` — that runs the same
-engine and prints the same JSON without starting a server. See "Command
-reference" below.
+`date_calc`, `find_person`, `get_document_stats`, and `get_record` also have
+a one-shot CLI mirror — `find-person`, `get-record`, `get-document-stats`,
+and `date-calc` — that runs the same engine and prints the same JSON without
+starting a server. `validate_changeset` and `apply_changeset` mirror the
+CLI's own `apply --dry-run` and `apply`, described under "Command reference"
+below, rather than having a same-named CLI counterpart of their own.
 
 For example, an MCP client can call `find_person` with:
 
@@ -146,13 +161,17 @@ are not statistical probabilities. Use `matchType` and
 `maxResults` changes only the returned comparison-list length, never recall,
 ranking, or confidence classification.
 
-No tool in this release writes to the file. An agent that finds something
-worth adding still produces a JSON changeset for you to review — the same
-`apply` workflow described below, not a second, unreviewed path to your
-data. GedFire itself makes no network requests and sends no telemetry; the
-MCP client you choose is responsible for what it does with tool results.
-Every returned xref belongs to the one GEDCOM bound by `--input`; do not
-reuse it against another file.
+`apply_changeset` is the only tool that writes to the file, and it applies
+the same numbered JSON changeset you'd review by hand — an agent proposing a
+change still writes a changeset for you to see, not a second, unreviewed
+path to your data; `apply_changeset` is how that reviewed changeset gets
+applied without leaving the conversation, instead of shelling out to
+`gedfire apply`. Start the server with `--read-only` if you want an agent to
+look and propose but never write, regardless of what it's asked to do. GedFire
+itself makes no network requests and sends no telemetry; the MCP client you
+choose is responsible for what it does with tool results. Every returned
+xref belongs to the one GEDCOM bound by `--input`; do not reuse it against
+another file.
 
 If the server does not start, run `gedfire --version` in a new terminal to
 confirm that the installed command is available, then verify the input path
@@ -181,9 +200,10 @@ terminal and a desktop application.
   a GEDZIP packer, and a JSON name-index exporter, so it can anchor a
   genealogy build pipeline on its own.
 * GedFire runs as an MCP server (`gedfire mcp`), so agents like Claude
-  Desktop or Claude Code can look up people and records in your GEDCOM
-  directly, over a typed, read-only protocol, instead of shelling out to
-  the CLI.
+  Desktop or Claude Code can look up people and records in your GEDCOM, and
+  validate or apply a reviewed changeset, directly in conversation instead
+  of shelling out to the CLI — or start it with `--read-only` to keep the
+  agent to lookups and previews only.
 
 In other words, use GedFire if you want AI help with your research but final
 say over your family history.
@@ -357,7 +377,7 @@ The other operations return the canonical result in `date` and set `age` to
 | `export-index` | Export a JSON person-name index. |
 | `select-targets` | Detect research gaps for given surnames, score them, and draw a self-contained `wanted.json` pack. |
 | `date-calc` | Normalize dual-dated years, add or subtract a genealogical age, or calculate elapsed years/months/days. |
-| `mcp` | Start the read-only stdio MCP server bound to one GEDCOM document. Watches the file and reloads if it changes on disk. |
+| `mcp` | Start the stdio MCP server bound to one GEDCOM document. Watches the file and reloads if it changes on disk. Optional `--read-only` (disable the `apply_changeset` write tool) and `--enforce-privacy` (redact living/restricted individuals). |
 | `find-person` | One-shot mirror of the mcp server's `find_person` tool: resolve a name to scored candidates or a confident match. |
 | `get-record` | One-shot mirror of the mcp server's `get_record` tool: fetch a person, family, or source by xref. |
 | `get-document-stats` | One-shot mirror of the mcp server's `get_document_stats` tool: person/family counts, GEDCOM version, gedfire version. |
@@ -381,11 +401,15 @@ family-tree editor, a research provider, or a hosted genealogy service.
   declared and undeclared extensions, unresolved pointers, and GEDZIP/media
   sharing readiness so researchers can understand a file before sending it to
   another tool or collaborator.
-- **MCP write support** — the current `gedfire mcp` tools (`find_person`,
-  `get_document_stats`, `get_record`) are read-only by design. `validate_changeset`/
-  `apply_changeset` tools are planned next, extending the MCP server through
-  the same reviewed changeset-and-approval path the CLI already enforces,
-  rather than opening a second way to mutate a GEDCOM.
+- **MCP write support** — shipped. `gedfire mcp` now exposes `validate_changeset`
+  and `apply_changeset`, extending the MCP server through the same reviewed
+  changeset-and-approval path the CLI's `apply`/`apply --dry-run` already
+  enforce, rather than opening a second way to mutate a GEDCOM. Start the
+  server with `--read-only` to keep `apply_changeset` disabled for a given
+  run — `validate_changeset` and every lookup tool stay available either way.
+  `describe_changeset_ops` ships alongside them so the changeset format
+  itself is discoverable over MCP — no external documentation needed to
+  compose one from scratch.
 - **Agent skills** — companion Claude Code skills for the full research
   workflow (evidence grading, identity correlation, record harvesting, and
   driving GedFire safely) are being prepared for publication as a separate

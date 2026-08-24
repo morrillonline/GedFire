@@ -33,7 +33,7 @@ internal sealed class McpStdioTestClient : IAsyncDisposable
         return path;
     }
 
-    public static McpStdioTestClient Start(string gedPath)
+    public static McpStdioTestClient Start(string gedPath, params string[] extraArgs)
     {
         var psi = new ProcessStartInfo(ResolveGedFireExePath())
         {
@@ -45,6 +45,7 @@ internal sealed class McpStdioTestClient : IAsyncDisposable
         psi.ArgumentList.Add("mcp");
         psi.ArgumentList.Add("--input");
         psi.ArgumentList.Add(gedPath);
+        foreach (var arg in extraArgs) psi.ArgumentList.Add(arg);
 
         var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start gedfire.");
         return new McpStdioTestClient(process);
