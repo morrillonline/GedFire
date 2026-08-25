@@ -219,7 +219,10 @@ internal static class Resolve
         if (familyXref is not null)
         {
             var named = NamedFamily(ctx, familyXref);
-            if (named.Family is not null && !famcs.Contains(familyXref))
+            bool ownsViaFamc = famcs.Contains(familyXref);
+            bool ownsViaChil = named.Family?.Children.Any(
+                c => c.Tag == "CHIL" && c.Value == person.Xref) ?? false;
+            if (named.Family is not null && !ownsViaFamc && !ownsViaChil)
                 return FamilyResolution.Fail(
                     $"{familyXref} exists but is not a FAMC of {person.Xref} " +
                     "(use createOrUpdateChild to place the person in it first)");
