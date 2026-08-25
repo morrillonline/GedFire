@@ -5,7 +5,7 @@ GedFire is an open-source .NET command-line tool for AI-assisted family-history 
 ## Repository Layout
 
 - `GedCore/` contains the GEDCOM document model, parsers, formatters, conformance checks, GEDZIP support, and changeset application engine.
-- `GedFire/` contains the `gedfire` CLI, static-site generator, exporters, and template lookup.
+- `GedFire/` contains the `gedfire` CLI, MCP, static-site generator, exporters, and template lookup.
 - `GedCore.Tests/` contains the xUnit test suite and synthetic GEDCOM and changeset fixtures.
 - `docs/demo/` contains the fictional data used by the README walkthrough.
 
@@ -13,9 +13,9 @@ Keep domain behavior in `GedCore` when it does not depend on command-line or sit
 
 ## Privacy And Test Data
 
-- Never add real or private family-history data to source control, tests, issues, logs, or generated artifacts.
+- Never add a real person or identifier to source control, tests, issues, logs, or generated artifacts.
 - Use synthetic people, places, sources, media, and identifiers in fixtures and examples.
-- Do not introduce network transmission of user data without an explicit, documented product decision, because GedFire is a local-file tool that sends no family data or telemetry.
+- This application should never send information from the current GEDCOM file outbound to a third party.
 
 ## Build And Test
 
@@ -32,43 +32,34 @@ During iteration, run the narrowest relevant tests, for example:
 dotnet test --nologo --filter FullyQualifiedName~ApplyTests
 ```
 
-Before completing a change, run the affected tests and then the full suite when the change touches shared parsing, formatting, validation, changeset application, or command-line behavior. When changing the CLI, also exercise the affected command against synthetic input. Prefer `--dry-run` for changeset scenarios.
-
-- Name tests `<Action>_<Condition>_<Expected>` and keep each test class focused on one domain.
-- Generally write one unit test class per production class. The production class is the system under test, and all of its `public` elements are fair game for the unit test.
-- Test only through `public` types and members of the assembly under test. `InternalsVisibleTo` is strictly prohibited; if a behavior cannot be reached from the public surface, then you should wonder whether it has any purpose at all.
-- Avoid testing with files. Production code should expose public methods that take a stream, and tests should exercise those stream overloads; only the very highest level of the call stack takes a file path and opens the stream for reading or writing.
-- Build apply tests on `ApplyTestBase` and `ChangesetFixtures`. Changeset fixtures are embedded resources under `GedCore.Tests/TestData/Changesets/`, not loose files. Put reusable synthetic GEDCOM fixtures under `GedCore.Tests/TestData/`.
-- Any change to parsers, formatters, or `Ged70Upgrader` must pass `RoundTripTests`, which require byte-stable round trips including the 5.5 → 7.0 → 5.5 cycle.
+Before declaring that a change is ready to commit, run the full test suite to ensure no regressions.
 
 ## Engineering Conventions
 
-- Prefer existing parsers, document APIs, and operation types over editing GEDCOM or changeset JSON as raw text.
-- Read GEDCOM input through `GedReader`, which detects the version and dispatches to the version-specific parser. Do not call a version-specific parser directly on input of unknown version.
-- Call `GedDocument.RebuildXrefIndex()` after inserting or removing level-0 records.
-- Mutate record structure through `NodeBuilder` helpers rather than raw string edits. Internal text uses `\n` (via `NodeBuilder.NormalizeText`); formatters emit CRLF. `CONT`/`CONC` lines are preserved as child records, so naive value edits break byte-stable round trips.
-- Never change formatter output conventions: `Ged70Formatter` writes UTF-8 with BOM, `Ged55Formatter` writes the detected legacy encoding (Windows-1252 default), both with CRLF line endings.
+- Prefer existing third party packages over reinventing the wheel.
+- Each class should have one well defined responsibility. 
+- Avoid methods with high cyclomatic complexity. Introduce component methods. Replace a long argument list with one or two objects that carry the information.
+- Use unit testing to prove correctness. Adhere to the principle of one unit test class per production class, and isolate the class under test from other classes as much as possible.
 - Treat `@VOID@` as a valid, intentionally unresolvable pointer. It is distinct from a dangling xref, which is an error.
 - `CHAN` stamps are applied only by `ChangesetApplier`, only to level-0 records actually mutated, and only after all operations succeed. Do not stamp elsewhere.
-- To add a changeset operation: create a `ChangeOp` subclass in `GedCore/Apply/Ops/` with `Validate`, `Apply`, and a static `Read` factory; register it in the `ChangeOp.ReadOp()` switch (registration is explicit, not reflective); update the unsupported-op error message; and add a JSON fixture plus tests. Classify any new fact type as single-valued or repeatable.
-- To add a CLI command: add a `Run<Command>` method and a case in the `Program.cs` switch, parse arguments with `CommandLine.Parse`, return exit code 0 on success and 1 on any failure, write errors to standard error, and write informational output to standard output.
-- Product version numbers live in `Directory.Build.props`, not in individual project files.
+- Avoid testing with files. Production code should expose public methods that take a stream, and tests should exercise those stream overloads; only the very highest level of the call stack takes a file path and opens the stream for reading or writing.
+- Test only through `public` types and members of the assembly under test. `InternalsVisibleTo` is strictly prohibited; if a behavior cannot be reached from the public surface, then you should wonder whether it has any purpose at all.
 
 ## Code Comments
 
-- Keep comments brief. State what the code does or why, in the comment's own words.
-- Never reference or cite a file in `docs/design/` from a code comment. Design docs get renamed, moved, or deleted; a comment that cites one becomes a dead reference nobody notices.
-- Never recount the origin story of how the next line came to exist (what it used to be, what it was moved from, what change introduced it). Describe the code as it is now.
+- The best comment is no comment. Strive to make code simple, straightforward, and self explanatory.
+- Comments must be short, no more than a line or two, and explain things that are not self explanatory. Help the future programmer to notice relationships and constraints.
+- Never reference design documents or recount the origin story of how the next line came to exist. 
 
 ## Compatibility And Safety
 
-- Refer to the [FamilySearch GEDCOM 7 specification](https://gedcom.io/specifications/FamilySearchGEDCOMv7.html) for format rules. Account for earlier GEDCOM versions where relevant.
-- Preserve unknown extension tags and supported encodings unless the operation explicitly changes them.
+- GEDCOM and GEDZIP files must conform to standards. Refer to the [FamilySearch GEDCOM 7 specification](https://gedcom.io/specifications/FamilySearchGEDCOMv7.html) for the latest standard. 
+- Never take risks when modifying a GEDCOM file. Corrupting a file must be avoided. Use the validate routine when a corrupted file is suspected.
+- GEDCOM extensions are allowed by the standard and so should be supported by this system.
 - Preserve GEDCOM record xrefs (such as `@I1@`) across all edits. Never renumber or reuse them; remove them only through an approved delete or merge.
-- Keep command-line syntax and changeset JSON backward compatible unless a breaking change is explicitly requested and documented, because they are public interfaces.
-- Keep changeset application transactional by leaving the GEDCOM unchanged when validation fails.
-- Preserve post-apply checks for round-trip stability, pointer resolution, and expected record-count deltas.
-- Treat GEDCOM cross-record pointers, level hierarchy, continuation records, at-sign escaping, media paths, and GEDZIP paths as structured data with security and integrity implications.
+- With fixes and enhancements, make heavy use of unit tests to ensure correctness and no regressions.
+- Always respect the MCP read-only option when enabled.
+- Always respect the MCP enforce-privacy option when enabled.
 
 ## Documentation
 

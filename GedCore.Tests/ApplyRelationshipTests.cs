@@ -248,22 +248,19 @@ public class ApplyRelationshipTests : ApplyTestBase
     }
 
     /// <summary>
-    /// Known limitation, not a crash: a second createOrUpdateParent op that
-    /// targets the *same brand-new family* a prior op in this run just created
-    /// fails cleanly instead of segfaulting. The FAMC back-link that would make
-    /// the family "belong" to the person is deferred to end-of-run, so
-    /// Resolve.ParentFamily's ownership check (correctly) can't yet see it.
-    /// Two new parents on one person: create the family with the first parent,
-    /// then add the second with createOrUpdateSpouse naming the same family
-    /// (see the sibling test below) — that path resolves the family by xref
-    /// directly, without the ownership check.
+    /// Two new parents on one person, expressed the ordinary way: two
+    /// createOrUpdateParent ops naming the same brand-new family. The first
+    /// op creates the family and eagerly writes its CHIL pointer back to the
+    /// person; the second op's ownership check must recognize that CHIL
+    /// pointer even though the person's own reciprocal FAMC pointer is still
+    /// only queued (it isn't written until end-of-run back-link batching).
     /// </summary>
     [Fact]
-    public void Parent_SecondParentOpOnFreshlyCreatedFamily_FailsCleanly_NotCrash()
+    public void Parent_TwoParentOpsOnFreshlyCreatedFamily_BothSucceed()
     {
-        byte[] original = WriteBaseFile();
+        WriteBaseFile();
 
-        var result = Run("""
+        var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
                 "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
@@ -273,13 +270,102 @@ public class ApplyRelationshipTests : ApplyTestBase
                 "family": "@NewF1@" } ] } ] }
             """);
 
+        Assert.Equal("@I00005@", result.MintedXrefs["@NewI1@"]);
+        Assert.Equal("@I00006@", result.MintedXrefs["@NewI2@"]);
+        Assert.Equal("@F00004@", result.MintedXrefs["@NewF1@"]);
+        var doc = ReadDoc();
+        var fam = doc.ByXref["@F00004@"];
+        Assert.Equal("@I00005@", fam.FirstChild("HUSB")!.Value);
+        Assert.Equal("@I00006@", fam.FirstChild("WIFE")!.Value);
+        Assert.Equal("@I00004@", fam.ChildrenByTag("CHIL").Single().Value);
+        // exactly one FAMC, not two — the end-of-run back-link dedup still
+        // holds when both ops queue the same pending link
+        Assert.Equal("@F00004@", doc.ByXref["@I00004@"].ChildrenByTag("FAMC").Single().Value);
+        Assert.Equal(2, result.Deltas["INDI"]);
+        Assert.Equal(1, result.Deltas["FAM"]);
+    }
+
+    /// <summary>
+    /// Validation (and --dry-run) already passed this shape before the fix,
+    /// via ResolutionContext.Planned tracking the same-run mint — confirm the
+    /// apply-time fix didn't change that.
+    /// </summary>
+    [Fact]
+    public void Parent_TwoParentOpsOnFreshlyCreatedFamily_DryRun_Succeeds()
+    {
+        WriteBaseFile();
+
+        var result = Run("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
+                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "family": "@NewF1@" },
+              { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother",
+                "parent": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                "family": "@NewF1@" } ] } ] }
+            """, dryRun: true);
+
+        Assert.True(result.Success);
+        Assert.Empty(result.Errors);
+    }
+
+    /// <summary>
+    /// Same shape as <see cref="Parent_TwoParentOpsOnFreshlyCreatedFamily_BothSucceed"/>
+    /// but the two ops live in separate items, exercising ChangesetApplier's
+    /// per-item state.BeginItem() boundary — the family's CHIL pointer (on
+    /// state.Doc) must still be visible to the second item's op.
+    /// </summary>
+    [Fact]
+    public void Parent_TwoParentOpsOnFreshlyCreatedFamily_AcrossItems_BothSucceed()
+    {
+        WriteBaseFile();
+
+        var result = RunExpectSuccess("""
+            { "items": [
+              { "item": 1, "ops": [
+                { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
+                  "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                  "family": "@NewF1@" } ] },
+              { "item": 2, "ops": [
+                { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother",
+                  "parent": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                  "family": "@NewF1@" } ] } ] }
+            """);
+
+        Assert.Equal("@I00005@", result.MintedXrefs["@NewI1@"]);
+        Assert.Equal("@I00006@", result.MintedXrefs["@NewI2@"]);
+        Assert.Equal("@F00004@", result.MintedXrefs["@NewF1@"]);
+        var doc = ReadDoc();
+        var fam = doc.ByXref["@F00004@"];
+        Assert.Equal("@I00005@", fam.FirstChild("HUSB")!.Value);
+        Assert.Equal("@I00006@", fam.FirstChild("WIFE")!.Value);
+        Assert.Equal("@I00004@", fam.ChildrenByTag("CHIL").Single().Value);
+        Assert.Equal("@F00004@", doc.ByXref["@I00004@"].ChildrenByTag("FAMC").Single().Value);
+        Assert.Equal(2, result.Deltas["INDI"]);
+        Assert.Equal(1, result.Deltas["FAM"]);
+    }
+
+    /// <summary>
+    /// The pre-existing protection this fix must not weaken: naming a real,
+    /// already-existing family the person has no CHIL/FAMC relationship to
+    /// at all must still fail. @F00001@ is Allen's parent family (CHIL
+    /// @I00001@); Edna (@I00004@) has no FAMC and is not its CHIL, so it is
+    /// unrelated to her on both sides.
+    /// </summary>
+    [Fact]
+    public void Parent_NamedFamily_PersonNotActuallyAChild_FailsCleanly()
+    {
+        byte[] original = WriteBaseFile();
+
+        var result = Run("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
+                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "family": "@F00001@" } ] } ] }
+            """);
+
         Assert.False(result.Success);
-        // @F00004@ is the real xref @NewF1@ mints during the first op — the
-        // second op's apply-time re-resolution disagrees with validation's
-        // plan-based one, exactly as it did under the old caller-chosen-xref
-        // dialect, just reported by the now-real minted xref.
-        Assert.Contains(result.Errors, e =>
-            e.Contains("apply-time invariant violated") && e.Contains("@F00004@"));
+        Assert.Contains(result.Errors, e => e.Contains("exists but is not a FAMC of @I00004@"));
         Assert.Equal(original, ReadBytes());   // untouched, not a partial write
     }
 
