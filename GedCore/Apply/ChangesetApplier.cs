@@ -42,24 +42,32 @@ public static class ChangesetApplier
     private static readonly Regex PointerPayload = new(@"^@[A-Za-z0-9_]+@$", RegexOptions.Compiled);
 
     /// <summary>
-    /// Apply a changeset to a file on disk, holding one exclusive file handle
-    /// from the initial read through verified replacement. FileShare.None
-    /// denies every other handle for the whole call, so a concurrent
-    /// path-based apply against the same file throws IOException immediately
-    /// instead of racing this one -- callers should treat that as a normal
-    /// apply failure, not let it propagate unhandled. A dry run only needs
-    /// read access since nothing is written.
+    /// Apply a changeset to a file on disk, holding one file handle from the
+    /// initial read through verified replacement. A mutating run takes
+    /// FileShare.None, denying every other handle for the whole call, so a
+    /// concurrent path-based apply against the same file throws IOException
+    /// immediately instead of racing this one -- callers should treat that as
+    /// a normal apply failure, not let it propagate unhandled. A dry run only
+    /// needs read access since nothing is written, so it takes FileShare.Read
+    /// instead: it never blocks another dry run (validate_changeset,
+    /// check_plausibility, or another process/session bound to the same
+    /// file), and it still won't be admitted while a real write is in
+    /// progress. It does still exclude a concurrent writer for as long as it
+    /// holds the handle, same as before -- reading a half-written file would
+    /// be worse than a rejected apply.
     /// </summary>
     public static ApplyResult Run(string gedcomPath, Changeset changeset,
-                                  IReadOnlyCollection<int> itemNumbers, bool dryRun, DateTime? utcNow = null)
+                                  IReadOnlyCollection<int> itemNumbers, bool dryRun, DateTime? utcNow = null,
+                                  CancellationToken cancellationToken = default)
     {
         using var handle = new FileStream(gedcomPath, FileMode.Open,
-            dryRun ? FileAccess.Read : FileAccess.ReadWrite, FileShare.None);
+            dryRun ? FileAccess.Read : FileAccess.ReadWrite,
+            dryRun ? FileShare.Read : FileShare.None);
 
         byte[] originalBytes = new byte[handle.Length];
         handle.ReadExactly(originalBytes);
 
-        var result = Run(originalBytes, changeset, itemNumbers, dryRun, utcNow);
+        var result = Run(originalBytes, changeset, itemNumbers, dryRun, utcNow, cancellationToken);
         if (!result.Success || result.OutputBytes is null) return result;
 
         handle.Seek(0, SeekOrigin.Begin);
@@ -85,14 +93,23 @@ public static class ChangesetApplier
     /// <summary>
     /// Apply a changeset wholly in memory. A successful mutating application
     /// supplies verified replacement bytes through <see cref="ApplyResult.OutputBytes"/>.
+    /// <paramref name="cancellationToken"/> is checked between phases and
+    /// inside the op-apply loops and the two checkers' own per-record loops
+    /// -- see those methods -- so a cancelled MCP request actually stops
+    /// work here instead of running to completion regardless (the file
+    /// handle above is released cleanly either way, since the resulting
+    /// OperationCanceledException unwinds through its `using`).
     /// </summary>
     public static ApplyResult Run(byte[] originalBytes, Changeset changeset,
-                                  IReadOnlyCollection<int> itemNumbers, bool dryRun, DateTime? utcNow = null)
+                                  IReadOnlyCollection<int> itemNumbers, bool dryRun, DateTime? utcNow = null,
+                                  CancellationToken cancellationToken = default)
     {
         var result = new ApplyResult();
         var doc = Ged70Parser.Read(new MemoryStream(originalBytes));
         var beforeCounts = CountRecords(doc);
-        var beforeDiags = AllDiagnostics(doc);
+        // beforeDiags is computed later, once the touched-person scope is known
+        // (see the post-apply gate below) -- GEN301 duplicate detection is too
+        // expensive to run unscoped on every call against a large document.
 
         var known = changeset.Items.Select(i => i.Number).ToHashSet();
         var unknown = itemNumbers.Where(n => !known.Contains(n)).ToList();
@@ -128,7 +145,10 @@ public static class ChangesetApplier
 
         var ctx = new ResolutionContext(doc);
         foreach (var op in selectedOps)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             op.Validate(ctx, result.Errors);
+        }
         if (result.Errors.Count > 0) return result;
 
         // New-person duplicate detection runs after every op's own Validate,
@@ -154,12 +174,18 @@ public static class ChangesetApplier
         try
         {
             foreach (var op in usedSources.SelectMany(g => g.Ops))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 op.Apply(state, result.Log);
+            }
             foreach (var item in selectedItems)
             {
                 state.BeginItem();
                 foreach (var op in item.Ops)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     op.Apply(state, result.Log);
+                }
                 result.Log.Add($"item {item.Number}: applied ({item.Target})");
             }
             ApplyFamsBackLinks(state, result.Log);
@@ -186,11 +212,34 @@ public static class ChangesetApplier
 
         // Post-apply conformance/plausibility gate (Subproject D2, extended by
         // the plausibility-checker design): the mutation is already on doc in
-        // memory, before serialization — no need to reparse to check it. Only
-        // *new* findings (occurrence count higher than the baseline) count; a
-        // pre-existing Warning the file already carried is not this changeset's
-        // problem, and a changeset that removes a diagnostic is always welcome.
-        var afterDiags = AllDiagnostics(doc);
+        // memory, before serialization — no need to reparse to check the
+        // *after* state. Only *new* findings (occurrence count higher than the
+        // baseline) count; a pre-existing Warning the file already carried is
+        // not this changeset's problem, and a changeset that removes a
+        // diagnostic is always welcome.
+        //
+        // GEN301 (possible duplicate) is the one rule here expensive enough to
+        // matter: an all-pairs sweep of a large same-surname bucket is
+        // O(bucket^2), which on a real family study's own most common surname
+        // is minutes of work -- run twice (before and after) on every call,
+        // regardless of what the changeset touches. duplicateCheckScope
+        // restricts it to the people this run actually created or modified
+        // (TouchedRoots), queried one at a time against their full bucket --
+        // the same shape find_person already uses, fast for the same reason.
+        // A pair where neither member is in scope can't newly appear in this
+        // diff either way (see PlausibilityChecker.CheckPossibleDuplicates),
+        // so omitting it costs nothing. This does mean a fresh reparse of
+        // originalBytes for the "before" side, since doc is already mutated by
+        // now -- one O(n) parse is negligible next to the O(bucket^2) sweep it
+        // replaces.
+        var touchedIndiXrefs = state.TouchedRoots
+            .Where(r => r.Tag == "INDI" && r.Xref is not null)
+            .Select(r => r.Xref!)
+            .ToHashSet(StringComparer.Ordinal);
+        cancellationToken.ThrowIfCancellationRequested();
+        var beforeDoc = Ged70Parser.Read(new MemoryStream(originalBytes));
+        var beforeDiags = AllDiagnostics(beforeDoc, touchedIndiXrefs, cancellationToken);
+        var afterDiags = AllDiagnostics(doc, touchedIndiXrefs, cancellationToken);
         var newDiags = ConformanceChecker.DiffDiagnostics(beforeDiags, afterDiags);
         result.NewDiagnostics = newDiags;
         var newErrors = newDiags.Where(d => d.Severity == GedDiagnosticSeverity.Error).ToList();
@@ -391,9 +440,15 @@ public static class ChangesetApplier
     /// every call site that diffs it against a baseline gets
     /// <see cref="PlausibilityChecker"/>'s findings too — see
     /// docs/design/plausibility-checker.md's Integration section.
+    /// <paramref name="duplicateCheckScope"/> is threaded straight through to
+    /// <see cref="PlausibilityChecker.Check"/> to keep GEN301 fast — see this
+    /// method's call sites above. <paramref name="cancellationToken"/> is
+    /// threaded straight through to both checkers.
     /// </summary>
-    private static List<GedDiagnostic> AllDiagnostics(GedDocument doc) =>
-        [.. ConformanceChecker.Check(doc), .. PlausibilityChecker.Check(doc)];
+    private static List<GedDiagnostic> AllDiagnostics(
+        GedDocument doc, IReadOnlySet<string> duplicateCheckScope, CancellationToken cancellationToken) =>
+        [.. ConformanceChecker.Check(doc, cancellationToken),
+         .. PlausibilityChecker.Check(doc, duplicateCheckScope, cancellationToken)];
 }
 
 /// <summary>Outcome of a changeset application: log, errors, record-count deltas.</summary>

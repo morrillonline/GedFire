@@ -37,23 +37,42 @@ public static class ConformanceChecker
     private static readonly HashSet<string> ValidSexValues = new(StringComparer.Ordinal) { "M", "F", "X", "U" };
     private static readonly HashSet<string> ValidQuayValues = new(StringComparer.Ordinal) { "0", "1", "2", "3" };
 
-    /// <summary>Run every rule against <paramref name="doc"/>, sorted by severity then code.</summary>
-    public static IReadOnlyList<GedDiagnostic> Check(GedDocument doc)
+    /// <summary>
+    /// Run every rule against <paramref name="doc"/>, sorted by severity then
+    /// code. <paramref name="cancellationToken"/> is checked between rules --
+    /// each is its own flat O(n) pass, so this is fine-grained enough for a
+    /// cancelled MCP request to actually stop the work instead of running to
+    /// completion regardless.
+    /// </summary>
+    public static IReadOnlyList<GedDiagnostic> Check(GedDocument doc, CancellationToken cancellationToken = default)
     {
         var diags = new List<GedDiagnostic>();
 
+        cancellationToken.ThrowIfCancellationRequested();
         CheckTagCharset(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckLevelIncrements(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckContOrdering(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckPointerResolutionAndType(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckSelfReferentialAlia(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckExidWithoutType(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckDeprecatedAddressLines(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckDuplicateFamilyLinks(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckUndeclaredExtensionTags(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckRemoved70Structures(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckSexAndQuayRanges(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckObjeFileForm(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckSourceObjeCycle(doc, diags);
 
         return [.. diags.OrderBy(d => d.Severity).ThenBy(d => d.Code, StringComparer.Ordinal)];

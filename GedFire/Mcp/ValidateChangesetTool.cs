@@ -78,7 +78,7 @@ public sealed class ValidateChangesetTool
         try
         {
             return await _gate.RunAsync(
-                _ => Task.FromResult(ChangesetToolSupport.Execute(_absoluteGedcomPath, changesetPath, items, dryRun: true)),
+                ct => Task.FromResult(ChangesetToolSupport.Execute(_absoluteGedcomPath, changesetPath, items, dryRun: true, ct)),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)

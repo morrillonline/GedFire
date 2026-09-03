@@ -86,7 +86,9 @@ static class ChangesetToolSupport
         }
         """;
 
-    public static CallToolResult Execute(string absoluteGedcomPath, string changesetPath, string items, bool dryRun)
+    public static CallToolResult Execute(
+        string absoluteGedcomPath, string changesetPath, string items, bool dryRun,
+        CancellationToken cancellationToken = default)
     {
         string trimmedPath = (changesetPath ?? "").Trim();
         if (trimmedPath.Length == 0)
@@ -104,7 +106,8 @@ static class ChangesetToolSupport
         ApplyResult result;
         try
         {
-            result = ChangesetApplier.Run(absoluteGedcomPath, changeset, itemNumbers, dryRun);
+            result = ChangesetApplier.Run(absoluteGedcomPath, changeset, itemNumbers, dryRun,
+                cancellationToken: cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
