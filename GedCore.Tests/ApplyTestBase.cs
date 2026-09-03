@@ -65,9 +65,12 @@ public abstract class ApplyTestBase
         "0 TRLR",
     ];
 
-    protected byte[] WriteBaseFile()
+    protected byte[] WriteBaseFile() => WriteFile(BaseLines);
+
+    /// <summary>Same as <see cref="WriteBaseFile"/>, but from caller-supplied lines instead of <see cref="BaseLines"/>.</summary>
+    protected byte[] WriteFile(IReadOnlyList<string> lines)
     {
-        var document = Ged70Parser.Parse(string.Join("\r\n", BaseLines) + "\r\n");
+        var document = Ged70Parser.Parse(string.Join("\r\n", lines) + "\r\n");
         var output = new MemoryStream();
         Ged70Formatter.Write(document, output);
         return _currentBytes = output.ToArray();

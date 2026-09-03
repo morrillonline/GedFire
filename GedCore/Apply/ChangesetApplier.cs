@@ -92,7 +92,7 @@ public static class ChangesetApplier
         var result = new ApplyResult();
         var doc = Ged70Parser.Read(new MemoryStream(originalBytes));
         var beforeCounts = CountRecords(doc);
-        var beforeDiags = ConformanceChecker.Check(doc);
+        var beforeDiags = AllDiagnostics(doc);
 
         var known = changeset.Items.Select(i => i.Number).ToHashSet();
         var unknown = itemNumbers.Where(n => !known.Contains(n)).ToList();
@@ -139,8 +139,17 @@ public static class ChangesetApplier
         if (result.Errors.Count > 0) return result;
 
         result.Log.Add($"validation OK ({selectedOps.Count} ops, items {string.Join(",", itemNumbers.OrderBy(n => n))})");
-        if (dryRun) { result.Success = true; return result; }
 
+        // Prerequisite fix (see docs/design/plausibility-checker.md): dry-run
+        // performs the identical in-memory Apply sequence as the real path,
+        // on the parsed doc, same as today -- but skips StampChangeDates,
+        // serialization, and OutputBytes. That in-memory (never persisted)
+        // mutation is what gives dry-run the same "after" state the real-apply
+        // path already computes, so validate_changeset reports a new
+        // conformance/plausibility warning exactly like apply_changeset does,
+        // before anything is written. Nothing about the file changes: dry-run
+        // still writes nothing, still needs only read access -- the mutation
+        // happens on doc, discarded when this method returns.
         var state = utcNow is { } fixedClock ? new ApplyState(doc) { UtcNow = fixedClock } : new ApplyState(doc);
         try
         {
@@ -173,15 +182,17 @@ public static class ChangesetApplier
             return result;
         }
 
-        StampChangeDates(state, result.Log);
+        if (!dryRun) StampChangeDates(state, result.Log);
 
-        // Post-apply conformance gate (Subproject D2): the mutation is already on
-        // doc in memory, before serialization — no need to reparse to check it.
-        // Only *new* findings (occurrence count higher than the baseline) count;
-        // a pre-existing Warning the file already carried is not this changeset's
+        // Post-apply conformance/plausibility gate (Subproject D2, extended by
+        // the plausibility-checker design): the mutation is already on doc in
+        // memory, before serialization — no need to reparse to check it. Only
+        // *new* findings (occurrence count higher than the baseline) count; a
+        // pre-existing Warning the file already carried is not this changeset's
         // problem, and a changeset that removes a diagnostic is always welcome.
-        var afterDiags = ConformanceChecker.Check(doc);
+        var afterDiags = AllDiagnostics(doc);
         var newDiags = ConformanceChecker.DiffDiagnostics(beforeDiags, afterDiags);
+        result.NewDiagnostics = newDiags;
         var newErrors = newDiags.Where(d => d.Severity == GedDiagnosticSeverity.Error).ToList();
         if (newErrors.Count > 0)
         {
@@ -191,6 +202,8 @@ public static class ChangesetApplier
         }
         foreach (var d in newDiags.Where(d => d.Severity != GedDiagnosticSeverity.Error))
             result.Log.Add($"conformance note: {d.Code} {d.Xref} {d.Tag}: {d.Message}");
+
+        if (dryRun) { result.Success = true; return result; }
 
         var ms = new MemoryStream();
         Ged70Formatter.Write(doc, ms);
@@ -371,6 +384,16 @@ public static class ChangesetApplier
             counts[rec.Tag] = counts.GetValueOrDefault(rec.Tag) + 1;
         return counts;
     }
+
+    /// <summary>
+    /// Conformance and plausibility diagnostics together, for the before/after
+    /// diff gate: <see cref="ConformanceChecker"/> stays conformance-only, but
+    /// every call site that diffs it against a baseline gets
+    /// <see cref="PlausibilityChecker"/>'s findings too — see
+    /// docs/design/plausibility-checker.md's Integration section.
+    /// </summary>
+    private static List<GedDiagnostic> AllDiagnostics(GedDocument doc) =>
+        [.. ConformanceChecker.Check(doc), .. PlausibilityChecker.Check(doc)];
 }
 
 /// <summary>Outcome of a changeset application: log, errors, record-count deltas.</summary>
@@ -388,4 +411,14 @@ public sealed class ApplyResult
     /// ops were all no-ops.
     /// </summary>
     public Dictionary<string, string> MintedXrefs { get; internal set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The post-apply gate's own diagnostics -- conformance and plausibility
+    /// findings this run newly introduced (<see cref="ConformanceChecker.DiffDiagnostics"/>
+    /// against the pre-apply baseline), whether or not they blocked the run.
+    /// Empty when validation failed before the in-memory apply ran, or the
+    /// run was an all-no-op. Set on both the dry-run and mutating paths, so
+    /// check_plausibility can read it from a dry run without writing anything.
+    /// </summary>
+    public List<GedDiagnostic> NewDiagnostics { get; internal set; } = [];
 }
