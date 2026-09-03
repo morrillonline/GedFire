@@ -148,11 +148,17 @@ public class PostApplyGateTests : ApplyTestBase
         }
         """;
 
-        // Dry-run passes: op validation cannot see the problem.
+        // Dry-run now runs the same in-memory apply and post-apply gate the
+        // real path does (the plausibility-checker design's prerequisite
+        // fix), so it catches this regression too — not just real apply.
         var dryRun = Run(changesetJson, dryRun: true);
-        Assert.True(dryRun.Success, string.Join("; ", dryRun.Errors));
+        Assert.False(dryRun.Success);
+        Assert.Contains(dryRun.Errors, e =>
+            e.StartsWith("conformance regression: GED005") && e.Contains("@I00002@"));
+        Assert.Null(dryRun.OutputBytes);
+        Assert.Equal(before, ReadBytes());
 
-        // Real apply is refused by the gate, and the file is untouched.
+        // Real apply is refused by the gate too, and the file is untouched.
         var result = Run(changesetJson);
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e =>
