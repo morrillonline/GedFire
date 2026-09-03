@@ -80,7 +80,7 @@ public sealed class ApplyChangesetTool
     {
         try
         {
-            return await _gate.RunAsync(_ => Task.FromResult(Execute(changesetPath, items)), cancellationToken).ConfigureAwait(false);
+            return await _gate.RunAsync(ct => Task.FromResult(Execute(changesetPath, items, ct)), cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -92,13 +92,13 @@ public sealed class ApplyChangesetTool
         }
     }
 
-    CallToolResult Execute(string changesetPath, string items)
+    CallToolResult Execute(string changesetPath, string items, CancellationToken cancellationToken)
     {
         if (_readOnly)
             return CallToolResults.Error(
                 "This server was started with --read-only: apply_changeset is disabled. Restart `gedfire mcp` " +
                 "without --read-only to enable it, or use validate_changeset to preview the same changeset.");
 
-        return ChangesetToolSupport.Execute(_absoluteGedcomPath, changesetPath, items, dryRun: false);
+        return ChangesetToolSupport.Execute(_absoluteGedcomPath, changesetPath, items, dryRun: false, cancellationToken);
     }
 }

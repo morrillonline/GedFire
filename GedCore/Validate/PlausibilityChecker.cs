@@ -25,27 +25,58 @@ namespace GedCore.Validate;
 /// </summary>
 public static class PlausibilityChecker
 {
-    /// <summary>Run every rule against <paramref name="doc"/>, sorted by severity then code.</summary>
-    public static IReadOnlyList<GedDiagnostic> Check(GedDocument doc)
+    /// <summary>
+    /// Run every rule against <paramref name="doc"/>, sorted by severity then
+    /// code. <paramref name="duplicateCheckScope"/> restricts GEN301
+    /// (possible duplicate) to only the given people as the query side of the
+    /// match, still scored against their full same-surname bucket -- pass
+    /// null (the default) for the unrestricted whole-document sweep every
+    /// other rule already does. See <see cref="CheckPossibleDuplicates"/> for
+    /// why that rule alone needs this. <paramref name="cancellationToken"/>
+    /// is checked between rules (each of the others is its own flat O(n)
+    /// pass) and, additionally, inside CheckPossibleDuplicates's own loop --
+    /// that's the one rule whose single call can still be a large enough
+    /// scope (a big batch changeset) for a between-rules check alone to be
+    /// too coarse.
+    /// </summary>
+    public static IReadOnlyList<GedDiagnostic> Check(
+        GedDocument doc, IReadOnlySet<string>? duplicateCheckScope = null, CancellationToken cancellationToken = default)
     {
         var diags = new List<GedDiagnostic>();
 
+        cancellationToken.ThrowIfCancellationRequested();
         CheckCanonicalEventOrder(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckParentAgeAtBirth(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckMarriageAge(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckLargeSpousalAgeGap(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckLargeChildrenSpan(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckChildrenOrMarriageMismatch(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckImplausibleAgeAtDeath(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckDiedTooYoungForFacts(doc, diags);
-        CheckPossibleDuplicates(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
+        CheckPossibleDuplicates(doc, diags, duplicateCheckScope, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckAncestorCycles(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckTooManyChildren(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckMultipleParentFamilies(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckManySpouses(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckDisconnectedIndividual(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckInvalidNameCharacters(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckMissingSex(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckHusbandWifeSexMismatch(doc, diags);
 
         return [.. diags.OrderBy(d => d.Severity).ThenBy(d => d.Code, StringComparer.Ordinal)];
@@ -381,12 +412,29 @@ public static class PlausibilityChecker
     // Bucketed by normalized surname first (cheap, O(n)) so scoring only
     // runs within same-surname groups rather than all pairs in the whole
     // document — see design doc's Integration section for why that matters.
+    //
+    // That still leaves an all-pairs sweep *within* a bucket: every member
+    // scored as the query ("self") against every other member. Fine for a
+    // small bucket, but a real family study's own most common surname can
+    // run to thousands of members, and O(bucket^2) there is minutes of work
+    // -- run twice (before and after) on every check_plausibility/
+    // validate_changeset/apply_changeset call, regardless of what the
+    // changeset touches. duplicateCheckScope, when supplied, runs only
+    // members in scope as "self" -- exactly the one-call-per-person query
+    // find_person already does, still scored against the bucket's full
+    // membership, so it finds every pair a full sweep would that involves a
+    // scoped person. A pair where neither member is in scope is necessarily
+    // one this changeset didn't touch, so it can't be a *new* finding for
+    // ChangesetApplier's before/after diff either way -- omitting it from
+    // the scoped sweep costs that diff nothing.
     private const double DuplicateWarningFloor = 70.0;
 
     static readonly Lazy<NicknameDirectory> Nicknames = new(NicknameDirectory.LoadEmbedded);
     static readonly PersonMatchCore MatchCore = new();
 
-    private static void CheckPossibleDuplicates(GedDocument doc, List<GedDiagnostic> diags)
+    private static void CheckPossibleDuplicates(
+        GedDocument doc, List<GedDiagnostic> diags, IReadOnlySet<string>? duplicateCheckScope,
+        CancellationToken cancellationToken)
     {
         var candidates = PersonRecordIndex.Build(doc);
         if (candidates.Count < 2) return;
@@ -397,8 +445,13 @@ public static class PlausibilityChecker
             var members = bucket.ToList();
             if (members.Count < 2) continue;
 
-            foreach (var self in members)
+            var selves = duplicateCheckScope is null
+                ? members
+                : members.Where(c => duplicateCheckScope.Contains(c.Id)).ToList();
+
+            foreach (var self in selves)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var others = members.Where(c => c.Id != self.Id).ToList();
                 var hints = HintsFor(self);
                 var outcome = MatchCore.Match(others, self.DisplayName, hints, Nicknames.Value, maxResults: 1);

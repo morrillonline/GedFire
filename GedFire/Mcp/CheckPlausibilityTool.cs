@@ -122,7 +122,7 @@ public sealed class CheckPlausibilityTool
         try
         {
             return await _gate.RunAsync(
-                _ => Task.FromResult(Execute(_absoluteGedcomPath, changesetPath, items)),
+                ct => Task.FromResult(Execute(_absoluteGedcomPath, changesetPath, items, ct)),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -135,7 +135,8 @@ public sealed class CheckPlausibilityTool
         }
     }
 
-    static CallToolResult Execute(string absoluteGedcomPath, string changesetPath, string items)
+    static CallToolResult Execute(
+        string absoluteGedcomPath, string changesetPath, string items, CancellationToken cancellationToken)
     {
         string trimmedPath = (changesetPath ?? "").Trim();
         if (trimmedPath.Length == 0)
@@ -153,7 +154,8 @@ public sealed class CheckPlausibilityTool
         ApplyResult result;
         try
         {
-            result = ChangesetApplier.Run(absoluteGedcomPath, changeset, itemNumbers, dryRun: true);
+            result = ChangesetApplier.Run(absoluteGedcomPath, changeset, itemNumbers, dryRun: true,
+                cancellationToken: cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
