@@ -99,12 +99,12 @@ no environment variables, API keys, or other credentials.
 Restart or reload the client after changing its configuration, approve the
 local server if prompted, and confirm that it discovers `find_person`,
 `date_calc`, `get_document_stats`, `get_record`, `describe_changeset_ops`,
-`validate_changeset`, and `apply_changeset`.
+`validate_changeset`, `validate_document`, and `apply_changeset`.
 
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
-The server binds to one document over stdio and exposes seven tools. Six
+The server binds to one document over stdio and exposes eight tools. Seven
 are read-only; `apply_changeset` is the only one that writes to the file,
 and only after validation and in-memory verification both pass (or not at
 all, if the server was started with `--read-only`). The server also watches
@@ -119,14 +119,16 @@ a change `apply_changeset` itself just wrote — no restart needed:
 | `get_record` | Fetch the full detail of a specific person, family, or source by xref. |
 | `describe_changeset_ops` | Return the changeset envelope shape and the full v2 op dialect (every `createOrUpdate`/`delete`/`merge` op, its required and optional fields, and one worked example) — so an agent can compose a valid changeset without external documentation or trial-and-error against `validate_changeset`'s error text. Takes no arguments. |
 | `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but nothing is written. Always available, even under `--read-only`. |
+| `validate_document` | Run the same GEDCOM 7 conformance checks as `gedfire validate` against the whole bound document — independent of any changeset — and return the findings structured instead of as plain-text lines. Optional `warningsAsErrors` mirrors the CLI flag. Always available, even under `--read-only`. |
 | `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. Refuses to run under `--read-only`. |
 
 `date_calc`, `find_person`, `get_document_stats`, and `get_record` also have
 a one-shot CLI mirror — `find-person`, `get-record`, `get-document-stats`,
 and `date-calc` — that runs the same engine and prints the same JSON without
 starting a server. `validate_changeset` and `apply_changeset` mirror the
-CLI's own `apply --dry-run` and `apply`, described under "Command reference"
-below, rather than having a same-named CLI counterpart of their own.
+CLI's own `apply --dry-run` and `apply`, and `validate_document` mirrors
+`validate`, described under "Command reference" below, rather than having
+a same-named CLI counterpart of their own.
 
 For example, an MCP client can call `find_person` with:
 
