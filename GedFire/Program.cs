@@ -561,6 +561,7 @@ static async Task<int> RunMcp(string[] args)
     var applyChangeset = new ApplyChangesetTool(absoluteInput, gate, readOnly);
     var describeChangesetOps = new DescribeChangesetOpsTool(gate);
     var checkPlausibility = new CheckPlausibilityTool(absoluteInput, gate);
+    var validateDocument = new ValidateDocumentTool(absoluteInput, gate);
 
     // Listed alphabetically by name for readability; the SDK's own
     // McpServerPrimitiveCollection does not preserve this as the advertised
@@ -579,22 +580,26 @@ static async Task<int> RunMcp(string[] args)
         getDocumentStats.ToMcpServerTool(),
         getRecord.ToMcpServerTool(),
         validateChangeset.ToMcpServerTool(),
+        validateDocument.ToMcpServerTool(),
     };
 
     string instructions =
         "Every xref returned by a tool on this server (an individual or family reference such as \"@I123@\" " +
         "or \"@F45@\") belongs only to the single GEDCOM document this server was started against, and is " +
         "meaningless to any other document or provider. date_calc, find_person, get_document_stats, get_record, " +
-        "describe_changeset_ops, validate_changeset, and check_plausibility never modify that file. " +
-        "apply_changeset is the only tool that writes to it, and only after validation and in-memory " +
-        "verification both pass; call validate_changeset first with the same arguments to preview a changeset " +
-        "without writing. check_plausibility runs that same preview and returns just the chronological/" +
-        "biological plausibility findings it would introduce (a parent's age at a child's birth, an event out " +
-        "of order, a possible duplicate, an ancestor cycle), structured for a caller that wants to route on " +
-        "severity rather than parse validate_changeset's log lines -- call it alongside validate_changeset, not " +
-        "instead of it. Call describe_changeset_ops before composing a changeset from scratch -- it returns " +
-        "the full op dialect, so there is no need to know the changeset format in advance or discover it by " +
-        "trial and error.";
+        "describe_changeset_ops, validate_changeset, validate_document, and check_plausibility never modify " +
+        "that file. apply_changeset is the only tool that writes to it, and only after validation and " +
+        "in-memory verification both pass; call validate_changeset first with the same arguments to preview a " +
+        "changeset without writing. check_plausibility runs that same preview and returns just the " +
+        "chronological/biological plausibility findings it would introduce (a parent's age at a child's " +
+        "birth, an event out of order, a possible duplicate, an ancestor cycle), structured for a caller that " +
+        "wants to route on severity rather than parse validate_changeset's log lines -- call it alongside " +
+        "validate_changeset, not instead of it. validate_document checks the document itself for GEDCOM 7 " +
+        "conformance problems (bad tag charset, broken level hierarchy, dangling pointers) independent of any " +
+        "changeset -- run it to sanity-check a file before relying on it, not in place of validate_changeset. " +
+        "Call describe_changeset_ops before composing a changeset from scratch -- it returns the full op " +
+        "dialect, so there is no need to know the changeset format in advance or discover it by trial and " +
+        "error.";
     if (readOnly)
         instructions +=
             " This server was started with --read-only: every call to apply_changeset is refused. " +
@@ -983,13 +988,13 @@ static void PrintHelp()
           mcp       --input <ged> [--read-only] [--enforce-privacy]
                         Start a stdio Model Context Protocol server exposing
                         this GEDCOM to MCP-compatible agent clients. Resident
-                        process: stays running until stdin closes. Eight
+                        process: stays running until stdin closes. Nine
                         tools: date_calc, describe_changeset_ops,
                         find_person, get_document_stats, get_record,
-                        validate_changeset, and check_plausibility never
-                        modify the file; apply_changeset is the only one
-                        that writes, after validation and in-memory
-                        verification pass.
+                        validate_changeset, validate_document, and
+                        check_plausibility never modify the file;
+                        apply_changeset is the only one that writes, after
+                        validation and in-memory verification pass.
                         Watches the input file and reloads automatically if
                         it changes on disk.
                           --read-only        Disable apply_changeset: every
