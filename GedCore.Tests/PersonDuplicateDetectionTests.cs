@@ -58,9 +58,13 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
     [Fact]
     public void ExactNameAndBirthMatch_AgainstRealPerson_IsRejectedAsADuplicate()
     {
+        // No husb/wife seed here -- @I00001@ (the real Frederick this new
+        // child should collide with) must not be the new family's own linked
+        // parent, or PersonDuplicateDetector's own-parent exclusion would
+        // suppress the very match this test exists to verify.
         var result = RunAgainstRichFixture("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00001@",
+              { "op": "createOrUpdateChild", "family": "@New2@",
                 "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
                            "facts": [ { "fact": "BIRT", "value": { "date": "12 MAR 1841",
                                         "place": "Gorham, Maine" } } ] } } ] } ] }
@@ -151,9 +155,11 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
     [Fact]
     public void SparseCreatingOp_ButLaterVitalOpConfirmsTheMatch_IsRejected()
     {
+        // No husb/wife seed here -- see the note in
+        // ExactNameAndBirthMatch_AgainstRealPerson_IsRejectedAsADuplicate.
         var result = RunAgainstRichFixture("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00001@",
+              { "op": "createOrUpdateChild", "family": "@New2@",
                 "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" } },
               { "op": "createOrUpdateVital", "record": "@New1@", "fact": "BIRT",
                 "value": { "date": "12 MAR 1841", "place": "Gorham, Maine" } } ] } ] }
@@ -339,5 +345,113 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains("high-confidence match"));
+    }
+
+    // -------------------------------------------------------------------
+    // False-positive guards: sex mismatch, near-zero comparable data, and a
+    // candidate that is the new person's own already-linked parent must
+    // never reach blocking confidence on name similarity alone.
+    // -------------------------------------------------------------------
+
+    [Fact]
+    public void SexMismatch_AtHighNameSimilarity_NeverBlocksAsADuplicate()
+    {
+        // Same name and birth data as the real Frederick Morrill, but this
+        // new person is asserted female -- a sex mismatch is strong evidence
+        // against being the same person, regardless of how well the name and
+        // birth data otherwise line up.
+        var result = RunAgainstRichFixture("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateChild", "family": "@New2@",
+                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "F",
+                           "facts": [ { "fact": "BIRT", "value": { "date": "12 MAR 1841",
+                                        "place": "Gorham, Maine" } } ] } } ] } ] }
+            """);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+    }
+
+    [Fact]
+    public void DataSparseCandidate_WithNoVitalsOnEitherSide_NeverBlocksAsADuplicate()
+    {
+        // Both the new mint and the real candidate carry only a name -- no
+        // birth or death data on either side to agree or disagree with.
+        // Name similarity alone (here, an exact match) must never be enough
+        // to call this a probable duplicate.
+        const string ged = """
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Charley /Wilson/
+            1 SEX M
+            0 TRLR
+            """;
+        var document = Ged70.Ged70Parser.Parse(ged.Replace("\n", "\r\n"));
+        var output = new MemoryStream();
+        Ged70.Ged70Formatter.Write(document, output);
+
+        var changeset = Apply.Changeset.Parse("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateChild", "family": "@New2@",
+                "child": { "xref": "@New1@", "name": "Charley /Wilson/", "sex": "M" } } ] } ] }
+            """);
+        var result = Apply.ChangesetApplier.Run(output.ToArray(), changeset, [1], dryRun: true);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+    }
+
+    [Fact]
+    public void CandidateIsTheChildsOwnLinkedParent_NeverBlocksAsADuplicate()
+    {
+        // The new child shares Frederick's own name and birth data, but is
+        // being added as a CHIL of Frederick's own family -- Frederick can
+        // never be his own child's duplicate, so he must never be
+        // considered a candidate for this token at all, regardless of score.
+        var result = RunAgainstRichFixture("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateChild", "family": "@F00001@",
+                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "value": { "date": "12 MAR 1841",
+                                        "place": "Gorham, Maine" } } ] } } ] } ] }
+            """);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+    }
+
+    // -------------------------------------------------------------------
+    // notDuplicateOf: an explicit, xref-specific override for the residual
+    // case where the mint really is a high-confidence match the caller has
+    // already confirmed is a different person.
+    // -------------------------------------------------------------------
+
+    [Fact]
+    public void NotDuplicateOf_AcknowledgingTheMatchedXref_AllowsTheCreation()
+    {
+        var result = RunAgainstRichFixture("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateChild", "family": "@New2@", "notDuplicateOf": ["@I00001@"],
+                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "value": { "date": "12 MAR 1841",
+                                        "place": "Gorham, Maine" } } ] } } ] } ] }
+            """);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Contains(result.Log, l => l.Contains("@New1@") && l.Contains("@I00001@")
+                                          && l.Contains("notDuplicateOf"));
+    }
+
+    [Fact]
+    public void NotDuplicateOf_NamingAnUnknownXref_FailsValidation()
+    {
+        var result = RunAgainstRichFixture("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateSpouse", "person": "@I00001@", "notDuplicateOf": ["@I99999@"],
+                "spouse": { "xref": "@New1@", "name": "Nobody /Real/", "sex": "F" },
+                "family": "@New2@" } ] } ] }
+            """);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("notDuplicateOf") && e.Contains("@I99999@"));
     }
 }

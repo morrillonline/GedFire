@@ -302,6 +302,53 @@ public class PlausibilityCheckerTests
     }
 
     [Fact]
+    public void GEN301_SexMismatch_IsNotFlaggedDespiteHighNameSimilarity()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME John /Smith/
+            1 SEX M
+            1 BIRT
+            2 DATE 1900
+            2 PLAC Boston, Massachusetts
+            0 @I2@ INDI
+            1 NAME John /Smith/
+            1 SEX F
+            1 BIRT
+            2 DATE 1900
+            2 PLAC Boston, Massachusetts
+            0 TRLR
+            """);
+
+        Assert.Empty(PlausibilityChecker.Check(doc).Where(d => d.Code == "GEN301"));
+    }
+
+    [Fact]
+    public void GEN301_NoComparableDataOnEitherSide_IsNotFlagged()
+    {
+        // Same name, no birth/death/parents/spouse on either side -- the
+        // name alone clears the recall gate, but with nothing else to
+        // compare it must never reach a "probable duplicate" finding.
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Charley /Wilson/
+            1 SEX M
+            0 @I2@ INDI
+            1 NAME Charley /Wilson/
+            1 SEX M
+            0 TRLR
+            """);
+
+        Assert.Empty(PlausibilityChecker.Check(doc).Where(d => d.Code == "GEN301"));
+    }
+
+    [Fact]
     public void GEN302_AncestorCycle_IsFlaggedAsError()
     {
         var doc = Parse("""

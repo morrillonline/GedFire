@@ -25,6 +25,14 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
     public string? Note { get; init; }
     public IReadOnlyList<Citation> Citations { get; init; } = [];
 
+    /// <summary>
+    /// Existing person xref(s) the caller has already confirmed are NOT the
+    /// same person as an inline <see cref="Spouse"/> being created, overriding
+    /// PersonDuplicateDetector's high-confidence match rejection for those
+    /// xrefs specifically. Ignored when Spouse is not inline.
+    /// </summary>
+    public IReadOnlyList<string> NotDuplicateOf { get; init; } = [];
+
     internal override IEnumerable<string> CitedSources =>
         Citations.Concat(MarriageCitations).Concat(Spouse.Facts.SelectMany(f => f.Citations))
                  .Select(c => c.Source);
@@ -48,6 +56,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
             MarriageCitations = marriageCitations,
             Note = JsonRead.Str(el, "note"),
             Citations = Citation.ReadAll(el),
+            NotDuplicateOf = JsonRead.StrArray(el, "notDuplicateOf"),
         };
     }
 
@@ -60,6 +69,8 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
 
         var person = Resolve.Person(ctx, Spouse);
         if (person.Error is not null) { errors.Add($"{Context}: {person.Error}"); return; }
+
+        OpChecks.NotDuplicateOfValid(ctx, Context, NotDuplicateOf, errors);
 
         var family = Resolve.SpouseFamily(ctx, Person, Spouse, Family);
         if (family.Error is not null) { errors.Add($"{Context}: {family.Error}"); return; }
@@ -177,6 +188,14 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
     public string? Wife { get; init; }
     public IReadOnlyList<Citation> Citations { get; init; } = [];
 
+    /// <summary>
+    /// Existing person xref(s) the caller has already confirmed are NOT the
+    /// same person as an inline <see cref="Child"/> being created, overriding
+    /// PersonDuplicateDetector's high-confidence match rejection for those
+    /// xrefs specifically. Ignored when Child is not inline.
+    /// </summary>
+    public IReadOnlyList<string> NotDuplicateOf { get; init; } = [];
+
     internal override IEnumerable<string> CitedSources =>
         Citations.Concat(Child.Facts.SelectMany(f => f.Citations)).Select(c => c.Source);
 
@@ -188,6 +207,7 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
         Husb = JsonRead.Str(el, "husb"),
         Wife = JsonRead.Str(el, "wife"),
         Citations = Citation.ReadAll(el),
+        NotDuplicateOf = JsonRead.StrArray(el, "notDuplicateOf"),
     };
 
     private string Context => $"{Kind} {Child.Xref} in {Family}";
@@ -196,6 +216,8 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
     {
         var child = Resolve.Person(ctx, Child);
         if (child.Error is not null) { errors.Add($"{Context}: {child.Error}"); return; }
+
+        OpChecks.NotDuplicateOfValid(ctx, Context, NotDuplicateOf, errors);
 
         var family = Resolve.ChildFamily(ctx, Family);
         if (family.Error is not null) { errors.Add($"{Context}: {family.Error}"); return; }

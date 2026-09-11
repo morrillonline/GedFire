@@ -332,4 +332,22 @@ internal static class OpChecks
             CitationsValid(ctx, $"{context}: inline {fact.Fact} on {person.Xref}", fact.Citations, errors);
         }
     }
+
+    /// <summary>
+    /// Validates a "notDuplicateOf" override: each entry must name one
+    /// specific, already-known real person -- never blank and never
+    /// @VOID@ -- so the field can't be used as a blanket bypass.
+    /// </summary>
+    public static void NotDuplicateOfValid(ResolutionContext ctx, string context,
+                                           IReadOnlyList<string> notDuplicateOf, List<string> errors)
+    {
+        foreach (var xref in notDuplicateOf)
+        {
+            if (string.IsNullOrWhiteSpace(xref))
+                errors.Add($"{context}: notDuplicateOf entries must name a specific person xref");
+            else if (RejectVoid($"{context}: notDuplicateOf", xref, errors)) { }
+            else if (!ctx.Known(xref))
+                errors.Add($"{context}: notDuplicateOf {xref} unknown");
+        }
+    }
 }

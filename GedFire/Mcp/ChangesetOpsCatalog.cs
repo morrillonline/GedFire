@@ -121,6 +121,7 @@ public static class ChangesetOpsCatalog
                 new("marriage", "object", false, "{\"date\"?, \"place\"?, \"citation\"/\"citations\"?} — the MARR fact, with its own citations nested inside this object, not at the op's top level."),
                 new("note", "string", false, "A NOTE attached to the family record."),
                 new("citation / citations", "object | array", false, CitationNote + " Attaches at the FAM record level, not to the marriage event."),
+                new("notDuplicateOf", "array of string", false, "Existing person xref(s) already confirmed NOT to be the same person as an inline \"spouse\" — overrides the high-confidence-match rejection for those xrefs specifically. Ignored when \"spouse\" is not inline."),
             ],
             Ex("""
                 { "op": "createOrUpdateSpouse", "person": "@I1@",
@@ -140,6 +141,7 @@ public static class ChangesetOpsCatalog
                 new("husb", "string", false, "Father's xref — only when \"family\" creates a new family."),
                 new("wife", "string", false, "Mother's xref — only when \"family\" creates a new family."),
                 new("citation / citations", "object | array", false, CitationNote + " Attaches at the FAM record level."),
+                new("notDuplicateOf", "array of string", false, "Existing person xref(s) already confirmed NOT to be the same person as an inline \"child\" — overrides the high-confidence-match rejection for those xrefs specifically. Ignored when \"child\" is not inline."),
             ],
             Ex("""{ "op": "createOrUpdateChild", "family": "@F1@", "child": "@I7@" }""")),
 
