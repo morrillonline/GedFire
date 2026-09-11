@@ -454,7 +454,8 @@ public static class PlausibilityChecker
                 cancellationToken.ThrowIfCancellationRequested();
                 var others = members.Where(c => c.Id != self.Id).ToList();
                 var hints = HintsFor(self);
-                var outcome = MatchCore.Match(others, self.DisplayName, hints, Nicknames.Value, maxResults: 1);
+                var outcome = MatchCore.Match(
+                    others, self.DisplayName, hints, Nicknames.Value, maxResults: 1, forDuplicateDetection: true);
                 // Single requires FinalScore >= 90 with a 10-point margin over the
                 // runner-up (PersonMatchCore's own hard-match bar) -- gating on it
                 // here would make DuplicateWarningFloor dead code, since nothing
@@ -482,7 +483,7 @@ public static class PlausibilityChecker
         EventHint? birth = c.Birth is { } b ? new EventHint(b.Year, b.NormalizedPlace) : null;
         ParentsHint? parents = c.Parents is { } p ? new ParentsHint(p.NormalizedFatherName, p.NormalizedMotherName) : null;
         SpouseHint? spouse = c.Marriages.Count > 0 ? new SpouseHint(c.Marriages[0].NormalizedSpouseName) : null;
-        return new MatchHints(Birth: birth, Parents: parents, Spouse: spouse);
+        return new MatchHints(Birth: birth, Parents: parents, Spouse: spouse, IsMale: c.IsMale);
     }
 
     // -------------------------------------------------------------------

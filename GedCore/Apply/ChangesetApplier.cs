@@ -155,7 +155,7 @@ public static class ChangesetApplier
         // once ResolutionContext.Placeholders is fully populated and every
         // selected op is available to gather evidence from — a per-op check
         // couldn't see operations after the creating PersonRef.
-        PersonDuplicateDetector.Check(doc, ctx, selectedOps, result.Errors);
+        PersonDuplicateDetector.Check(doc, ctx, selectedOps, result.Errors, result.Log);
         if (result.Errors.Count > 0) return result;
 
         result.Log.Add($"validation OK ({selectedOps.Count} ops, items {string.Join(",", itemNumbers.OrderBy(n => n))})");

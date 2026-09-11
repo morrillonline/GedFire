@@ -22,10 +22,13 @@ internal static class PersonDuplicateDetector
     /// Append one error per person-creation placeholder that resolves to a
     /// high-confidence existing match, or that carries conflicting scalar
     /// birth evidence across occurrences. Read-only: never mutates
-    /// <paramref name="doc"/>.
+    /// <paramref name="doc"/>. <paramref name="log"/>, when supplied, gets one
+    /// line per match the changeset itself acknowledged via
+    /// <c>notDuplicateOf</c> instead of erroring.
     /// </summary>
     public static void Check(
-        GedDocument doc, ResolutionContext ctx, IReadOnlyList<ChangeOp> selectedOps, List<string> errors)
+        GedDocument doc, ResolutionContext ctx, IReadOnlyList<ChangeOp> selectedOps, List<string> errors,
+        List<string>? log = null)
     {
         var tokens = ctx.Placeholders.PersonTokens().ToList();
         if (tokens.Count == 0) return;
@@ -46,7 +49,14 @@ internal static class PersonDuplicateDetector
             var provisional = evidence
                 .Where(kv => kv.Key != token)
                 .Select(kv => PersonRecordIndex.ToProvisionalCandidate(kv.Key, kv.Value));
-            var candidates = realCandidates.Concat(provisional).ToList();
+            // A candidate that is this same token's own already-linked parent
+            // (or, symmetrically, any other real person this op names as an
+            // acknowledged non-duplicate) never participates -- see
+            // GatherEvidence's ExcludedRealXrefs.
+            var candidates = realCandidates
+                .Where(c => !self.ExcludedRealXrefs.Contains(c.Id))
+                .Concat(provisional)
+                .ToList();
 
             EventHint? birth = self.BirthYear is not null || self.BirthPlace is not null
                 ? new EventHint(self.BirthYear, self.BirthPlace)
@@ -57,16 +67,26 @@ internal static class PersonDuplicateDetector
             SpouseHint? spouse = self.SpouseName is not null
                 ? new SpouseHint(self.SpouseName)
                 : null;
-            var hints = new MatchHints(Birth: birth, Parents: parents, Spouse: spouse);
-            var outcome = MatchCore.Match(candidates, self.Name, hints, Nicknames.Value, maxResults: 1);
+            bool? isMale = self.Sex switch { "M" => true, "F" => false, _ => null };
+            var hints = new MatchHints(Birth: birth, Parents: parents, Spouse: spouse, IsMale: isMale);
+            var outcome = MatchCore.Match(
+                candidates, self.Name, hints, Nicknames.Value, maxResults: 1, forDuplicateDetection: true);
 
             if (outcome.PersonMatchType == PersonMatchType.Single && outcome.Matches[0].FinalScore >= DuplicateScoreFloor)
             {
                 var match = outcome.Matches[0];
+                if (self.NotDuplicateOf.Contains(match.Id))
+                {
+                    log?.Add($"{token}: match against {match.Id} (score {match.FinalScore:0.0}) " +
+                             "acknowledged via notDuplicateOf; creation proceeds");
+                    continue;
+                }
+
                 errors.Add(
                     $"{token}: a high-confidence match already exists for \"{self.Name}\" — {match.Id} " +
-                    $"(score {match.FinalScore:0.0}); remove the creation request or reference the " +
-                    "existing person instead of creating a new one");
+                    $"(score {match.FinalScore:0.0}); remove the creation request, reference the " +
+                    "existing person instead of creating a new one, or add " +
+                    $"\"notDuplicateOf\": [\"{match.Id}\"] to acknowledge they are different people");
             }
         }
     }
@@ -86,6 +106,8 @@ internal static class PersonDuplicateDetector
         var spouseNames = new HashSet<string>(StringComparer.Ordinal);
         var fatherNames = new HashSet<string>(StringComparer.Ordinal);
         var motherNames = new HashSet<string>(StringComparer.Ordinal);
+        var excludedXrefs = new HashSet<string>(StringComparer.Ordinal);
+        var notDuplicateOf = new HashSet<string>(StringComparer.Ordinal);
         var conflicts = new List<string>();
 
         void ObserveBirth(IReadOnlyList<InlineFact> facts)
@@ -139,6 +161,16 @@ internal static class PersonDuplicateDetector
             names.Add(PersonNameNormalizer.Normalize(realName));
         }
 
+        // A real xref (not a placeholder, not @VOID@) named as a parent this
+        // token is being linked under is excluded from candidacy entirely --
+        // a child's own already-linked parent in the same family is never a
+        // plausible duplicate of that child, no matter how the name scores.
+        void AddExcluded(string? xref)
+        {
+            if (xref is not null && xref != GedRecord.VoidPointer && !Placeholder.IsPlaceholder(xref))
+                excludedXrefs.Add(xref);
+        }
+
         foreach (var op in selectedOps)
         {
             switch (op)
@@ -146,7 +178,10 @@ internal static class PersonDuplicateDetector
                 case CreateOrUpdateSpouseOp spouseOp:
                     ObservePersonRef(spouseOp.Spouse);
                     if (spouseOp.Spouse.Xref == token)
+                    {
                         AddSpouse(ResolveRealName(spouseOp.Person));
+                        notDuplicateOf.UnionWith(spouseOp.NotDuplicateOf);
+                    }
                     if (spouseOp.Person == token)
                         AddSpouse(spouseOp.Spouse.IsInline ? null : ResolveRealName(spouseOp.Spouse.Xref));
                     break;
@@ -155,16 +190,19 @@ internal static class PersonDuplicateDetector
                     ObservePersonRef(childOp.Child);
                     if (childOp.Child.Xref == token)
                     {
-                        if (childOp.Husb is not null || childOp.Wife is not null)
+                        notDuplicateOf.UnionWith(childOp.NotDuplicateOf);
+                        string? husb = childOp.Husb;
+                        string? wife = childOp.Wife;
+                        if (husb is null && wife is null
+                            && !Placeholder.IsPlaceholder(childOp.Family) && ctx.Existing(childOp.Family) is { } fam)
                         {
-                            AddParent(fatherNames, ResolveRealName(childOp.Husb));
-                            AddParent(motherNames, ResolveRealName(childOp.Wife));
+                            husb = fam.FirstChild("HUSB")?.Value;
+                            wife = fam.FirstChild("WIFE")?.Value;
                         }
-                        else if (!Placeholder.IsPlaceholder(childOp.Family) && ctx.Existing(childOp.Family) is { } fam)
-                        {
-                            AddParent(fatherNames, ResolveRealName(fam.FirstChild("HUSB")?.Value));
-                            AddParent(motherNames, ResolveRealName(fam.FirstChild("WIFE")?.Value));
-                        }
+                        AddParent(fatherNames, ResolveRealName(husb));
+                        AddParent(motherNames, ResolveRealName(wife));
+                        AddExcluded(husb);
+                        AddExcluded(wife);
                     }
                     break;
 
@@ -202,7 +240,8 @@ internal static class PersonDuplicateDetector
         string? motherHint = motherNames.Count == 1 ? motherNames.Single() : null;
 
         return (new PersonEvidence(
-            name ?? "", sex, birthYear, birthPlace, spouseHint, fatherHint, motherHint), null);
+            name ?? "", sex, birthYear, birthPlace, spouseHint, fatherHint, motherHint,
+            excludedXrefs, notDuplicateOf), null);
     }
 }
 
@@ -211,6 +250,11 @@ internal static class PersonDuplicateDetector
 /// Relationship names are already normalized with
 /// <see cref="PersonNameNormalizer"/>; <see cref="BirthPlace"/> is raw free
 /// text, normalized the same way <see cref="MatchHints"/> place hints are.
+/// <see cref="ExcludedRealXrefs"/> are real xrefs that can never be a
+/// duplicate candidate for this token (its own already-linked parent);
+/// <see cref="NotDuplicateOf"/> are real xrefs the changeset itself
+/// acknowledged, via <c>notDuplicateOf</c>, are a different person despite
+/// scoring as a match.
 /// </summary>
 internal readonly record struct PersonEvidence(
     string Name,
@@ -219,4 +263,6 @@ internal readonly record struct PersonEvidence(
     string? BirthPlace,
     string? SpouseName,
     string? FatherName,
-    string? MotherName);
+    string? MotherName,
+    IReadOnlySet<string> ExcludedRealXrefs,
+    IReadOnlySet<string> NotDuplicateOf);

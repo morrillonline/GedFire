@@ -16,7 +16,8 @@ public sealed record MatchHints(
     EventHint? Birth = null,
     EventHint? Death = null,
     ParentsHint? Parents = null,
-    SpouseHint? Spouse = null)
+    SpouseHint? Spouse = null,
+    bool? IsMale = null)
 {
     public static readonly MatchHints None = new();
 }

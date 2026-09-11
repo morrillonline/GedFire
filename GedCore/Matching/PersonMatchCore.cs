@@ -132,16 +132,30 @@ public sealed class PersonMatchCore
     /// come back in <see cref="PersonMatchOutcome.Matches"/> (default 8);
     /// pass null for no cap. The cap never changes recall admission,
     /// scoring, ordering, or single/candidates/none classification.
+    /// <paramref name="forDuplicateDetection"/> (default false, so find_person
+    /// is unaffected) tightens both admission and classification for callers
+    /// deciding whether two records are the *same person*, rather than just
+    /// locating someone by name: a candidate whose known sex disagrees with
+    /// <paramref name="hints"/>'s <see cref="MatchHints.IsMale"/> is dropped
+    /// outright, and a candidate with no comparable evidence at all beyond
+    /// the name itself (no hint field found anything on the candidate to
+    /// agree or disagree with) can never reach Single or even appear as a
+    /// scored match -- surname/given-name similarity alone is not enough to
+    /// call two records the same person.
     /// </summary>
     public PersonMatchOutcome Match(
         IReadOnlyList<PersonMatchCandidate> candidates, string query, MatchHints? hints,
-        NicknameDirectory nicknames, int? maxResults = DefaultCandidateCap)
+        NicknameDirectory nicknames, int? maxResults = DefaultCandidateCap,
+        bool forDuplicateDetection = false)
     {
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(nicknames);
         if (maxResults is < 1)
             throw new ArgumentOutOfRangeException(nameof(maxResults), maxResults, "maxResults must be at least 1, or null for no cap.");
         hints ??= MatchHints.None;
+
+        if (forDuplicateDetection && hints.IsMale is bool queryIsMale)
+            candidates = [.. candidates.Where(c => c.IsMale is not bool candidateIsMale || candidateIsMale == queryIsMale)];
 
         var (querySurname, queryGiven, oneToken) = SplitQuery(query);
 
@@ -157,6 +171,18 @@ public sealed class PersonMatchCore
         var scored = recall
             .Select(x => new CandidateScore(x.Candidate, x.Score, ApplyHints(x.Score, x.Candidate, hints)))
             .ToList();
+
+        if (forDuplicateDetection)
+        {
+            // No comparable evidence beyond the name itself (birth, death,
+            // parents, spouse -- everything AddHint could have compared and
+            // found nothing on) is treated as evidence against, not neutral:
+            // a candidate reduced to "shares a surname" never counts as a
+            // probable identity match.
+            scored = scored.Where(s => s.Hinted.AvailableWeight > s.NameOnly.Weight).ToList();
+            if (scored.Count == 0)
+                return NoMatchOutcome(nameScored);
+        }
 
         var ordered = Order(scored);
         int totalMatches = ordered.Count;

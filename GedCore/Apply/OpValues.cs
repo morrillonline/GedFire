@@ -179,4 +179,9 @@ internal static class JsonRead
 
     public static bool Bool(JsonElement el, string name) =>
         el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+
+    public static IReadOnlyList<string> StrArray(JsonElement el, string name) =>
+        el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array
+            ? [.. v.EnumerateArray().Select(x => x.GetString()!)]
+            : [];
 }
