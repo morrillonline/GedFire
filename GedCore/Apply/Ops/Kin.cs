@@ -27,6 +27,18 @@ internal static class Kin
         NodeBuilder.Attach(rec, NodeBuilder.NewNode(1, "UID", Guid.NewGuid().ToString()));
         state.AddRecord("INDI", rec);
         log.Add($"created person {realXref} ({p.Name})");
+
+        // One line per inline fact, same shape as a standalone
+        // createOrUpdateVital's own "created" line -- a reviewer checking the
+        // log alone needs to see each fact and its citation, not just the
+        // top-level "created person" summary.
+        foreach (var f in p.Facts)
+        {
+            string cited = f.Citations.Count > 0
+                ? $"; cited {string.Join(", ", f.Citations.Select(c => c.Source))}"
+                : "";
+            log.Add($"createOrUpdateVital {f.Fact} on {realXref}: created{cited}");
+        }
     }
 
     /// <summary>

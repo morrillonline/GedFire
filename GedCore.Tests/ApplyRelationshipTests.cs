@@ -117,6 +117,14 @@ public class ApplyRelationshipTests : ApplyTestBase
         Assert.Equal("@F00002@", junior.ChildrenByTag("FAMC").Single().Value);
         Assert.Equal("1951", junior.FirstChild("BIRT")!.FirstChild("DATE")!.Value);
         Assert.NotNull(junior.FirstChild("UID"));
+
+        // The inline BIRT fact and its citation are itemized in the log, the
+        // same shape a standalone createOrUpdateVital would produce -- a
+        // reviewer must be able to confirm the citation was parsed and
+        // written from the log alone, not just the top-level "created
+        // person" line.
+        Assert.Contains(result.Log,
+            l => l == "createOrUpdateVital BIRT on @I00005@: created; cited @S00001@");
     }
 
     [Fact]
@@ -124,7 +132,7 @@ public class ApplyRelationshipTests : ApplyTestBase
     {
         WriteBaseFile();
 
-        RunExpectSuccess("""
+        var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateChild", "family": "@F00002@",
                 "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
@@ -132,6 +140,10 @@ public class ApplyRelationshipTests : ApplyTestBase
                 "citation": { "source": "@S00001@", "page": "p. 5",
                               "dataText": "surviving children include Junior", "quay": 3 } } ] } ] }
             """);
+
+        // No citation on the inline fact itself -- the itemized line omits
+        // "; cited ..." rather than claiming one that isn't there.
+        Assert.Contains(result.Log, l => l == "createOrUpdateVital BIRT on @I00005@: created");
 
         var birth = ReadDoc().ByXref["@I00005@"].FirstChild("BIRT")!;
         Assert.Equal("1951", birth.FirstChild("DATE")!.Value);
