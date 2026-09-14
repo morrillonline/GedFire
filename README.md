@@ -1,5 +1,7 @@
 # GedFire
 
+<!-- mcp-name: io.github.morrillonline/gedfire -->
+
 [![CI](https://github.com/morrillonline/GedFire/actions/workflows/ci.yml/badge.svg)](https://github.com/morrillonline/GedFire/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2e7d32.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4.svg)](https://dotnet.microsoft.com/)
