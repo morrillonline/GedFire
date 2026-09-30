@@ -362,14 +362,14 @@ public class ApplyTests : ApplyTestBase
           { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "DEAT",
             "citation": { "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 } } ] } ] }
         """, "cannot create its fact")]
-    // one source twice on one fact
+    // one source twice on one fact with the same page
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
             "value": { "date": "1990" },
             "citations": [
               { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 },
-              { "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 } ] } ] } ] }
+              { "source": "@S00001@", "page": "a", "dataText": "y", "quay": 1 } ] } ] } ] }
         """, "cited twice")]
     // inline new spouse requires an explicit new family xref
     [InlineData("""

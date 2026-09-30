@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
@@ -14,15 +16,23 @@ public sealed record CropDetail(int? Top, int? Left, int? Height, int? Width);
 
 public sealed record MediaDetail(string Xref, string? Title, CropDetail? Crop, IReadOnlyList<MediaFileDetail> Files);
 
+/// <summary>
+/// One citation on a fact, note, or name. Kind is "citation" (a real source
+/// citation), "inlineNote" (prose carried on the citation), or "personalNote"
+/// (the personal-note pseudo-source, which cites nothing). Source is null only
+/// for an inline note that names no source record.
+/// </summary>
+public sealed record CitationDetail(string Kind, string? Source, string? Page, string? DataText, int? Quay);
+
 public sealed record EventDetail(
     string? Date,
     int? Year,
     string? Qualifier,
     string? Place,
-    IReadOnlyList<string> Sources,
+    IReadOnlyList<CitationDetail> Citations,
     IReadOnlyList<MediaDetail> Media);
 
-public sealed record NoteDetail(string Text, string? Mime, IReadOnlyList<string> Sources);
+public sealed record NoteDetail(string Text, string? Mime, IReadOnlyList<CitationDetail> Citations);
 
 public sealed record ChildIdentity(string Xref, string Name, int? BirthYear);
 
@@ -47,12 +57,17 @@ public sealed record PersonRecord(
     EventDetail? Will,
     EventDetail? Probate,
     IReadOnlyList<EventDetail> Census,
-    IReadOnlyList<string> NameSources,
+    IReadOnlyList<CitationDetail> NameCitations,
     IReadOnlyList<NoteDetail> Notes,
     string? Restriction,
     IReadOnlyList<MediaDetail> Media,
     ParentFamilyReference? FamilyAsChild,
-    IReadOnlyList<SpouseFamilyDetail> FamiliesAsSpouse);
+    IReadOnlyList<SpouseFamilyDetail> FamiliesAsSpouse)
+{
+    /// <summary>Present only when get_record was asked to includeSources.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<SourceRecord>? Sources { get; init; }
+}
 
 public sealed record FamilyRecord(
     string RecordType,
@@ -61,7 +76,15 @@ public sealed record FamilyRecord(
     SpouseReference? Wife,
     EventDetail? Marriage,
     IReadOnlyList<ChildIdentity> Children,
-    IReadOnlyList<MediaDetail> Media);
+    IReadOnlyList<MediaDetail> Media)
+{
+    /// <summary>Present only when get_record was asked to includeSources.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<SourceRecord>? Sources { get; init; }
+}
+
+/// <summary>One structure that cites a source: the record's xref and record type, and which field carries the citation.</summary>
+public sealed record CitedByEntry(string Xref, string RecordType, string Field);
 
 public sealed record SourceRecord(
     string RecordType,
@@ -69,6 +92,11 @@ public sealed record SourceRecord(
     string? Author,
     string? Title,
     string? Publication,
-    string? Note);
+    string? Note)
+{
+    /// <summary>Present only on a direct lookup of the source, never on a source embedded by includeSources.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<CitedByEntry>? CitedBy { get; init; }
+}
 
 public sealed record NotFoundRecord(string RecordType, string Xref);

@@ -563,4 +563,18 @@ public class WantedFileWriterTests
         Assert.Equal(999, drawLog.GetProperty("seed").GetInt64());
         Assert.Equal(0, drawLog.GetProperty("legendaryDiscards").GetArrayLength());
     }
+
+    [Fact]
+    public void ToJson_WithoutSourcePath_OmitsSourceAndKeepsEverythingElse()
+    {
+        var draw = new DrawResult { Targets = [], Seed = 7, LegendaryDiscards = [] };
+
+        string json = WantedFileWriter.ToJson(["Ashworth"], totalCandidates: 3, draw);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.False(root.TryGetProperty("source", out _));
+        Assert.Equal(3, root.GetProperty("totalCandidates").GetInt32());
+        Assert.Equal(7, root.GetProperty("draw").GetProperty("seed").GetInt64());
+    }
 }

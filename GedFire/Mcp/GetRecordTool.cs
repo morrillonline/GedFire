@@ -25,7 +25,10 @@ public sealed class GetRecordTool
         "xref — the identity, every event with its citations and attached media, notes, and every related " +
         "record's xref for a follow-up call. Call this once a specific person or family is no longer ambiguous " +
         "(after find_person returns a single match, or a candidate the user picked) or when the user's question " +
-        "needs detail find_person deliberately omits: children, notes, media, or citations. Pass any xref this " +
+        "needs detail find_person deliberately omits: children, notes, media, or citations. Each citation gives " +
+        "its source xref, page, quoted text (dataText), and quality (quay); set includeSources to also receive " +
+        "the full text of every source the record cites. Looking up a source xref directly also lists every " +
+        "structure that cites it (citedBy). Pass any xref this " +
         "server has returned — from find_person's person or family fields, or from an earlier get_record's own " +
         "references — never one the user typed from memory. Every media file's \"resolved\" flag tells you " +
         "whether its \"path\" is ready to use as-is: true means open or display it directly (a local absolute " +
@@ -43,6 +46,11 @@ public sealed class GetRecordTool
               "pattern": "^@[^@]+@$",
               "minLength": 3,
               "description": "A local xref returned by this server, e.g. \"@I00006@\", \"@F00012@\", or \"@S00042@\". Not a value the user would know to type themselves."
+            },
+            "includeSources": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true and the xref is a person or family, add a sources array with the full SourceRecord (author, title, publication, note) of every source cited on that record, each once. Citations on related records are not followed."
             }
           },
           "required": ["xref"]
@@ -68,10 +76,10 @@ public sealed class GetRecordTool
                 "year": { "type": ["integer", "null"] },
                 "qualifier": { "type": ["string", "null"] },
                 "place": { "type": ["string", "null"] },
-                "sources": { "type": "array", "items": { "type": "string" } },
+                "citations": { "type": "array", "items": { "$ref": "#/$defs/CitationDetail" } },
                 "media": { "type": "array", "items": { "$ref": "#/$defs/MediaDetail" } }
               },
-              "required": ["date", "year", "qualifier", "place", "sources", "media"]
+              "required": ["date", "year", "qualifier", "place", "citations", "media"]
             },
             "NoteDetail": {
               "type": "object",
@@ -79,9 +87,21 @@ public sealed class GetRecordTool
               "properties": {
                 "text": { "type": "string" },
                 "mime": { "type": ["string", "null"] },
-                "sources": { "type": "array", "items": { "type": "string" } }
+                "citations": { "type": "array", "items": { "$ref": "#/$defs/CitationDetail" } }
               },
-              "required": ["text", "mime", "sources"]
+              "required": ["text", "mime", "citations"]
+            },
+            "CitationDetail": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "enum": ["citation", "inlineNote", "personalNote"], "description": "citation: a real source citation. inlineNote: prose carried on the citation. personalNote: the personal-note pseudo-source, which cites nothing." },
+                "source": { "type": ["string", "null"], "description": "The cited source's xref; null only for an inline note that names no source." },
+                "page": { "type": ["string", "null"] },
+                "dataText": { "type": ["string", "null"], "description": "The quoted or transcribed text recorded with the citation." },
+                "quay": { "type": ["integer", "null"], "minimum": 0, "maximum": 3, "description": "Citation quality, 0 (unreliable) through 3 (direct evidence)." }
+              },
+              "required": ["kind", "source", "page", "dataText", "quay"]
             },
             "MediaFile": {
               "type": "object",
@@ -171,16 +191,17 @@ public sealed class GetRecordTool
                 "will": { "$ref": "#/$defs/EventDetail" },
                 "probate": { "$ref": "#/$defs/EventDetail" },
                 "census": { "type": "array", "items": { "$ref": "#/$defs/EventDetail" } },
-                "nameSources": { "type": "array", "items": { "type": "string" } },
+                "nameCitations": { "type": "array", "items": { "$ref": "#/$defs/CitationDetail" } },
                 "notes": { "type": "array", "items": { "$ref": "#/$defs/NoteDetail" } },
                 "restriction": { "type": ["string", "null"] },
                 "media": { "type": "array", "items": { "$ref": "#/$defs/MediaDetail" } },
                 "familyAsChild": { "$ref": "#/$defs/ParentFamilyReference" },
-                "familiesAsSpouse": { "type": "array", "items": { "$ref": "#/$defs/SpouseFamilyDetail" } }
+                "familiesAsSpouse": { "type": "array", "items": { "$ref": "#/$defs/SpouseFamilyDetail" } },
+                "sources": { "type": "array", "items": { "$ref": "#/$defs/SourceRecord" }, "description": "Only with includeSources." }
               },
               "required": [
                 "recordType", "xref", "name", "title", "sex", "birth", "death", "will",
-                "probate", "census", "nameSources", "notes", "restriction", "media",
+                "probate", "census", "nameCitations", "notes", "restriction", "media",
                 "familyAsChild", "familiesAsSpouse"
               ]
             },
@@ -194,7 +215,8 @@ public sealed class GetRecordTool
                 "wife": { "$ref": "#/$defs/SpouseReference" },
                 "marriage": { "$ref": "#/$defs/EventDetail" },
                 "children": { "type": "array", "items": { "$ref": "#/$defs/ChildIdentity" } },
-                "media": { "type": "array", "items": { "$ref": "#/$defs/MediaDetail" } }
+                "media": { "type": "array", "items": { "$ref": "#/$defs/MediaDetail" } },
+                "sources": { "type": "array", "items": { "$ref": "#/$defs/SourceRecord" }, "description": "Only with includeSources." }
               },
               "required": ["recordType", "xref", "husband", "wife", "marriage", "children", "media"]
             },
@@ -207,7 +229,21 @@ public sealed class GetRecordTool
                 "author": { "type": ["string", "null"] },
                 "title": { "type": ["string", "null"] },
                 "publication": { "type": ["string", "null"] },
-                "note": { "type": ["string", "null"] }
+                "note": { "type": ["string", "null"] },
+                "citedBy": {
+                  "type": "array",
+                  "description": "Only on a direct lookup of the source: each structure that cites it.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "xref": { "type": "string", "pattern": "^@[^@]+@$" },
+                      "recordType": { "enum": ["person", "family"] },
+                      "field": { "enum": ["name", "birth", "death", "will", "probate", "census", "note", "marriage"] }
+                    },
+                    "required": ["xref", "recordType", "field"]
+                  }
+                }
               },
               "required": ["recordType", "xref", "author", "title", "publication", "note"]
             },
@@ -226,14 +262,13 @@ public sealed class GetRecordTool
 
     readonly DocumentSession _session;
     readonly ToolGate _gate;
-    readonly string _mediaDir;
+    readonly RecordMapper _mapper;
 
     public GetRecordTool(DocumentSession session, ToolGate gate, string mediaDir)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
-        if (string.IsNullOrEmpty(mediaDir)) throw new ArgumentException("Media directory must not be empty.", nameof(mediaDir));
-        _mediaDir = mediaDir;
+        _mapper = new RecordMapper(mediaDir);
     }
 
     /// <summary>
@@ -267,8 +302,15 @@ public sealed class GetRecordTool
     }
 
     // The delegate McpServerTool.Create binds arguments to and invokes.
-    Task<CallToolResult> InvokeAsync(string xref, CancellationToken cancellationToken = default)
-        => HandleAsync(xref, cancellationToken);
+    // includeSources arrives as a raw JsonElement so a wrong type is reported
+    // by name instead of failing inside the SDK binder.
+    Task<CallToolResult> InvokeAsync(
+        string xref, JsonElement? includeSources = null, CancellationToken cancellationToken = default)
+    {
+        if (!ToolArguments.TryReadOptionalBool(includeSources ?? default, "includeSources", out bool include, out string? error))
+            return Task.FromResult(CallToolResults.Error(error!));
+        return HandleAsync(xref, cancellationToken, include);
+    }
 
     /// <summary>
     /// The tool's actual behavior, reachable directly without any MCP
@@ -276,11 +318,11 @@ public sealed class GetRecordTool
     /// Never throws: every failure becomes an isError CallToolResult, the
     /// same last-chance-handler pattern as FindPersonTool.HandleAsync.
     /// </summary>
-    public async Task<CallToolResult> HandleAsync(string xref, CancellationToken cancellationToken)
+    public async Task<CallToolResult> HandleAsync(string xref, CancellationToken cancellationToken, bool includeSources = false)
     {
         try
         {
-            return await _gate.RunAsync(ct => ExecuteAsync(xref, ct), cancellationToken).ConfigureAwait(false);
+            return await _gate.RunAsync(ct => ExecuteAsync(xref, includeSources, ct), cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -292,164 +334,15 @@ public sealed class GetRecordTool
         }
     }
 
-    async Task<CallToolResult> ExecuteAsync(string xref, CancellationToken cancellationToken)
+    async Task<CallToolResult> ExecuteAsync(string xref, bool includeSources, CancellationToken cancellationToken)
     {
         string trimmed = (xref ?? "").Trim();
         if (trimmed.Length == 0)
             return CallToolResults.Error("xref must not be blank.");
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        var model = snapshot.Model;
-
-        object result =
-            model.Individuals.TryGetValue(trimmed, out var indi) ? MapPerson(indi) :
-            model.Families.TryGetValue(trimmed, out var fam) ? MapFamily(fam) :
-            model.Sources.TryGetValue(trimmed, out var src) ? MapSource(src) :
-            new NotFoundRecord("not_found", trimmed);
+        object result = _mapper.Map(snapshot.Model, trimmed, includeSources);
 
         return CallToolResults.Success(result, CallToolResults.JsonOptions);
     }
-
-    // -------------------------------------------------------------------
-    // Person mapping
-    // -------------------------------------------------------------------
-
-    PersonRecord MapPerson(GedIndividual indi) => new(
-        "person",
-        indi.Xref,
-        PersonDisplay.FullName(indi),
-        OrNull(indi.Title),
-        indi.SexRecorded ? (indi.IsMale ? "M" : "F") : null,
-        MapEvent(indi.Birth),
-        MapEvent(indi.Death),
-        MapEvent(indi.Will),
-        MapEvent(indi.Probate),
-        [.. indi.Census.Select(ev => MapEvent(ev)!)],
-        MapSources(indi.NameSources),
-        [.. indi.NarrativeNotes.Select(MapNote)],
-        indi.Restriction,
-        MapMediaList(indi.Media),
-        MapFamilyAsChild(indi.FamChild),
-        [.. indi.FamSpouse.Select(f => MapSpouseFamily(f, indi))]);
-
-    static ParentFamilyReference? MapFamilyAsChild(GedFamily? famChild)
-    {
-        if (famChild is null) return null;
-        return new ParentFamilyReference(
-            famChild.Xref,
-            famChild.Husband != null ? PersonDisplay.FullName(famChild.Husband) : null,
-            famChild.Wife != null ? PersonDisplay.FullName(famChild.Wife) : null);
-    }
-
-    SpouseFamilyDetail MapSpouseFamily(GedFamily fam, GedIndividual owner)
-    {
-        var spouse = fam.SpouseOf(owner);
-        return new SpouseFamilyDetail(
-            fam.Xref,
-            spouse != null ? PersonDisplay.FullName(spouse) : null,
-            MapEvent(fam.Marriage),
-            [.. fam.Children.Select(MapChild)]);
-    }
-
-    // -------------------------------------------------------------------
-    // Family mapping
-    // -------------------------------------------------------------------
-
-    FamilyRecord MapFamily(GedFamily fam) => new(
-        "family",
-        fam.Xref,
-        MapSpouseReference(fam.Husband),
-        MapSpouseReference(fam.Wife),
-        MapEvent(fam.Marriage),
-        [.. fam.Children.Select(MapChild)],
-        MapMediaList(fam.Media));
-
-    static SpouseReference? MapSpouseReference(GedIndividual? indi) =>
-        indi is null ? null : new SpouseReference(indi.Xref, PersonDisplay.FullName(indi));
-
-    static ChildIdentity MapChild(GedIndividual child) => new(
-        child.Xref,
-        PersonDisplay.FullName(child),
-        child.Birth is null ? null : NullIfZero(GedDate.ParseYear(child.Birth.Date)));
-
-    // -------------------------------------------------------------------
-    // Source mapping
-    // -------------------------------------------------------------------
-
-    static SourceRecord MapSource(GedSourceRecord src)
-    {
-        string note = FtmCitationText.ParseSourceNote(src.NoteRaw, out _, out _);
-        return new SourceRecord(
-            "source",
-            src.Xref,
-            OrNull(src.Author),
-            OrNull(src.Title),
-            OrNull(src.Publication),
-            OrNull(note));
-    }
-
-    // -------------------------------------------------------------------
-    // Shared: events, notes, media, citations
-    // -------------------------------------------------------------------
-
-    EventDetail? MapEvent(GedEvent? ev)
-    {
-        if (ev is null) return null;
-        return new EventDetail(
-            OrNull(ev.Date),
-            NullIfZero(GedDate.ParseYear(ev.Date)),
-            GedDate.Qualifier(ev.Date),
-            OrNull(ev.Place),
-            MapSources(ev.Sources),
-            MapMediaList(ev.Media));
-    }
-
-    static NoteDetail MapNote(GedNarrativeNote note) =>
-        new(note.Text, note.Mime, MapSources(note.Sources));
-
-    static List<string> MapSources(IEnumerable<GedSourceRef> sourceRefs) =>
-        [.. sourceRefs
-            .Where(s => s.GlobalSource != null)
-            .Select(s => s.GlobalSource!.Xref)];
-
-    List<MediaDetail> MapMediaList(IEnumerable<GedMediaLink> links) =>
-        [.. links.Select(MapMedia)];
-
-    MediaDetail MapMedia(GedMediaLink link) => new(
-        link.Target.Xref,
-        OrNull(link.DisplayTitle),
-        MapCrop(link.Crop),
-        [.. link.Target.Files.Select(MapMediaFile)]);
-
-    // Resolves a raw GEDCOM FILE payload the same way SiteGenerator's
-    // ResolveMediaSrc does for HTML generation: an absolute URL passes
-    // through unchanged; a relative path becomes an
-    // absolute local path when it resolves to an existing file under
-    // _mediaDir without escaping it; anything else keeps the raw payload,
-    // flagged unresolved rather than left looking usable.
-    MediaFileDetail MapMediaFile(GedMediaFile file)
-    {
-        var (path, resolved) = ResolveMediaPath(file.Path);
-        return new MediaFileDetail(path, file.MediaType, OrNull(file.Medium), OrNull(file.Title), resolved);
-    }
-
-    (string Path, bool Resolved) ResolveMediaPath(string rawPath)
-    {
-        if (MediaPaths.IsAbsoluteUrl(rawPath))
-            return (rawPath, true);
-
-        string relative = MediaPaths.UnescapeFilePath(rawPath);
-        string mediaRoot = Path.GetFullPath(_mediaDir);
-        string full = Path.GetFullPath(Path.Combine(mediaRoot, relative.Replace('/', Path.DirectorySeparatorChar)));
-        bool withinRoot = full == mediaRoot || full.StartsWith(mediaRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal);
-
-        return withinRoot && File.Exists(full) ? (full, true) : (rawPath, false);
-    }
-
-    static CropDetail? MapCrop(GedCrop? crop) =>
-        crop is null ? null : new CropDetail(crop.Top, crop.Left, crop.Height, crop.Width);
-
-    static string? OrNull(string? s) => string.IsNullOrEmpty(s) ? null : s;
-
-    static int? NullIfZero(int year) => year != 0 ? year : null;
 }

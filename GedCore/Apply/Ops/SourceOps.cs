@@ -59,10 +59,24 @@ public sealed class CreateOrUpdateSourceOp : ChangeOp
             errors.Add($"{Kind} {Xref}: not a SOUR record");
     }
 
+    internal bool UpdatesAnything => Auth is not null || Title is not null || Url is not null || Accessed is not null;
+
     internal override void Apply(ApplyState state, List<string> log)
     {
         string xref = state.Resolve(Xref);
         var existing = state.Doc.ByXref.GetValueOrDefault(xref);
+        if (existing is not null && state.ItemSourceRedirects.TryGetValue(xref, out var stand))
+        {
+            log.Add($"{Kind} {xref}: shared source, update applied to {stand} for this item");
+            return;
+        }
+        if (existing is null && Placeholder.IsPlaceholder(xref) &&
+            SourceMatcher.FindExact(state.Doc, Title!, Auth, null) is { } sameDocument)
+        {
+            state.MintedXrefs[xref] = sameDocument.Xref!;
+            log.Add($"{Kind} {xref}: already recorded as {sameDocument.Xref}; reused, not created");
+            return;
+        }
         if (existing is null)
         {
             string realXref = state.MintIfPlaceholder("S", xref);
@@ -76,6 +90,17 @@ public sealed class CreateOrUpdateSourceOp : ChangeOp
         }
 
         var changes = new List<string>();
+        ApplyFields(existing, changes);
+
+        if (changes.Count > 0) { state.Mutated(); state.Touch(existing); }
+        log.Add(changes.Count > 0
+            ? $"{Kind} {xref}: updated ({string.Join("; ", changes)})"
+            : $"{Kind} {xref}: no-op (already matches)");
+    }
+
+    /// <summary>Write the fields this op supplies onto <paramref name="existing"/>, listing what changed.</summary>
+    internal void ApplyFields(GedRecord existing, List<string> changes)
+    {
         if (Auth is not null) UpsertField(existing, "AUTH", Auth, at: 0, changes);
         if (Title is not null)
             UpsertField(existing, "TITL", Title, at: existing.FirstChild("AUTH") is null ? 0 : 1, changes);
@@ -85,11 +110,6 @@ public sealed class CreateOrUpdateSourceOp : ChangeOp
             if (title is not null)
                 UpsertField(existing, "NOTE", ComposedNote(title), at: null, changes);
         }
-
-        if (changes.Count > 0) { state.Mutated(); state.Touch(existing); }
-        log.Add(changes.Count > 0
-            ? $"{Kind} {xref}: updated ({string.Join("; ", changes)})"
-            : $"{Kind} {xref}: no-op (already matches)");
     }
 
     private string ComposedNote(string title)

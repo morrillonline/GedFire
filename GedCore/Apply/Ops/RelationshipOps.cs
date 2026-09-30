@@ -159,8 +159,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
                 Value = Marriage, Citations = marriageCitations,
             }.Apply(state, log);
 
-        foreach (var cit in citations)
-            if (NodeBuilder.UpsertCitation(state, fam, cit) is string c) changes.Add(c);
+        changes.AddRange(CitationReconciler.Upsert(state, fam, citations));
         if (Note is not null && Kin.UpsertNote(state, fam, Note) is string n) changes.Add(n);
 
         log.Add(changes.Count > 0
@@ -269,8 +268,7 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
             fam = resolution.RequireFamily(Context);
 
         if (Kin.EnsureChild(state, fam, child.Xref) is string c) changes.Add(c);
-        foreach (var cit in citations)
-            if (NodeBuilder.UpsertCitation(state, fam, cit) is string cc) changes.Add(cc);
+        changes.AddRange(CitationReconciler.Upsert(state, fam, citations));
 
         log.Add(changes.Count > 0
             ? $"{Context}: {string.Join("; ", changes)}"
@@ -369,8 +367,7 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
 
         string roleTag = Role == "father" ? "HUSB" : "WIFE";
         if (Kin.SetPartner(state, fam, roleTag, parent.Xref) is string p) changes.Add(p);
-        foreach (var cit in citations)
-            if (NodeBuilder.UpsertCitation(state, fam, cit) is string cc) changes.Add(cc);
+        changes.AddRange(CitationReconciler.Upsert(state, fam, citations));
 
         log.Add(changes.Count > 0
             ? $"{Context} on {fam.Xref}: {string.Join("; ", changes)}"

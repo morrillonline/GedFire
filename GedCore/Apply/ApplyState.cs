@@ -67,7 +67,23 @@ internal sealed class ApplyState(GedDocument doc)
     /// </summary>
     private readonly Dictionary<GedRecord, Dictionary<string, string>> _citationFieldWrites = new();
 
-    public void BeginItem() => NotesAddedThisItem.Clear();
+    public void BeginItem()
+    {
+        NotesAddedThisItem.Clear();
+        ItemSourceRedirects.Clear();
+    }
+
+    /// <summary>Original source xref → the copy (or exact match) standing in for it during the current item.</summary>
+    public Dictionary<string, string> ItemSourceRedirects { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Original source xref → the copy (or exact match) used in its place, for every item of the run.</summary>
+    public Dictionary<string, string> CopiedSources { get; } = new(StringComparer.Ordinal);
+
+    public void RedirectSource(string original, string replacement)
+    {
+        ItemSourceRedirects[original] = replacement;
+        CopiedSources[original] = replacement;
+    }
 
     /// <summary>
     /// Record a citation field write and reject a conflicting one: if a prior
@@ -194,5 +210,13 @@ internal sealed class ApplyState(GedDocument doc)
     };
 
     public IReadOnlyList<Citation> ResolveCitations(IReadOnlyList<Citation> citations) =>
-        [.. citations.Select(c => c with { Source = Resolve(c.Source) })];
+        [.. citations.Select(ResolveCitation)];
+
+    private Citation ResolveCitation(Citation c)
+    {
+        string source = Resolve(c.Source);
+        return ItemSourceRedirects.TryGetValue(source, out var replacement)
+            ? c with { Source = replacement, SwappedFrom = source }
+            : c with { Source = source };
+    }
 }

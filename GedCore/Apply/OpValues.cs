@@ -7,8 +7,11 @@ namespace GedCore.Apply;
 /// locator, verbatim extract, and QUAY assessment. Shared by every
 /// fact-asserting op in the changeset dialect.
 /// </summary>
-public sealed record Citation(string Source, string? Page, string? DataText, int? Quay)
+public sealed record Citation(string Source, string? Page, string? DataText, int? Quay, string? SwappedFrom = null)
 {
+    // SwappedFrom is set only by ApplyState.ResolveCitations when a shared
+    // source was copied for this item: the original source this citation
+    // replaces on the structures it is applied to.
     /// <summary>Accepts both the singular "citation" and plural "citations" JSON forms.</summary>
     internal static IReadOnlyList<Citation> ReadAll(JsonElement el)
     {

@@ -105,7 +105,7 @@ public class McpServerIntegrationTests : IDisposable
 
         var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Equal(9, tools.GetArrayLength());
+        Assert.Equal(14, tools.GetArrayLength());
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
@@ -114,8 +114,9 @@ public class McpServerIntegrationTests : IDisposable
         // membership is asserted.
         Assert.Equal(
             new HashSet<string> {
-                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "find_person",
-                "get_document_stats", "get_record", "validate_changeset", "validate_document",
+                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "find_family", "find_person",
+                "get_document_stats", "get_record", "get_records", "list_people", "list_unanchored_people", "select_targets",
+                "validate_changeset", "validate_document",
             },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
 
@@ -125,11 +126,12 @@ public class McpServerIntegrationTests : IDisposable
         // read-only, non-destructive, and idempotent.
         foreach (var tool in tools.EnumerateArray())
         {
-            bool isApply = tool.GetProperty("name").GetString() == "apply_changeset";
+            string name = tool.GetProperty("name").GetString()!;
+            bool isApply = name == "apply_changeset";
             var annotations = tool.GetProperty("annotations");
             Assert.Equal(!isApply, annotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.Equal(isApply, annotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.Equal(!isApply, annotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.Equal(!isApply && name != "select_targets", annotations.GetProperty("idempotentHint").GetBoolean());
             Assert.Equal("object", tool.GetProperty("inputSchema").GetProperty("type").GetString());
             Assert.True(tool.TryGetProperty("outputSchema", out _));
         }
@@ -299,6 +301,26 @@ public class McpServerIntegrationTests : IDisposable
         Assert.True(response.GetProperty("result").GetProperty("isError").GetBoolean());
     }
 
+    [Theory]
+    [InlineData("{\"birth\":\"1741\"}", "hints.birth must be an object")]
+    [InlineData("{\"birth\":{\"year\":\"1741\"}}", "hints.birth.year must be an integer")]
+    public async Task ToolsCall_MisshapenHint_NamesTheFieldOverRealJsonRpc(string hintsJson, string expected)
+    {
+        await using var client = McpStdioTestClient.Start(WriteGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        using var arguments = JsonDocument.Parse($$"""{"query":"Frederick Morrill","hints":{{hintsJson}}}""");
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "find_person",
+            arguments = arguments.RootElement,
+        }, ShortTimeout);
+
+        var result = response.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Contains(expected, result.GetProperty("content")[0].GetProperty("text").GetString());
+    }
+
     // -------------------------------------------------------------------
     // maxResults, over real stdio JSON-RPC: proves the wire-level integer
     // binds through the SDK's argument binder, not just
@@ -421,6 +443,140 @@ public class McpServerIntegrationTests : IDisposable
         Assert.Equal("@I1@", structured.GetProperty("xref").GetString());
         Assert.Equal("Frederick Morrill", structured.GetProperty("name").GetString());
         Assert.Equal("12 MAR 1841", structured.GetProperty("birth").GetProperty("date").GetString());
+    }
+
+    [Theory]
+    [InlineData("\"yes\"", "includeSources must be true or false, not a string")]
+    [InlineData("1", "includeSources must be true or false, not a number")]
+    public async Task ToolsCall_GetRecord_MisTypedIncludeSources_NamesTheFieldOverRealJsonRpc(string value, string expected)
+    {
+        await using var client = McpStdioTestClient.Start(WriteGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        using var arguments = JsonDocument.Parse($$"""{"xref":"@I1@","includeSources":{{value}}}""");
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "get_record",
+            arguments = arguments.RootElement,
+        }, ShortTimeout);
+
+        var result = response.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Contains(expected, result.GetProperty("content")[0].GetProperty("text").GetString());
+    }
+
+    string WriteFamilyGed()
+    {
+        string path = Path.Combine(_dir, "family.ged");
+        File.WriteAllText(path, """
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Cornelius /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1741
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Beatrice /Fenwick/
+            1 SEX F
+            1 BIRT
+            2 DATE 1745
+            1 FAMS @F1@
+            0 @I3@ INDI
+            1 NAME Levi /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1770
+            1 FAMC @F1@
+            0 @I4@ INDI
+            1 NAME Nobody /Known/
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            1 CHIL @I3@
+            0 TRLR
+
+            """);
+        return path;
+    }
+
+    async Task<JsonElement> CallTool(McpStdioTestClient client, string name, string argumentsJson)
+    {
+        using var arguments = JsonDocument.Parse(argumentsJson);
+        var response = await client.SendRequestAsync("tools/call", new { name, arguments = arguments.RootElement }, ShortTimeout);
+        var result = response.GetProperty("result");
+        Assert.False(result.TryGetProperty("isError", out var isError) && isError.GetBoolean(), result.ToString());
+        return result.GetProperty("structuredContent");
+    }
+
+    [Fact]
+    public async Task ToolsCall_ListPeople_WithSurnamesAndPageSize_PagesOverRealJsonRpc()
+    {
+        await using var client = McpStdioTestClient.Start(WriteFamilyGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var first = await CallTool(client, "list_people", """{"surnames":["Ashworth"],"pageSize":1}""");
+        Assert.Equal(2, first.GetProperty("totalMatches").GetInt32());
+        Assert.Equal("@I1@", first.GetProperty("people")[0].GetProperty("xref").GetString());
+
+        string cursor = first.GetProperty("nextCursor").GetString()!;
+        var second = await CallTool(client, "list_people", $$"""{"surnames":["Ashworth"],"pageSize":1,"cursor":"{{cursor}}"}""");
+        Assert.Equal("@I3@", second.GetProperty("people")[0].GetProperty("xref").GetString());
+        Assert.Equal(JsonValueKind.Null, second.GetProperty("nextCursor").ValueKind);
+    }
+
+    [Fact]
+    public async Task ToolsCall_GetRecords_ReturnsRecordsInOrderWithNotFoundSlots_OverRealJsonRpc()
+    {
+        await using var client = McpStdioTestClient.Start(WriteFamilyGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var result = await CallTool(client, "get_records", """{"xrefs":["@F1@","@I99@","@I1@"],"includeSources":true}""");
+
+        var records = result.GetProperty("records");
+        Assert.Equal(["family", "not_found", "person"],
+            records.EnumerateArray().Select(r => r.GetProperty("recordType").GetString()!));
+        Assert.Equal(0, result.GetProperty("sources").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ToolsCall_SelectTargets_DrawsFromTheBoundDocument_OverRealJsonRpc()
+    {
+        await using var client = McpStdioTestClient.Start(WriteFamilyGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var result = await CallTool(client, "select_targets", """{"count":2,"surnames":["Ashworth"]}""");
+
+        Assert.False(result.TryGetProperty("source", out _));
+        Assert.True(result.GetProperty("totalCandidates").GetInt32() > 0);
+        Assert.True(result.GetProperty("count").GetInt32() <= 2);
+    }
+
+    [Fact]
+    public async Task ToolsCall_FindFamily_FindsTheParentsOfAChild_OverRealJsonRpc()
+    {
+        await using var client = McpStdioTestClient.Start(WriteFamilyGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var result = await CallTool(client, "find_family",
+            """{"relation":"child","name":"Levi Ashworth","hints":{"birth":{"year":1741}},"maxResults":5}""");
+
+        var candidates = result.GetProperty("candidates");
+        Assert.Equal("@I1@", candidates[0].GetProperty("person").GetProperty("xref").GetString());
+        Assert.Equal("@F1@", candidates[0].GetProperty("familyXref").GetString());
+    }
+
+    [Fact]
+    public async Task ToolsCall_ListUnanchoredPeople_ListsOnlyThePersonWithNoFactsOrTies_OverRealJsonRpc()
+    {
+        await using var client = McpStdioTestClient.Start(WriteFamilyGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var result = await CallTool(client, "list_unanchored_people", "{}");
+
+        Assert.Equal(["@I4@"], result.GetProperty("people").EnumerateArray().Select(p => p.GetProperty("xref").GetString()!));
     }
 
     [Fact]

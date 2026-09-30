@@ -402,16 +402,13 @@ public class ApplyOpTests : ApplyTestBase
     }
 
     /// <summary>
-    /// Placeholder identity is not durable across separate apply invocations:
-    /// rerun-identity guarantees are scoped to person duplicate detection;
-    /// source/family/media creation has no such guard. Re-submitting the
-    /// identical @NewS1@-keyed changeset a second time therefore mints a
-    /// second, distinct source — it is not a no-op. A caller that wants an
-    /// idempotent follow-up edit uses the real xref MintedXrefs reported from
-    /// the first run, not the placeholder again.
+    /// A placeholder source that describes a document already in the file
+    /// (same title, author, and publication) is not created again: the
+    /// placeholder resolves to the existing source's xref. Re-submitting the
+    /// identical changeset therefore adds no second source record.
     /// </summary>
     [Fact]
-    public void CreateOrUpdateSource_RepeatedApplyOfTheSamePlaceholderChangeset_MintsADistinctSourceEachTime()
+    public void CreateOrUpdateSource_RepeatedApplyOfTheSamePlaceholderChangeset_ReusesTheExistingSource()
     {
         WriteBaseFile();
         const string changeset = """
@@ -425,12 +422,12 @@ public class ApplyOpTests : ApplyTestBase
         Assert.Equal("@S00002@", first.MintedXrefs["@NewS1@"]);
 
         var second = RunExpectSuccess(changeset);
-        Assert.Equal("@S00003@", second.MintedXrefs["@NewS1@"]);
+        Assert.Equal("@S00002@", second.MintedXrefs["@NewS1@"]);
+        Assert.Contains(second.Log, l => l.Contains("already recorded as @S00002@"));
 
-        Assert.Equal(2, ReadDoc().Records.Count(r => r.Tag == "SOUR" && r.Xref != "@S00001@"));
+        Assert.Single(ReadDoc().Records, r => r.Tag == "SOUR" && r.Xref != "@S00001@");
 
-        // A follow-up edit against the already-minted real xref, by contrast,
-        // is idempotent in the ordinary createOrUpdate sense.
+        // A follow-up edit against the real xref is idempotent in the ordinary createOrUpdate sense.
         const string followUp = """
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateSource", "xref": "@S00002@", "auth": "State" } ] } ] }
