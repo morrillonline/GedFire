@@ -35,6 +35,7 @@ public sealed class GedSourceRef
     // From the inline reference itself:
     public string Page     { get; set; } = "";
     public string DataText { get; set; } = "";  // 3 DATA / 4 TEXT, after ParsePropertyList
+    public int?   Quay     { get; set; }        // 3 QUAY, 0-3; null when absent or out of range
 }
 
 /// <summary>One person-level biographical note, with any citations attached to that prose.</summary>

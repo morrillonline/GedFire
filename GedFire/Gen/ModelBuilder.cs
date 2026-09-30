@@ -321,6 +321,8 @@ public static class ModelBuilder
         {
             var sref = new GedSourceRef();
             sref.Page = sourRec.FirstChild("PAGE")?.Value ?? "";
+            if (int.TryParse(sourRec.FirstChild("QUAY")?.Value, out int quay) && quay is >= 0 and <= 3)
+                sref.Quay = quay;
 
             // DATA / TEXT — the inline annotation text
             var dataTxt = sourRec.FirstChild("DATA")?.FirstChild("TEXT")?.FullValue() ?? "";

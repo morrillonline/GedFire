@@ -105,12 +105,7 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
         }
         state.NotesAddedThisItem[target.Xref!] = note;
 
-        var citeChanges = new List<string>();
-        foreach (var cit in citations)
-        {
-            var change = NodeBuilder.UpsertCitation(state, note, cit);
-            if (change is not null) citeChanges.Add(change);
-        }
+        var citeChanges = CitationReconciler.Upsert(state, note, citations);
 
         if (citeChanges.Count > 0)
             action = action == "no-op (already present)"

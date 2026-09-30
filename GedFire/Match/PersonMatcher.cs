@@ -51,6 +51,18 @@ public sealed class PersonMatcher
         };
     }
 
+    /// <summary>
+    /// How well one person fits birth/death hints, scored against the person's
+    /// own name so only the hints decide the result; 0 when nothing in the
+    /// person's record can be compared with them.
+    /// </summary>
+    public double ScoreAgainstHints(PersonIndexEntry entry, MatchHints hints)
+    {
+        var candidate = ToCandidate(entry);
+        var outcome = _core.Match([candidate], candidate.DisplayName, hints, _nicknames, 1);
+        return outcome.Matches.Count > 0 ? outcome.Matches[0].FinalScore : 0;
+    }
+
     // Query splitting is a pure string operation with no GedIndividual
     // involvement; PersonMatcherTests exercises it directly through this
     // pass-through, keeping the one implementation in GedCore.Matching.

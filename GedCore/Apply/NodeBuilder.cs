@@ -151,37 +151,42 @@ internal static class NodeBuilder
     }
 
     /// <summary>
-    /// CreateOrUpdate one citation on a structure (a fact node, or a FAM
-    /// record for relationship provenance). Source not present → create.
-    /// Present with every requested field equal → no-op (returns null).
-    /// Present with a differing field → update in place, returning a log
-    /// fragment naming what changed. Fields the request omits are left alone.
-    /// The "one citation per source per structure" invariant holds by
-    /// construction.
+    /// Attach a new citation to a structure (a fact node, or a FAM record for
+    /// relationship provenance), returning the log fragment.
     /// </summary>
-    public static string? UpsertCitation(ApplyState state, GedRecord structure, Citation cit)
+    public static string AddCitation(ApplyState state, GedRecord structure, Citation cit)
     {
-        var existing = Resolve.CitationOnStructure(structure, cit.Source);
-        if (existing is null)
+        // record-level provenance (FAM) sits before trailing NOTE/UID;
+        // fact-level citations go last within the fact
+        int? at = null;
+        if (structure.Xref is not null)
         {
-            // record-level provenance (FAM) sits before trailing NOTE/UID;
-            // fact-level citations go last within the fact
-            int? at = null;
-            if (structure.Xref is not null)
-            {
-                int anchor = structure.Children.FindIndex(c => c.Tag is "NOTE" or "SNOTE" or "UID");
-                if (anchor >= 0) at = anchor;
-            }
-            var node = CitationNode(structure.Level + 1, cit);
-            RecordCitationFields(state, node, cit);
-            Attach(structure, node, at);
-            state.Mutated();
-            state.Touch(structure);
-            return $"cited {cit.Source}";
+            int anchor = structure.Children.FindIndex(c => c.Tag is "NOTE" or "SNOTE" or "UID");
+            if (anchor >= 0) at = anchor;
         }
+        var node = CitationNode(structure.Level + 1, cit);
+        RecordCitationFields(state, node, cit);
+        Attach(structure, node, at);
+        state.Mutated();
+        state.Touch(structure);
+        return cit.Page is null ? $"cited {cit.Source}" : $"cited {cit.Source} ({cit.Page})";
+    }
 
+    /// <summary>
+    /// Update one existing citation node in place: every requested field
+    /// equal → no-op (returns null); a differing field → rewritten, returning
+    /// a log fragment naming what changed. Fields the request omits are left
+    /// alone.
+    /// </summary>
+    public static string? UpdateCitation(ApplyState state, GedRecord structure, GedRecord existing, Citation cit)
+    {
         RecordCitationFields(state, existing, cit);
         var changes = new List<string>();
+        if (existing.Value != cit.Source)
+        {
+            changes.Add($"source {existing.Value} → {cit.Source}");
+            existing.SetValue(cit.Source);
+        }
         if (cit.Page is not null)
             UpsertSub(existing, "PAGE", cit.Page, at: 0, changes);
         if (cit.DataText is not null)
@@ -315,8 +320,9 @@ internal static class OpChecks
                 errors.Add($"{context}: citation {cit.Source} dataText contains a line break — " +
                            "flatten it to a single line (join phrases with '. ')");
         }
-        foreach (var dup in citations.GroupBy(c => c.Source).Where(g => g.Count() > 1))
-            errors.Add($"{context}: source {dup.Key} cited twice on one structure");
+        foreach (var dup in citations.GroupBy(c => (c.Source, Page: c.Page ?? "")).Where(g => g.Count() > 1))
+            errors.Add($"{context}: source {dup.Key.Source} cited twice on one structure" +
+                       (dup.Key.Page.Length > 0 ? $" with the same page ({dup.Key.Page})" : " with no page"));
     }
 
     private static bool HasLineBreak(string? value) =>

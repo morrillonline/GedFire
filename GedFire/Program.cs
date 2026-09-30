@@ -557,6 +557,11 @@ static async Task<int> RunMcp(string[] args)
     var findPerson = new FindPersonTool(session, gate, nicknames);
     var getDocumentStats = new GetDocumentStatsTool(session, gate);
     var getRecord = new GetRecordTool(session, gate, absoluteMediaDir);
+    var getRecords = new GetRecordsTool(session, gate, absoluteMediaDir);
+    var findFamily = new FindFamilyTool(session, gate, nicknames);
+    var listUnanchoredPeople = new ListUnanchoredPeopleTool(session, gate);
+    var listPeople = new ListPeopleTool(session, gate);
+    var selectTargets = new SelectTargetsTool(session, gate);
     var validateChangeset = new ValidateChangesetTool(absoluteInput, gate);
     var applyChangeset = new ApplyChangesetTool(absoluteInput, gate, readOnly);
     var describeChangesetOps = new DescribeChangesetOpsTool(gate);
@@ -576,9 +581,14 @@ static async Task<int> RunMcp(string[] args)
         checkPlausibility.ToMcpServerTool(),
         dateCalc.ToMcpServerTool(),
         describeChangesetOps.ToMcpServerTool(),
+        findFamily.ToMcpServerTool(),
         findPerson.ToMcpServerTool(),
         getDocumentStats.ToMcpServerTool(),
         getRecord.ToMcpServerTool(),
+        getRecords.ToMcpServerTool(),
+        listPeople.ToMcpServerTool(),
+        listUnanchoredPeople.ToMcpServerTool(),
+        selectTargets.ToMcpServerTool(),
         validateChangeset.ToMcpServerTool(),
         validateDocument.ToMcpServerTool(),
     };
@@ -586,7 +596,8 @@ static async Task<int> RunMcp(string[] args)
     string instructions =
         "Every xref returned by a tool on this server (an individual or family reference such as \"@I123@\" " +
         "or \"@F45@\") belongs only to the single GEDCOM document this server was started against, and is " +
-        "meaningless to any other document or provider. date_calc, find_person, get_document_stats, get_record, " +
+        "meaningless to any other document or provider. date_calc, find_family, find_person, get_document_stats, get_record, get_records, list_people, " +
+        "list_unanchored_people, select_targets, " +
         "describe_changeset_ops, validate_changeset, validate_document, and check_plausibility never modify " +
         "that file. apply_changeset is the only tool that writes to it, and only after validation and " +
         "in-memory verification both pass; call validate_changeset first with the same arguments to preview a " +

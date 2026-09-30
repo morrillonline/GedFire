@@ -183,7 +183,7 @@ public class GetRecordToolTests : IDisposable
         Assert.Equal("14 NOV 1652", birth.GetProperty("date").GetString());
         Assert.Equal(1652, birth.GetProperty("year").GetInt32());
         Assert.Equal("Salisbury, Massachusetts", birth.GetProperty("place").GetString());
-        Assert.Equal(["@S1@"], birth.GetProperty("sources").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["@S1@"], birth.GetProperty("citations").EnumerateArray().Select(e => e.GetProperty("source").GetString()));
 
         var media = Assert.Single(birth.GetProperty("media").EnumerateArray());
         Assert.Equal("@M1@", media.GetProperty("xref").GetString());
@@ -208,10 +208,10 @@ public class GetRecordToolTests : IDisposable
         var root = StructuredContent(await tool.HandleAsync("@I1@", CancellationToken.None));
 
         // DEAT cites @S999@, which no @S999@ SOUR record backs -- there is
-        // no id to give, so the sources array is empty, not an error.
+        // no id to give, so the citations array is empty, not an error.
         var death = root.GetProperty("death");
         Assert.Equal("1698", death.GetProperty("date").GetString());
-        Assert.Empty(death.GetProperty("sources").EnumerateArray());
+        Assert.Empty(death.GetProperty("citations").EnumerateArray());
     }
 
     [Fact]
@@ -248,11 +248,11 @@ public class GetRecordToolTests : IDisposable
         var tool = ToolOver(RecordGed);
         var root = StructuredContent(await tool.HandleAsync("@I1@", CancellationToken.None));
 
-        Assert.Equal(["@S1@"], root.GetProperty("nameSources").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["@S1@"], root.GetProperty("nameCitations").EnumerateArray().Select(e => e.GetProperty("source").GetString()));
 
         var note = Assert.Single(root.GetProperty("notes").EnumerateArray());
         Assert.Equal("A locally prominent figure.", note.GetProperty("text").GetString());
-        Assert.Equal(["@S1@"], note.GetProperty("sources").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["@S1@"], note.GetProperty("citations").EnumerateArray().Select(e => e.GetProperty("source").GetString()));
     }
 
     [Fact]
@@ -388,7 +388,7 @@ public class GetRecordToolTests : IDisposable
         var withChild = families.Single(f => f.GetProperty("xref").GetString() == "@F2@");
         Assert.Equal("Sarah Bradbury", withChild.GetProperty("spouseName").GetString());
         Assert.Equal("1675", withChild.GetProperty("marriage").GetProperty("date").GetString());
-        Assert.Equal(["@S1@"], withChild.GetProperty("marriage").GetProperty("sources").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["@S1@"], withChild.GetProperty("marriage").GetProperty("citations").EnumerateArray().Select(e => e.GetProperty("source").GetString()));
         var child = Assert.Single(withChild.GetProperty("children").EnumerateArray());
         Assert.Equal("@I5@", child.GetProperty("xref").GetString());
         Assert.Equal("Abraham Morrill", child.GetProperty("name").GetString());
@@ -432,7 +432,7 @@ public class GetRecordToolTests : IDisposable
         Assert.Equal(JsonValueKind.Null, root.GetProperty("title").ValueKind);
         Assert.Equal(JsonValueKind.Null, root.GetProperty("restriction").ValueKind);
         Assert.Empty(root.GetProperty("census").EnumerateArray());
-        Assert.Empty(root.GetProperty("nameSources").EnumerateArray());
+        Assert.Empty(root.GetProperty("nameCitations").EnumerateArray());
         Assert.Empty(root.GetProperty("notes").EnumerateArray());
         Assert.Empty(root.GetProperty("media").EnumerateArray());
         Assert.Empty(root.GetProperty("familiesAsSpouse").EnumerateArray());

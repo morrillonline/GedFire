@@ -159,7 +159,12 @@ public static class ChangesetOpsCatalog
 
         new("createOrUpdateSource", "createOrUpdate", "Source",
             "Create or update a SOUR record. Creating one requires a new \"@NewSourceN@\" placeholder xref " +
-            "and \"title\"; updating an existing xref only touches the fields supplied.",
+            "and \"title\"; if the file already has a source with the same title and author (and no publication), " +
+            "that source is used and nothing is created or changed. Updating an existing xref only touches the " +
+            "fields supplied — unless more than one fact cites the source: then the update is applied to a copy " +
+            "(or to an existing source that is exactly the updated one) and only the facts this item cites it on " +
+            "point to it; the original and every other citation of it are untouched. An item that updates such a " +
+            "shared source must also cite it on the fact that needs the change.",
             [
                 new("xref", "string", true, "An existing source's xref, or a new \"@NewSourceN@\" placeholder to create one."),
                 new("auth", "string", false, "Author."),
@@ -180,7 +185,12 @@ public static class ChangesetOpsCatalog
 
         new("createOrUpdateCitation", "createOrUpdate", "Citation",
             "Attach one or more source citations to a fact that already exists (a citation cannot create its " +
-            "fact — use createOrUpdateVital for that).",
+            "fact — use createOrUpdateVital for that). State each citation as it should read; nothing is removed or " +
+            "re-added by hand. A source already cited once on the fact is updated in place, so stating a new " +
+            "\"page\" corrects the page. To cite one source on several pages of the same fact, give one entry per page; " +
+            "an entry whose page matches an existing citation updates it, and an entry that matches none is added. " +
+            "If the fact already cites the source several times and the entries stated cannot be told apart from them, " +
+            "the op is rejected and names the existing pages — state every citation of that source you want.",
             [
                 new("record", "string", true, "The fact's person or family xref."),
                 new("fact", "string", true, "The fact's GEDCOM tag."),
@@ -199,6 +209,7 @@ public static class ChangesetOpsCatalog
                 new("fact", "string", true, "The fact's GEDCOM tag."),
                 new("match", "string | object", false, FactMatchNote),
                 new("source", "string", true, "The cited source's xref to remove."),
+                new("page", "string", false, "Which citation to remove when the fact cites the source on several pages; required only then."),
             ],
             Ex("""{ "op": "deleteCitation", "record": "@I2@", "fact": "BIRT", "source": "@S1@" }""")),
 

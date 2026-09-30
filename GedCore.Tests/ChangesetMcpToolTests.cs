@@ -80,6 +80,7 @@ public class ChangesetMcpToolTests : IDisposable
         Assert.Empty(structured.GetProperty("errors").EnumerateArray());
         Assert.Empty(structured.GetProperty("deltas").EnumerateObject());
         Assert.Empty(structured.GetProperty("mintedXrefs").EnumerateObject());
+        Assert.Empty(structured.GetProperty("copiedSources").EnumerateObject());
         Assert.Equal(before, File.ReadAllBytes(gedPath));
     }
 

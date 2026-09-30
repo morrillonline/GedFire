@@ -100,13 +100,15 @@ no environment variables, API keys, or other credentials.
 
 Restart or reload the client after changing its configuration, approve the
 local server if prompted, and confirm that it discovers `find_person`,
-`date_calc`, `get_document_stats`, `get_record`, `describe_changeset_ops`,
-`validate_changeset`, `validate_document`, and `apply_changeset`.
+`date_calc`, `get_document_stats`, `get_record`, `get_records`, `list_people`,
+`list_unanchored_people`, `find_family`, `select_targets`,
+`describe_changeset_ops`, `validate_changeset`,
+`check_plausibility`, `validate_document`, and `apply_changeset`.
 
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
-The server binds to one document over stdio and exposes eight tools. Seven
+The server binds to one document over stdio and exposes fourteen tools. Thirteen
 are read-only; `apply_changeset` is the only one that writes to the file,
 and only after validation and in-memory verification both pass (or not at
 all, if the server was started with `--read-only`). The server also watches
@@ -117,9 +119,15 @@ a change `apply_changeset` itself just wrote — no restart needed:
 |---|---|
 | `date_calc` | Normalize a dual-dated year, add or subtract a genealogical age, or calculate elapsed years/months/days. Uses exact Gregorian dates supplied in the call and never reads or changes the bound document. |
 | `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to scored candidates, a confident match when one exists, and family handoff identifiers. Optional structured hints distinguish birth from death, father from mother, and one marriage from another. Set `maxResults` to an integer from `1` through `20` (default `8`) without changing the matcher's confidence decision. |
+| `find_family` | Find people through a relative whose name is all you know: `relation` `spouse` ("the widow of Joseph"), `child` (the parents of someone named X), or `parent` (the children of someone named X), with optional `birth`/`death` hints describing the person sought. Each result gives the person, the connecting family xref, and the matched relative. |
 | `get_document_stats` | Report person/family counts, the declared GEDCOM version, and the running gedfire version, for a quick orientation before other work. |
-| `get_record` | Fetch the full detail of a specific person, family, or source by xref. |
+| `get_record` | Fetch the full detail of a specific person, family, or source by xref. Every citation carries its source xref, page, quoted text (`dataText`), and quality (`quay`); set `includeSources` to also get the full text of each source cited on a person or family. Looking up a source lists every structure that cites it (`citedBy`). |
+| `get_records` | Fetch several people, families, or sources in one call, each in the shape `get_record` returns, in the order requested (`includeSources` adds one top-level `sources` array covering the whole call). An xref that does not exist comes back as a `not_found` record in its own slot (up to 500 xrefs per call). |
+| `list_people` | List every person — xref, primary name, surname, birth and death year — in a stable order (surname, given name, xref), optionally limited to a list of surnames, in pages (`pageSize` 1–2000, default 500; pass each result's `nextCursor` back as `cursor`). |
+| `list_unanchored_people` | List people the tree cannot place: no dated event, no place, and no parent, spouse, or child who is placed (family ties only to other unplaced people count as unplaced). Reports each person's fact count and unplaced relatives. People hidden by `--enforce-privacy` are never listed. |
+| `select_targets` | The `gedfire select-targets` command as a tool: detect research gaps for the given surnames and draw `count` targets, returned as the `wanted.json` document without the GEDCOM path. Seeded from the clock, like the command. |
 | `describe_changeset_ops` | Return the changeset envelope shape and the full v2 op dialect (every `createOrUpdate`/`delete`/`merge` op, its required and optional fields, and one worked example) — so an agent can compose a valid changeset without external documentation or trial-and-error against `validate_changeset`'s error text. Takes no arguments. |
+| `check_plausibility` | Preview a proposal changeset and return only the chronological and biological plausibility findings it would introduce, structured for routing by severity. Always available, even under `--read-only`. |
 | `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but nothing is written. Always available, even under `--read-only`. |
 | `validate_document` | Run the same GEDCOM 7 conformance checks as `gedfire validate` against the whole bound document — independent of any changeset — and return the findings structured instead of as plain-text lines. Optional `warningsAsErrors` mirrors the CLI flag. Always available, even under `--read-only`. |
 | `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. Refuses to run under `--read-only`. |
@@ -322,6 +330,21 @@ xref. Here, `apply` allocates `@S00003@` for `@NewSource1@`, creates the
 source once, and resolves the citation to it. Library callers receive the
 complete placeholder-to-xref map in `ApplyResult.MintedXrefs`; the CLI names
 the minted xrefs in its operation log.
+
+A new source that describes a document already in the file — same title and
+author, no publication, compared ignoring case and extra spaces — is not
+created again: the placeholder resolves to the existing source, which is left
+unchanged. Updating a source that more than one fact cites never changes
+those other facts: the update is applied to a copy (or to an existing source
+that is exactly the updated one), and only the facts the same changeset item
+cites it on point to the copy. The item must therefore also cite the source on
+the fact that needs the change. `ApplyResult.CopiedSources` maps each original
+to the source used in its place. A citation's page is part of the citation, not
+of the source, so correcting one fact's page never affects another fact. To
+cite one source on several pages of a fact, give one citation per page; a
+citation naming no matching page is added, and one whose page matches is
+updated (a source cited once on a fact simply has its page corrected).
+`deleteCitation` takes an optional `page` to choose among several.
 
 Creating a new person is additionally checked against existing and other
 planned people using the `find_person` matcher. A high-confidence match is a

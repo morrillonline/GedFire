@@ -55,10 +55,7 @@ public sealed class CreateOrUpdateCitationOp : ChangeOp
         var fact = Resolve.Fact(target, Fact, Match).Fact
             ?? throw new InvalidOperationException($"{Context}: no such fact on the record as applied");
 
-        var changes = new List<string>();
-        foreach (var cit in citations)
-            if (NodeBuilder.UpsertCitation(state, fact, cit) is string change)
-                changes.Add(change);
+        var changes = CitationReconciler.Upsert(state, fact, citations);
 
         log.Add(changes.Count > 0
             ? $"{Context}: {string.Join("; ", changes)}"
@@ -68,7 +65,8 @@ public sealed class CreateOrUpdateCitationOp : ChangeOp
 
 /// <summary>
 /// Delete for the Citation noun: remove one source's citation from a fact.
-/// Absent fact or absent citation → no-op.
+/// Absent fact or absent citation → no-op. When the fact cites the source on
+/// several pages, "page" says which citation to remove.
 /// </summary>
 public sealed class DeleteCitationOp : ChangeOp
 {
@@ -78,6 +76,7 @@ public sealed class DeleteCitationOp : ChangeOp
     public required string Fact { get; init; }
     public FactMatch? Match { get; init; }
     public required string Source { get; init; }
+    public string? Page { get; init; }
 
     internal static DeleteCitationOp Read(JsonElement el) => new()
     {
@@ -85,6 +84,7 @@ public sealed class DeleteCitationOp : ChangeOp
         Fact = JsonRead.Req(el, "fact", "deleteCitation"),
         Match = FactMatch.Read(el, "match"),
         Source = JsonRead.Req(el, "source", "deleteCitation"),
+        Page = JsonRead.Str(el, "page"),
     };
 
     internal override void Validate(ResolutionContext ctx, List<string> errors)
@@ -92,9 +92,18 @@ public sealed class DeleteCitationOp : ChangeOp
         if (OpChecks.RejectVoid($"{Kind} {Fact} on {Record}", Record, errors)) return;
         if (!ctx.Known(Record)) { errors.Add($"{Kind} {Fact} on {Record}: target not in file"); return; }
         var target = ctx.Existing(Record);
-        if (target is not null && Resolve.Fact(target, Fact, Match).Ambiguous)
+        if (target is null) return;
+        var res = Resolve.Fact(target, Fact, Match);
+        if (res.Ambiguous)
             errors.Add($"{Kind} {Fact} on {Record}: ambiguous — multiple {Fact} facts match; refine \"match\"");
+        else if (res.Fact is not null && Page is null &&
+                 Resolve.CitationsOnStructure(res.Fact, Source).Count > 1)
+            errors.Add(AmbiguousCitation(Record, Resolve.CitationsOnStructure(res.Fact, Source)));
     }
+
+    private string AmbiguousCitation(string record, IReadOnlyList<GedRecord> cited) =>
+        $"{Kind} {Fact} on {record}: {Source} is cited {cited.Count} times " +
+        $"(pages: {CitationReconciler.DescribePages(cited)}); add \"page\" to say which to remove";
 
     internal override void Apply(ApplyState state, List<string> log)
     {
@@ -107,10 +116,17 @@ public sealed class DeleteCitationOp : ChangeOp
         var source = state.Resolve(Source);
         var target = state.Doc.ByXref[record];
         var fact = Resolve.Fact(target, Fact, Match).Fact;
-        var citation = fact is null ? null : Resolve.CitationOnStructure(fact, source);
+        var cited = fact is null ? [] : Resolve.CitationsOnStructure(fact, source);
+        if (Page is null && cited.Count > 1)
+            throw new InvalidOperationException(AmbiguousCitation(record, cited));
+        var citation = Page is null
+            ? cited.FirstOrDefault()
+            : cited.FirstOrDefault(c => c.FirstChild("PAGE")?.Value == Page);
         if (citation is null)
         {
-            log.Add($"{Kind} {Fact} on {record}: no-op ({source} not cited)");
+            log.Add(cited.Count == 0
+                ? $"{Kind} {Fact} on {record}: no-op ({source} not cited)"
+                : $"{Kind} {Fact} on {record}: no-op ({source} not cited on page \"{Page}\")");
             return;
         }
         fact!.Children.Remove(citation);

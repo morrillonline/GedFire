@@ -79,10 +79,15 @@ static class ChangesetToolSupport
             "mintedXrefs": {
               "type": "object",
               "additionalProperties": { "type": "string" },
-              "description": "Placeholder token to real minted xref for every new record this run created. Empty for validate_changeset, and for an apply_changeset run whose ops were all no-ops."
+              "description": "Placeholder token to real xref for every new record this run created, or for an existing source that is the same document as a new one described (reused, not created). Empty for validate_changeset."
+            },
+            "copiedSources": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "Original source xref to the source used in its place, for every shared source (cited by more than one structure) that an item updated: a new copy carrying the update, or an existing source that is exactly the updated one. The original is never changed. Empty when no shared source was updated, and for validate_changeset."
             }
           },
-          "required": ["success", "log", "errors", "deltas", "mintedXrefs"]
+          "required": ["success", "log", "errors", "deltas", "mintedXrefs", "copiedSources"]
         }
         """;
 
@@ -118,5 +123,5 @@ static class ChangesetToolSupport
     }
 
     static ChangesetResult Map(ApplyResult result) =>
-        new(result.Success, result.Log, result.Errors, result.Deltas, result.MintedXrefs);
+        new(result.Success, result.Log, result.Errors, result.Deltas, result.MintedXrefs, result.CopiedSources);
 }

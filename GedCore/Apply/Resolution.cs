@@ -275,9 +275,13 @@ internal static class Resolve
     public static bool IsPartner(GedRecord fam, string xref) =>
         fam.Children.Any(c => c.Tag is "HUSB" or "WIFE" && c.Value == xref);
 
-    /// <summary>The existing citation of <paramref name="source"/> on a structure, if any.</summary>
-    public static GedRecord? CitationOnStructure(GedRecord structure, string source) =>
-        structure.ChildrenByTag("SOUR").FirstOrDefault(s => s.Value == source);
+    /// <summary>Every existing citation of <paramref name="source"/> on a structure, in file order.</summary>
+    public static List<GedRecord> CitationsOnStructure(GedRecord structure, string source) =>
+        [.. structure.ChildrenByTag("SOUR").Where(s => s.Value == source)];
+
+    /// <summary>As above, also counting citations of the sources being swapped out for <paramref name="source"/>.</summary>
+    public static List<GedRecord> CitationsOnStructure(GedRecord structure, string source, IReadOnlySet<string> alsoSources) =>
+        [.. structure.ChildrenByTag("SOUR").Where(s => s.Value == source || alsoSources.Contains(s.Value))];
 
     /// <summary>
     /// The same-partner-same-date marriage conflict check: a person may have

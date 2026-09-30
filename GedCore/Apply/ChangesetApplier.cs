@@ -149,6 +149,8 @@ public static class ChangesetApplier
             cancellationToken.ThrowIfCancellationRequested();
             op.Validate(ctx, result.Errors);
         }
+        foreach (var item in selectedItems)
+            SharedSourceCopier.ValidateItem(doc, item, result.Errors);
         if (result.Errors.Count > 0) return result;
 
         // New-person duplicate detection runs after every op's own Validate,
@@ -181,6 +183,7 @@ public static class ChangesetApplier
             foreach (var item in selectedItems)
             {
                 state.BeginItem();
+                SharedSourceCopier.PrepareItem(state, item, result.Log);
                 foreach (var op in item.Ops)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -203,6 +206,8 @@ public static class ChangesetApplier
 
         if (state.Mutations == 0)
         {
+            result.MintedXrefs = state.MintedXrefs;
+            result.CopiedSources = state.CopiedSources;
             result.Log.Add("no changes; file untouched");
             result.Success = true;
             return result;
@@ -270,6 +275,7 @@ public static class ChangesetApplier
 
         result.Deltas = state.Deltas;
         result.MintedXrefs = state.MintedXrefs;
+        result.CopiedSources = state.CopiedSources;
         result.OutputBytes = newBytes;
         result.Success = true;
         return result;
@@ -462,10 +468,17 @@ public sealed class ApplyResult
 
     /// <summary>
     /// Placeholder token → real minted xref for every new record this run
-    /// created. Empty for a dry run, a validation failure, or a run whose
-    /// ops were all no-ops.
+    /// created, or resolved to an existing source that is the same document.
+    /// Empty for a validation failure.
     /// </summary>
     public Dictionary<string, string> MintedXrefs { get; internal set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Original source xref → the source used in its place, for every shared
+    /// source an item updated: a fresh copy, or an existing source that was
+    /// exactly the updated one. The original itself is never changed.
+    /// </summary>
+    public Dictionary<string, string> CopiedSources { get; internal set; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// The post-apply gate's own diagnostics -- conformance and plausibility

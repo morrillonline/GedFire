@@ -144,9 +144,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
                 state.Touch(target);
                 changes.Add($"{sub.Tag} added '{sub.Value}'");
             }
-        foreach (var cit in citations)
-            if (NodeBuilder.UpsertCitation(state, existingFact, cit) is string change)
-                changes.Add(change);
+        changes.AddRange(CitationReconciler.Upsert(state, existingFact, citations));
 
         log.Add(changes.Count > 0
             ? $"{Context}: updated ({string.Join("; ", changes)})"

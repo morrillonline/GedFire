@@ -402,9 +402,19 @@ public sealed class FindPersonTool
     // "hints" needs a real default so the SDK's reflection-based argument
     // binder treats it as optional rather than throwing when a client omits
     // it entirely (as most calls will).
+    // hints and maxResults arrive as raw JsonElements: a value of the wrong
+    // type would otherwise fail inside the SDK binder, before any tool code
+    // runs, and surface only as a generic "error occurred".
     Task<CallToolResult> InvokeAsync(
-      string query, FindPersonHintsArgs? hints = null, int maxResults = DefaultMaxResults, CancellationToken cancellationToken = default)
-        => HandleAsync(query, hints, cancellationToken, maxResults);
+      string query, JsonElement? hints = null, JsonElement? maxResults = null, CancellationToken cancellationToken = default)
+    {
+      if (!FindPersonHintsReader.TryRead(hints ?? default, out var hintsArgs, out string? error) ||
+          !ToolArguments.TryReadOptionalInt(
+            maxResults ?? default, "maxResults", 1, MaximumMaxResults, DefaultMaxResults, out int max, out error))
+        return Task.FromResult(CallToolResults.Error(error!));
+
+      return HandleAsync(query, hintsArgs, cancellationToken, max);
+    }
 
     /// <summary>
     /// The tool's actual behavior, reachable directly without any MCP
@@ -471,7 +481,7 @@ public sealed class FindPersonTool
     static EventHint? ToEventHint(FindPersonEventHintArgs? hint) =>
       hint is null ? null : new EventHint(hint.Year, hint.Place);
 
-    static bool TryValidateHints(FindPersonHintsArgs? hints, out string? error)
+    internal static bool TryValidateHints(FindPersonHintsArgs? hints, out string? error)
     {
       if (hints is null)
       {
