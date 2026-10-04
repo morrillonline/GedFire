@@ -60,6 +60,11 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
 
     private string Context => $"{Kind} {Fact} on {Record}";
 
+    /// <summary>Set when another op delegates to this one, so its log lines name the real author.</summary>
+    internal string? DelegatedBy { get; init; }
+
+    private string LogContext => DelegatedBy is null ? Context : $"{Context} (via {DelegatedBy})";
+
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
         if (OpChecks.RejectVoid(Context, Record, errors)) return;
@@ -121,7 +126,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
             NodeBuilder.InsertFact(target, fact);
             state.Mutated();
             state.Touch(target);
-            log.Add($"{Context}: created");
+            log.Add($"{LogContext}: created" + string.Concat(citations.Select(c => $"; {NodeBuilder.DescribeCitation(c)}")));
             return;
         }
 
@@ -147,8 +152,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         changes.AddRange(CitationReconciler.Upsert(state, existingFact, citations));
 
         log.Add(changes.Count > 0
-            ? $"{Context}: updated ({string.Join("; ", changes)})"
-            : $"{Context}: no-op (already matches)");
+            ? $"{LogContext}: updated ({string.Join("; ", changes)})"
+            : $"{LogContext}: no-op (already matches)");
     }
 
     private sealed record ValueUpdate(string Description, bool Replaces, Action Write);

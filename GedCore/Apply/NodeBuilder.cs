@@ -169,8 +169,11 @@ internal static class NodeBuilder
         Attach(structure, node, at);
         state.Mutated();
         state.Touch(structure);
-        return cit.Page is null ? $"cited {cit.Source}" : $"cited {cit.Source} ({cit.Page})";
+        return DescribeCitation(cit);
     }
+
+    public static string DescribeCitation(Citation cit) =>
+        cit.Page is null ? $"cited {cit.Source}" : $"cited {cit.Source} ({cit.Page})";
 
     /// <summary>
     /// Update one existing citation node in place: every requested field
