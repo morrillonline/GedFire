@@ -39,6 +39,7 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
 
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
+        ProseXrefGuard.Check($"{Kind} on {Record}", "text", Text, errors);
         if (OpChecks.RejectVoid($"{Kind} on {Record}", Record, errors)) return;
         if (!ctx.Known(Record)) { errors.Add($"{Kind} on {Record}: target not in file"); return; }
         if (Mime is not null && !IsSupportedMime(Mime))

@@ -12,7 +12,7 @@
               "citation": { "source": "@S00001@", "page": "p. 1",
                             "dataText": "birth confirmed", "quay": 2 } }
           ],
-          "note": "Merged duplicate @I00006@: a death record bridges the two entered names and confirms this is the same man." },
+          "note": "Merged the duplicate entry: a death record bridges the two entered names and confirms this is the same man." },
         { "op": "createOrUpdateVital", "record": "@I00005@", "fact": "DEAT",
           "value": { "date": "8 NOV 1998", "place": "Deering, New Hampshire" },
           "citation": { "source": "@S00001@", "page": "p. 1",

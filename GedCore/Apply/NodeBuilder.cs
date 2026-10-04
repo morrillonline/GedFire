@@ -316,6 +316,8 @@ internal static class OpChecks
             // unparseable line (the tool does not split PAGE/TEXT into CONT
             // continuation lines); reject it here so it fails at validation
             // with a clear message rather than in the reparse-verify step.
+            ProseXrefGuard.Check(context, $"citation {cit.Source} page", cit.Page, errors);
+            ProseXrefGuard.Check(context, $"citation {cit.Source} dataText", cit.DataText, errors);
             if (HasLineBreak(cit.Page))
                 errors.Add($"{context}: citation {cit.Source} page contains a line break — " +
                            "citation values must be single-line");

@@ -219,7 +219,7 @@ public static class ChangesetOpsCatalog
             "an existing note's exact text rewrites it; otherwise a new note is created.",
             [
                 new("record", "string", true, "Target person or family xref."),
-                new("text", "string", true, "The note's full text."),
+                new("text", "string", true, "The note's full text. Refer to people and sources by name; text containing a record id such as @S1@ is refused."),
                 new("match", "string", false, "An existing note's exact current text, to rewrite instead of creating a new one."),
                 new("mime", "string", false, "\"text/plain\" (default) or \"text/html\"."),
                 new("citation / citations", "object | array", false, CitationNote + " Renders the note as a cited narrative paragraph rather than plain text."),
@@ -295,7 +295,7 @@ public static class ChangesetOpsCatalog
                 new("survivor", "string", true, "The xref to keep."),
                 new("duplicate", "string", true, "The xref to fold in and delete."),
                 new("facts", "array", false, "Conflict resolutions: [{\"fact\" (tag), \"keep\"? (\"survivor\"|\"duplicate\"|\"value\", default \"value\"), \"value\"? (required when \"keep\" is \"value\"), \"citation\"/\"citations\"?}]."),
-                new("note", "string", false, "The merge-audit NOTE text left on the survivor; defaults to \"Merged duplicate {duplicate} into this record.\""),
+                new("note", "string", false, "The merge-audit NOTE text left on the survivor; defaults to \"Merged duplicate record of {the duplicate's name} into this record.\" Must not contain a record id."),
             ],
             Ex("""
                 { "op": "mergePerson", "survivor": "@I2@", "duplicate": "@I9@",

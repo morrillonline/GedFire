@@ -322,6 +322,8 @@ a source and a numbered claim in JSON:
 }
 ```
 
+Prose a changeset writes (note text, citation page and quoted text, source titles and authors, merge notes) must refer to people and sources by name; text containing an internal id such as `@S00223@` is refused at validation and apply.
+
 New records use reserved `@New<token>@` placeholders rather than
 caller-selected GEDCOM xrefs. The token can contain letters, digits, and
 underscores. Its first creating operation fixes the record kind, and every

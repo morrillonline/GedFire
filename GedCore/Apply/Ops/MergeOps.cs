@@ -63,6 +63,7 @@ public sealed class MergePersonOp : ChangeOp
 
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
+        ProseXrefGuard.Check(Context, "note", Note, errors);
         if (Survivor == Duplicate)
         { errors.Add($"{Context}: survivor and duplicate are the same xref"); return; }
         if (OpChecks.RejectVoid(Context, Survivor, errors)) return;
@@ -115,6 +116,7 @@ public sealed class MergePersonOp : ChangeOp
             return;
         }
         var survivor = state.Doc.ByXref[survivorXref];
+        string defaultNote = DefaultNote(duplicate);   // before the merge moves the NAME off the duplicate
         // A fact resolution's citation may name a source another op in this
         // same changeset just created via placeholder.
         var resolved = Facts
@@ -165,7 +167,7 @@ public sealed class MergePersonOp : ChangeOp
 
         state.RemoveRecord(duplicate);
 
-        string note = Note ?? $"Merged duplicate {Duplicate} into this record.";
+        string note = Note ?? defaultNote;
         int noteAnchor = survivor.Children.FindIndex(c => c.Tag == "UID");
         NodeBuilder.Attach(survivor, NodeBuilder.NewNode(1, "NOTE", note),
                            at: noteAnchor < 0 ? null : noteAnchor);
@@ -173,6 +175,15 @@ public sealed class MergePersonOp : ChangeOp
         state.Touch(survivor);
 
         log.Add($"{Context}: merged ({string.Join("; ", changes)})");
+    }
+
+    private static string DefaultNote(GedRecord duplicate)
+    {
+        string name = string.Join(' ', (duplicate.FirstChild("NAME")?.PayloadValue ?? "")
+            .Replace('/', ' ').Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        return name.Length > 0
+            ? $"Merged duplicate record of {name} into this record."
+            : "Merged a duplicate record into this record.";
     }
 
     /// <summary>File convention: NAME leads every INDI record; other facts follow the usual layout.</summary>

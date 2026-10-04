@@ -123,7 +123,7 @@ public class ProposalStyleChangesetTests : ApplyTestBase
         var survivor = doc.ByXref["@I00005@"];
         Assert.Equal("John Lorenzo Dow /Test/", survivor.FirstChild("NAME")!.Value);
         Assert.Equal("14 JUL 1846", survivor.FirstChild("BIRT")!.FirstChild("DATE")!.Value);
-        Assert.Contains(survivor.ChildrenByTag("NOTE"), n => n.Value.Contains("Merged duplicate"));
+        Assert.Contains(survivor.ChildrenByTag("NOTE"), n => n.Value.Contains("Merged the duplicate entry"));
 
         // follow-up on the survivor, in the same item as the merge
         var deat = survivor.FirstChild("DEAT")!;

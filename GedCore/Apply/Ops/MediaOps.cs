@@ -41,6 +41,9 @@ public sealed class CreateOrUpdateMediaOp : ChangeOp
 
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
+        ProseXrefGuard.Check(Context, "title", Title, errors);
+        foreach (var file in Files)
+            ProseXrefGuard.Check(Context, $"file {file.Path} title", file.Title, errors);
         if (Xref is not null && OpChecks.RejectVoid(Kind, Xref, errors)) return;
         if (Xref is not null && Placeholder.RejectRealRecordCollision(ctx, Xref) is string collision)
         { errors.Add($"{Context}: {collision}"); return; }

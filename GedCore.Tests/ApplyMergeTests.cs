@@ -71,6 +71,23 @@ public class ApplyMergeTests : ApplyTestBase
     }
 
     [Fact]
+    public void Merge_WithoutNote_LeavesADefaultNoteThatNamesTheDuplicate()
+    {
+        SeedDuplicatePair();
+
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "mergePerson", "survivor": "@I00005@", "duplicate": "@I00006@",
+                "facts": [ { "fact": "BIRT", "keep": "survivor" },
+                           { "fact": "NAME", "keep": "survivor" } ] } ] } ] }
+            """);
+
+        var notes = ReadDoc().ByXref["@I00005@"].ChildrenByTag("NOTE").Select(n => n.Value).ToList();
+        Assert.Contains("Merged duplicate record of Duplicate Twin into this record.", notes);
+        Assert.DoesNotContain(notes, n => n.Contains("@I00006@"));
+    }
+
+    [Fact]
     public void Merge_ExplicitValueResolution_ForName_StaysFirstChild()
     {
         SeedDuplicatePair();
