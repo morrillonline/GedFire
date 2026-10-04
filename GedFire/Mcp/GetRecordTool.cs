@@ -191,6 +191,24 @@ public sealed class GetRecordTool
                 "will": { "$ref": "#/$defs/EventDetail" },
                 "probate": { "$ref": "#/$defs/EventDetail" },
                 "census": { "type": "array", "items": { "$ref": "#/$defs/EventDetail" } },
+                "otherEvents": {
+                  "type": "array",
+                  "description": "Other individual events (BURI, BAPM, CHR, CREM, ...), each named by its GEDCOM tag.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "tag": { "type": "string" },
+                      "date": { "type": ["string", "null"] },
+                      "year": { "type": ["integer", "null"] },
+                      "qualifier": { "type": ["string", "null"] },
+                      "place": { "type": ["string", "null"] },
+                      "citations": { "type": "array", "items": { "$ref": "#/$defs/CitationDetail" } },
+                      "media": { "type": "array", "items": { "$ref": "#/$defs/MediaDetail" } }
+                    },
+                    "required": ["tag", "date", "year", "qualifier", "place", "citations", "media"]
+                  }
+                },
                 "nameCitations": { "type": "array", "items": { "$ref": "#/$defs/CitationDetail" } },
                 "notes": { "type": "array", "items": { "$ref": "#/$defs/NoteDetail" } },
                 "restriction": { "type": ["string", "null"] },
@@ -201,7 +219,7 @@ public sealed class GetRecordTool
               },
               "required": [
                 "recordType", "xref", "name", "title", "sex", "birth", "death", "will",
-                "probate", "census", "nameCitations", "notes", "restriction", "media",
+                "probate", "census", "otherEvents", "nameCitations", "notes", "restriction", "media",
                 "familyAsChild", "familiesAsSpouse"
               ]
             },
@@ -239,7 +257,7 @@ public sealed class GetRecordTool
                     "properties": {
                       "xref": { "type": "string", "pattern": "^@[^@]+@$" },
                       "recordType": { "enum": ["person", "family"] },
-                      "field": { "enum": ["name", "birth", "death", "will", "probate", "census", "note", "marriage"] }
+                      "field": { "enum": ["name", "birth", "death", "will", "probate", "census", "otherEvent", "note", "marriage"] }
                     },
                     "required": ["xref", "recordType", "field"]
                   }

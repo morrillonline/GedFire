@@ -243,6 +243,33 @@ public class GetRecordToolTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_Person_OtherEventsCarryTagAndCitations()
+    {
+        var tool = ToolOver("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @S1@ SOUR
+            1 TITL Burial register
+            0 @I1@ INDI
+            1 NAME Ada /Example/
+            1 BURI
+            2 DATE 1 JAN 1850
+            2 SOUR @S1@
+            3 PAGE p. 2
+            """);
+
+        var root = StructuredContent(await tool.HandleAsync("@I1@", CancellationToken.None));
+
+        var burial = Assert.Single(root.GetProperty("otherEvents").EnumerateArray());
+        Assert.Equal("BURI", burial.GetProperty("tag").GetString());
+        Assert.Equal("1 JAN 1850", burial.GetProperty("date").GetString());
+        var citation = Assert.Single(burial.GetProperty("citations").EnumerateArray());
+        Assert.Equal("@S1@", citation.GetProperty("source").GetString());
+        Assert.Equal("p. 2", citation.GetProperty("page").GetString());
+    }
+
+    [Fact]
     public async Task HandleAsync_Person_NameSourcesAndNotesWithTheirOwnCitations()
     {
         var tool = ToolOver(RecordGed);

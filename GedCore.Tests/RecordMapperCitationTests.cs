@@ -38,6 +38,13 @@ public class RecordMapperCitationTests
         2 SOUR @S1@
         3 PAGE p. 41
         2 SOUR @S999@
+        1 BURI
+        2 DATE 1809
+        2 PLAC Harwick
+        2 SOUR @S2@
+        3 PAGE p. 7
+        1 BAPM
+        2 DATE 1741
         1 NOTE Prose about him.
         2 SOUR @S2@
         1 FAMS @F1@
@@ -145,7 +152,8 @@ public class RecordMapperCitationTests
             [new CitedByEntry("@I1@", "person", "birth"), new CitedByEntry("@I1@", "person", "death")],
             parish.CitedBy);
         Assert.Equal(
-            [new CitedByEntry("@I1@", "person", "note"), new CitedByEntry("@F1@", "family", "marriage")],
+            [new CitedByEntry("@I1@", "person", "otherEvent"), new CitedByEntry("@I1@", "person", "note"),
+             new CitedByEntry("@F1@", "family", "marriage")],
             probate.CitedBy);
     }
 
@@ -168,5 +176,29 @@ public class RecordMapperCitationTests
 
         Assert.Equal(["@S3@", "@S1@", "@S2@"], sources.Select(s => s.Xref));
         Assert.All(sources, s => Assert.Null(s.CitedBy));
+    }
+
+    [Fact]
+    public void OtherEvents_AreListedByTagInDocumentOrderWithTheirCitations()
+    {
+        var events = Person().OtherEvents;
+
+        Assert.Equal(["BURI", "BAPM"], events.Select(e => e.Tag));
+        var burial = events[0];
+        Assert.Equal("1809", burial.Date);
+        Assert.Equal("Harwick", burial.Place);
+        var citation = Assert.Single(burial.Citations);
+        Assert.Equal("@S2@", citation.Source);
+        Assert.Equal("p. 7", citation.Page);
+        Assert.Empty(events[1].Citations);
+    }
+
+    [Fact]
+    public void OtherEvents_SourceIsIncludedAndCitedByNamesTheField()
+    {
+        Assert.Contains(Person(includeSources: true).Sources!, s => s.Xref == "@S2@");
+
+        var source = Assert.IsType<SourceRecord>(Mapper.Map(Model, "@S2@"));
+        Assert.Contains(source.CitedBy!, e => e.Xref == "@I1@" && e.Field == "otherEvent");
     }
 }
