@@ -841,4 +841,57 @@ public class ApplyOpTests : ApplyTestBase
             """);
         Assert.Contains(second.Log, l => l.Contains("no-op"));
     }
+
+    // -------------------------------------------------------------------------
+    // Citations in the log of a created vital
+    // -------------------------------------------------------------------------
+
+    private void WriteBaseFileWithSecondSource() =>
+        WriteFile([.. BaseLines.Take(BaseLines.Length - 1), "0 @S00002@ SOUR", "1 TITL Second source", "0 TRLR"]);
+
+    [Fact]
+    public void CreatedVital_OnExistingRecord_LogsItsCitation()
+    {
+        WriteBaseFile();
+
+        var result = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@F00001@", "fact": "MARR",
+                "value": { "date": "MAY 1877" },
+                "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "m.", "quay": 2 } } ] } ] }
+            """);
+
+        Assert.Contains(result.Log, l => l == "createOrUpdateVital MARR on @F00001@: created; cited @S00001@ (p. 1)");
+    }
+
+    [Fact]
+    public void CreatedVital_WithoutCitation_LogsPlainCreated()
+    {
+        WriteBaseFile();
+
+        var result = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "DEAT",
+                "value": { "date": "1950" } } ] } ] }
+            """);
+
+        Assert.Contains(result.Log, l => l == "createOrUpdateVital DEAT on @I00002@: created");
+    }
+
+    [Fact]
+    public void SpouseMarriage_WithTwoCitations_LogsBothAndNamesSpouseOp()
+    {
+        WriteBaseFileWithSecondSource();
+
+        var result = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateSpouse", "person": "@I00002@", "spouse": "@I00003@", "family": "@F00001@",
+                "marriage": { "date": "1922", "citations": [
+                  { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 2 },
+                  { "source": "@S00002@", "page": "b", "dataText": "y", "quay": 2 } ] } } ] } ] }
+            """);
+
+        Assert.Contains(result.Log, l => l ==
+            "createOrUpdateVital MARR on @F00001@ (via createOrUpdateSpouse): created; cited @S00001@ (a); cited @S00002@ (b)");
+    }
 }

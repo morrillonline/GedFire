@@ -156,7 +156,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
             new CreateOrUpdateVitalOp
             {
                 Record = fam.Xref!, Fact = "MARR",
-                Value = Marriage, Citations = marriageCitations,
+                Value = Marriage, Citations = marriageCitations, DelegatedBy = Kind,
             }.Apply(state, log);
 
         changes.AddRange(CitationReconciler.Upsert(state, fam, citations));
