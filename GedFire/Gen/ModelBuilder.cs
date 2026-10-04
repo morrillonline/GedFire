@@ -390,6 +390,9 @@ public static class ModelBuilder
                     case "MARR":
                         fam.Marriage = ParseEvent(child, "MARR");
                         break;
+                    case "SOUR":
+                        fam.Sources.Add(BuildSourceRef(child));
+                        break;
                     case "OBJE":
                         AddMediaLink(child, _famMediaLinks, fam);
                         break;

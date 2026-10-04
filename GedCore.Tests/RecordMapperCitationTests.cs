@@ -16,6 +16,8 @@ public class RecordMapperCitationTests
         1 PUBL Harwick Press
         0 @S2@ SOUR
         1 TITL Probate Volume 4
+        0 @S4@ SOUR
+        1 TITL Family register
         0 @S3@ SOUR
         1 TITL Personal note
         1 NOTE Personal note
@@ -54,6 +56,10 @@ public class RecordMapperCitationTests
         0 @F1@ FAM
         1 HUSB @I1@
         1 WIFE @I2@
+        1 SOUR @S4@
+        2 PAGE p. 3
+        2 DATA
+        3 TEXT Husband and wife listed together
         1 MARR
         2 DATE 1770
         2 SOUR @S2@
@@ -123,7 +129,7 @@ public class RecordMapperCitationTests
     {
         var family = Assert.IsType<FamilyRecord>(Mapper.Map(Model, "@F1@", includeSources: true));
 
-        Assert.Equal(["@S2@"], family.Sources!.Select(s => s.Xref));
+        Assert.Equal(["@S2@", "@S4@"], family.Sources!.Select(s => s.Xref));   // marriage citations, then the family's own
     }
 
     [Fact]
@@ -174,7 +180,7 @@ public class RecordMapperCitationTests
 
         var sources = Mapper.SourcesCitedBy(Model, records);
 
-        Assert.Equal(["@S3@", "@S1@", "@S2@"], sources.Select(s => s.Xref));
+        Assert.Equal(["@S3@", "@S1@", "@S2@", "@S4@"], sources.Select(s => s.Xref));
         Assert.All(sources, s => Assert.Null(s.CitedBy));
     }
 
@@ -200,5 +206,27 @@ public class RecordMapperCitationTests
 
         var source = Assert.IsType<SourceRecord>(Mapper.Map(Model, "@S2@"));
         Assert.Contains(source.CitedBy!, e => e.Xref == "@I1@" && e.Field == "otherEvent");
+    }
+
+    [Fact]
+    public void FamilyCitations_AreReturnedApartFromTheMarriageEvent()
+    {
+        var family = Assert.IsType<FamilyRecord>(Mapper.Map(Model, "@F1@"));
+
+        var citation = Assert.Single(family.Citations);
+        Assert.Equal("@S4@", citation.Source);
+        Assert.Equal("p. 3", citation.Page);
+        Assert.Equal("Husband and wife listed together", citation.DataText);
+        Assert.Equal("@S2@", Assert.Single(family.Marriage!.Citations).Source);
+    }
+
+    [Fact]
+    public void FamilyCitations_SourceIsIncludedAndCitedByNamesTheField()
+    {
+        var family = Assert.IsType<FamilyRecord>(Mapper.Map(Model, "@F1@", includeSources: true));
+        Assert.Contains(family.Sources!, s => s.Xref == "@S4@");
+
+        var source = Assert.IsType<SourceRecord>(Mapper.Map(Model, "@S4@"));
+        Assert.Equal([new CitedByEntry("@F1@", "family", "familyCitation")], source.CitedBy);
     }
 }

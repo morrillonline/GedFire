@@ -53,6 +53,7 @@ public static class PrivacyFilter
                 (fam.Wife    != null && living.Contains(fam.Wife)))
             {
                 fam.Marriage = null;
+                fam.Sources.Clear();
                 fam.Media.Clear();
             }
 

@@ -61,7 +61,7 @@ public sealed class RecordMapper
             .Concat(p.OtherEvents.SelectMany(e => e.Citations))
             .Concat(p.Notes.SelectMany(n => n.Citations))
             .Concat(p.FamiliesAsSpouse.SelectMany(f => EventCitations(f.Marriage))),
-        FamilyRecord f => EventCitations(f.Marriage),
+        FamilyRecord f => EventCitations(f.Marriage).Concat(f.Citations),
         _ => [],
     };
 
@@ -89,7 +89,10 @@ public sealed class RecordMapper
             Add(indi.Xref, "person", "note", indi.NarrativeNotes.SelectMany(n => n.Sources));
         }
         foreach (var fam in model.Families.Values)
-            Add(fam.Xref, "family", "marriage", fam.Marriage?.Sources ?? []);
+            {
+                Add(fam.Xref, "family", "marriage", fam.Marriage?.Sources ?? []);
+                Add(fam.Xref, "family", "familyCitation", fam.Sources);
+            }
         return entries;
     }
 
@@ -145,6 +148,7 @@ public sealed class RecordMapper
         MapSpouseReference(fam.Husband),
         MapSpouseReference(fam.Wife),
         MapEvent(fam.Marriage),
+        MapCitations(fam.Sources),
         [.. fam.Children.Select(MapChild)],
         MapMediaList(fam.Media));
 
