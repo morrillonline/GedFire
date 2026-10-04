@@ -86,6 +86,7 @@ public sealed record FamilyRecord(
     SpouseReference? Husband,
     SpouseReference? Wife,
     EventDetail? Marriage,
+    IReadOnlyList<CitationDetail> Citations,
     IReadOnlyList<ChildIdentity> Children,
     IReadOnlyList<MediaDetail> Media)
 {

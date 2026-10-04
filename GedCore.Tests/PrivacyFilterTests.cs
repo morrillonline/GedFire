@@ -375,4 +375,43 @@ public class PrivacyFilterTests
         Assert.Empty(model.Individuals["@I1@"].OtherEvents);
         Assert.Equal("BURI", Assert.Single(model.Individuals["@I2@"].OtherEvents).Tag);
     }
+
+    [Fact]
+    public void FamilyCitations_OfALivingSpousesFamily_AreCleared()
+    {
+        var model = BuildFiltered("""
+            0 @S1@ SOUR
+            1 TITL Register
+            0 @I1@ INDI
+            1 NAME Old /Hearth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1 JAN 1850
+            1 DEAT
+            2 DATE 1 JAN 1920
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Pat /Hearth/
+            1 SEX F
+            1 BIRT
+            2 DATE 1 JAN 1950
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            1 SOUR @S1@
+            0 @I3@ INDI
+            1 NAME Ada /Hearth/
+            1 SEX F
+            1 BIRT
+            2 DATE 1 JAN 1850
+            1 FAMS @F2@
+            0 @F2@ FAM
+            1 WIFE @I3@
+            1 SOUR @S1@
+            """);
+
+        Assert.Empty(model.Families["@F1@"].Sources);
+        Assert.Single(model.Families["@F2@"].Sources);
+    }
 }

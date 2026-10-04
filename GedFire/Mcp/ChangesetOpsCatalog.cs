@@ -190,10 +190,14 @@ public static class ChangesetOpsCatalog
             "\"page\" corrects the page. To cite one source on several pages of the same fact, give one entry per page; " +
             "an entry whose page matches an existing citation updates it, and an entry that matches none is added. " +
             "If the fact already cites the source several times and the entries stated cannot be told apart from them, " +
-            "the op is rejected and names the existing pages — state every citation of that source you want.",
+            "the op is rejected and names the existing pages — state every citation of that source you want. " +
+            "Name a \"note\" (its exact text) to address the citations under one of the record's notes instead of a fact. " +
+            "Omit both \"fact\" and \"note\" to address a family record's own citations (the relationship provenance " +
+            "written by createOrUpdateSpouse/Child/Parent); that form works on family records only.",
             [
-                new("record", "string", true, "The fact's person or family xref."),
-                new("fact", "string", true, "The fact's GEDCOM tag."),
+                new("record", "string", true, "The fact's person or family xref, or the family whose own citations are addressed."),
+                new("fact", "string", false, "The fact's GEDCOM tag. Omit it and \"note\" to address a family's own citations (family records only)."),
+                new("note", "string", false, "The exact current text of one of the record's notes, to address that note's citations instead of a fact's."),
                 new("match", "string | object", false, FactMatchNote),
                 new("citation / citations", "object | array", true, CitationNote + " At least one is required."),
             ],
@@ -203,10 +207,13 @@ public static class ChangesetOpsCatalog
                 """)),
 
         new("deleteCitation", "delete", "Citation",
-            "Remove one source's citation from a fact. Absent fact or absent citation → no-op.",
+            "Remove one source's citation from a fact, from a note (named by its exact text via \"note\"), or — with " +
+            "neither named, on a family record — from the family's own citations. Absent structure or absent " +
+            "citation → no-op.",
             [
-                new("record", "string", true, "The fact's person or family xref."),
-                new("fact", "string", true, "The fact's GEDCOM tag."),
+                new("record", "string", true, "The fact's person or family xref, or the family whose own citations are addressed."),
+                new("fact", "string", false, "The fact's GEDCOM tag. Omit it and \"note\" to address a family's own citations (family records only)."),
+                new("note", "string", false, "The exact current text of one of the record's notes, to address that note's citations instead of a fact's."),
                 new("match", "string | object", false, FactMatchNote),
                 new("source", "string", true, "The cited source's xref to remove."),
                 new("page", "string", false, "Which citation to remove when the fact cites the source on several pages; required only then."),

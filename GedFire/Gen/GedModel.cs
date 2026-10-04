@@ -188,6 +188,9 @@ public sealed class GedFamily
     public GedIndividual? Wife     { get; set; }
     public List<GedIndividual> Children { get; } = [];
     public GedEvent? Marriage { get; set; }
+    // Citations attached to the FAM record itself (relationship provenance),
+    // as opposed to the marriage event's own. Not rendered on the generated site.
+    public List<GedSourceRef> Sources { get; } = [];
     public List<GedMediaLink> Media { get; } = [];
 
     public GedIndividual? SpouseOf(GedIndividual x)

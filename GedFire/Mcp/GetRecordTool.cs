@@ -232,11 +232,16 @@ public sealed class GetRecordTool
                 "husband": { "$ref": "#/$defs/SpouseReference" },
                 "wife": { "$ref": "#/$defs/SpouseReference" },
                 "marriage": { "$ref": "#/$defs/EventDetail" },
+                "citations": {
+                  "type": "array",
+                  "description": "Citations attached to the family record itself (relationship provenance), apart from the marriage event's own.",
+                  "items": { "$ref": "#/$defs/CitationDetail" }
+                },
                 "children": { "type": "array", "items": { "$ref": "#/$defs/ChildIdentity" } },
                 "media": { "type": "array", "items": { "$ref": "#/$defs/MediaDetail" } },
                 "sources": { "type": "array", "items": { "$ref": "#/$defs/SourceRecord" }, "description": "Only with includeSources." }
               },
-              "required": ["recordType", "xref", "husband", "wife", "marriage", "children", "media"]
+              "required": ["recordType", "xref", "husband", "wife", "marriage", "citations", "children", "media"]
             },
             "SourceRecord": {
               "type": "object",
@@ -257,7 +262,7 @@ public sealed class GetRecordTool
                     "properties": {
                       "xref": { "type": "string", "pattern": "^@[^@]+@$" },
                       "recordType": { "enum": ["person", "family"] },
-                      "field": { "enum": ["name", "birth", "death", "will", "probate", "census", "otherEvent", "note", "marriage"] }
+                      "field": { "enum": ["name", "birth", "death", "will", "probate", "census", "otherEvent", "note", "marriage", "familyCitation"] }
                     },
                     "required": ["xref", "recordType", "field"]
                   }

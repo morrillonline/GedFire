@@ -270,6 +270,34 @@ public class GetRecordToolTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_Family_CitationsCarrySourcePageAndText()
+    {
+        var tool = ToolOver("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @S1@ SOUR
+            1 TITL Family register
+            0 @I1@ INDI
+            1 NAME Ada /Example/
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 WIFE @I1@
+            1 SOUR @S1@
+            2 PAGE p. 4
+            2 DATA
+            3 TEXT Ada listed as head of household
+            """);
+
+        var root = StructuredContent(await tool.HandleAsync("@F1@", CancellationToken.None));
+
+        var citation = Assert.Single(root.GetProperty("citations").EnumerateArray());
+        Assert.Equal("@S1@", citation.GetProperty("source").GetString());
+        Assert.Equal("p. 4", citation.GetProperty("page").GetString());
+        Assert.Equal("Ada listed as head of household", citation.GetProperty("dataText").GetString());
+    }
+
+    [Fact]
     public async Task HandleAsync_Person_NameSourcesAndNotesWithTheirOwnCitations()
     {
         var tool = ToolOver(RecordGed);
