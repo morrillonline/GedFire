@@ -32,6 +32,16 @@ public sealed record EventDetail(
     IReadOnlyList<CitationDetail> Citations,
     IReadOnlyList<MediaDetail> Media);
 
+/// <summary>An individual event other than birth, death, will, probate and census, named by its GEDCOM tag (BURI, BAPM, ...).</summary>
+public sealed record OtherEventDetail(
+    string Tag,
+    string? Date,
+    int? Year,
+    string? Qualifier,
+    string? Place,
+    IReadOnlyList<CitationDetail> Citations,
+    IReadOnlyList<MediaDetail> Media);
+
 public sealed record NoteDetail(string Text, string? Mime, IReadOnlyList<CitationDetail> Citations);
 
 public sealed record ChildIdentity(string Xref, string Name, int? BirthYear);
@@ -57,6 +67,7 @@ public sealed record PersonRecord(
     EventDetail? Will,
     EventDetail? Probate,
     IReadOnlyList<EventDetail> Census,
+    IReadOnlyList<OtherEventDetail> OtherEvents,
     IReadOnlyList<CitationDetail> NameCitations,
     IReadOnlyList<NoteDetail> Notes,
     string? Restriction,

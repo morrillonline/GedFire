@@ -352,4 +352,27 @@ public class PrivacyFilterTests
         Assert.Null(model.Families["@F1@"].Marriage);
         Assert.Equal("Living", model.Individuals["@I2@"].FirstName);
     }
+
+    [Fact]
+    public void OtherEvents_OfPrivatizedPerson_AreCleared()
+    {
+        var model = BuildFiltered("""
+            0 @I1@ INDI
+            1 NAME Pat /Hearth/
+            1 BIRT
+            2 DATE 1 JAN 1950
+            1 BURI
+            2 DATE 1 JAN 2020
+            2 PLAC Somewhere
+            0 @I2@ INDI
+            1 NAME Old /Hearth/
+            1 BIRT
+            2 DATE 1 JAN 1850
+            1 BURI
+            2 DATE 1 JAN 1920
+            """);
+
+        Assert.Empty(model.Individuals["@I1@"].OtherEvents);
+        Assert.Equal("BURI", Assert.Single(model.Individuals["@I2@"].OtherEvents).Tag);
+    }
 }

@@ -29,6 +29,13 @@ public static class ModelBuilder
 
     private sealed class BuildContext
     {
+        // GEDCOM 7 individual events not held in a dedicated GedIndividual field.
+        static readonly HashSet<string> OtherEventTags =
+        [
+            "ADOP", "BAPM", "BARM", "BASM", "BLES", "BURI", "CHR", "CHRA", "CONF",
+            "CREM", "EMIG", "EVEN", "FCOM", "GRAD", "IMMI", "NATU", "ORDN", "RETI",
+        ];
+
         // Source-ref resolution: maps each GedSourceRef to its GEDCOM xref
         // and any inline NOTE override.  Populated during Pass 1, consumed
         // and discarded at the end of Pass 2.
@@ -156,6 +163,9 @@ public static class ModelBuilder
                     case "CENS":
                     case "RESI":
                         indi.Census.Add(ParseEvent(child, child.Tag));
+                        break;
+                    case var tag when OtherEventTags.Contains(tag):
+                        indi.OtherEvents.Add(ParseEvent(child, tag));
                         break;
                     case "FAMS":
                         if (child.Value.Length > 0)

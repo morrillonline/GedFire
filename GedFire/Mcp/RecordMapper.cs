@@ -58,6 +58,7 @@ public sealed class RecordMapper
             .Concat(EventCitations(p.Birth)).Concat(EventCitations(p.Death))
             .Concat(EventCitations(p.Will)).Concat(EventCitations(p.Probate))
             .Concat(p.Census.SelectMany(EventCitations))
+            .Concat(p.OtherEvents.SelectMany(e => e.Citations))
             .Concat(p.Notes.SelectMany(n => n.Citations))
             .Concat(p.FamiliesAsSpouse.SelectMany(f => EventCitations(f.Marriage))),
         FamilyRecord f => EventCitations(f.Marriage),
@@ -84,6 +85,7 @@ public sealed class RecordMapper
             Add(indi.Xref, "person", "will", indi.Will?.Sources ?? []);
             Add(indi.Xref, "person", "probate", indi.Probate?.Sources ?? []);
             Add(indi.Xref, "person", "census", indi.Census.SelectMany(c => c.Sources));
+            Add(indi.Xref, "person", "otherEvent", indi.OtherEvents.SelectMany(e => e.Sources));
             Add(indi.Xref, "person", "note", indi.NarrativeNotes.SelectMany(n => n.Sources));
         }
         foreach (var fam in model.Families.Values)
@@ -106,6 +108,7 @@ public sealed class RecordMapper
         MapEvent(indi.Will),
         MapEvent(indi.Probate),
         [.. indi.Census.Select(ev => MapEvent(ev)!)],
+        [.. indi.OtherEvents.Select(MapOtherEvent)],
         MapCitations(indi.NameSources),
         [.. indi.NarrativeNotes.Select(MapNote)],
         indi.Restriction,
@@ -184,6 +187,15 @@ public sealed class RecordMapper
             MapCitations(ev.Sources),
             MapMediaList(ev.Media));
     }
+
+    OtherEventDetail MapOtherEvent(GedEvent ev) => new(
+        ev.Tag,
+        OrNull(ev.Date),
+        NullIfZero(GedDate.ParseYear(ev.Date)),
+        GedDate.Qualifier(ev.Date),
+        OrNull(ev.Place),
+        MapCitations(ev.Sources),
+        MapMediaList(ev.Media));
 
     static NoteDetail MapNote(GedNarrativeNote note) =>
         new(note.Text, note.Mime, MapCitations(note.Sources));

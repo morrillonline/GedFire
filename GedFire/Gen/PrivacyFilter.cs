@@ -89,6 +89,7 @@ public static class PrivacyFilter
         indi.Will       = null;
         indi.Probate    = null;
         indi.Census.Clear();
+        indi.OtherEvents.Clear();
         indi.NameSources.Clear();
         indi.Media.Clear();
     }
