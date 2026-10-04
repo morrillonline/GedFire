@@ -29,6 +29,8 @@ public sealed class CreateOrUpdateSourceOp : ChangeOp
 
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
+        ProseXrefGuard.Check($"{Kind} {Xref}", "title", Title, errors);
+        ProseXrefGuard.Check($"{Kind} {Xref}", "auth", Auth, errors);
         if (OpChecks.RejectVoid(Kind, Xref, errors)) return;
         if (Placeholder.RejectRealRecordCollision(ctx, Xref) is string collision)
         { errors.Add($"{Kind} {Xref}: {collision}"); return; }

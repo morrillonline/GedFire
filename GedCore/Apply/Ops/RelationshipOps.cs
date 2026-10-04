@@ -90,6 +90,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
         }
         OpChecks.CitationsValid(ctx, Context, Citations, errors);
         OpChecks.InlineFactsValid(ctx, Context, Spouse, errors);
+        ProseXrefGuard.Check(Context, "note", Note, errors);
 
         // Same-partner-same-date marriage conflict: only relevant when this
         // op would create a new family and supplies an exact, fully-specified

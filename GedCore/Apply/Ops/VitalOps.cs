@@ -67,6 +67,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
 
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
+        ProseXrefGuard.Check(Context, "value", Value.Text, errors);
         if (OpChecks.RejectVoid(Context, Record, errors)) return;
         if (!ctx.Known(Record)) { errors.Add($"{Context}: target not in file"); return; }
         OpChecks.CitationsValid(ctx, Context, Citations, errors);
