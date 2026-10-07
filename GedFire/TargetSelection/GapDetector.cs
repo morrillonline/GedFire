@@ -250,7 +250,6 @@ public static class GapDetector
             Name = DisplayName(person),
             Surname = person.LastName,
             Born = FormatDisplay(person.Birth),
-            BirthPlace = NullIfEmpty(person.Birth?.Place),
             Died = FormatDisplay(person.Death),
             CardType = cardType.Display(),
             NominalPoints = nominalPoints,

@@ -558,6 +558,8 @@ public class WantedFileWriterTests
         Assert.Equal("New parent", jsonTarget.GetProperty("cardType").GetString());
         Assert.Equal("Rare", jsonTarget.GetProperty("difficulty").GetProperty("band").GetString());
         Assert.Equal(20, jsonTarget.GetProperty("score").GetInt32());
+        Assert.Equal(0, jsonTarget.GetProperty("possibleDuplicateOf").GetArrayLength());
+        Assert.False(jsonTarget.TryGetProperty("birthPlace", out _));
 
         var drawLog = root.GetProperty("draw");
         Assert.Equal(999, drawLog.GetProperty("seed").GetInt64());

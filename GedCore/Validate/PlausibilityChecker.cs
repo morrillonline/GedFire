@@ -407,83 +407,19 @@ public static class PlausibilityChecker
     // GEN301 — possible duplicate INDI
     // -------------------------------------------------------------------
 
-    // Reuses PersonRecordIndex.Build + PersonMatchCore.Match, the same
-    // scoring find_person and the changeset-time duplicate detector use.
-    // Bucketed by normalized surname first (cheap, O(n)) so scoring only
-    // runs within same-surname groups rather than all pairs in the whole
-    // document — see design doc's Integration section for why that matters.
-    //
-    // That still leaves an all-pairs sweep *within* a bucket: every member
-    // scored as the query ("self") against every other member. Fine for a
-    // small bucket, but a real family study's own most common surname can
-    // run to thousands of members, and O(bucket^2) there is minutes of work
-    // -- run twice (before and after) on every check_plausibility/
-    // validate_changeset/apply_changeset call, regardless of what the
-    // changeset touches. duplicateCheckScope, when supplied, runs only
-    // members in scope as "self" -- exactly the one-call-per-person query
-    // find_person already does, still scored against the bucket's full
-    // membership, so it finds every pair a full sweep would that involves a
-    // scoped person. A pair where neither member is in scope is necessarily
-    // one this changeset didn't touch, so it can't be a *new* finding for
-    // ChangesetApplier's before/after diff either way -- omitting it from
-    // the scoped sweep costs that diff nothing.
-    private const double DuplicateWarningFloor = 70.0;
-
-    static readonly Lazy<NicknameDirectory> Nicknames = new(NicknameDirectory.LoadEmbedded);
-    static readonly PersonMatchCore MatchCore = new();
-
+    // Scoring is PossibleDuplicateFinder's, shared with select_targets. A scope
+    // restricts which people are the query side: a pair neither of whose members
+    // is in scope cannot be new to a changeset's before/after diff, and a
+    // whole-document sweep of a large surname group takes minutes.
     private static void CheckPossibleDuplicates(
         GedDocument doc, List<GedDiagnostic> diags, IReadOnlySet<string>? duplicateCheckScope,
         CancellationToken cancellationToken)
     {
-        var candidates = PersonRecordIndex.Build(doc);
-        if (candidates.Count < 2) return;
-
-        var flaggedPairs = new HashSet<(string, string)>();
-        foreach (var bucket in candidates.GroupBy(c => c.NormalizedSurname, StringComparer.Ordinal))
-        {
-            var members = bucket.ToList();
-            if (members.Count < 2) continue;
-
-            var selves = duplicateCheckScope is null
-                ? members
-                : members.Where(c => duplicateCheckScope.Contains(c.Id)).ToList();
-
-            foreach (var self in selves)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var others = members.Where(c => c.Id != self.Id).ToList();
-                var hints = HintsFor(self);
-                var outcome = MatchCore.Match(
-                    others, self.DisplayName, hints, Nicknames.Value, maxResults: 1, forDuplicateDetection: true);
-                // Single requires FinalScore >= 90 with a 10-point margin over the
-                // runner-up (PersonMatchCore's own hard-match bar) -- gating on it
-                // here would make DuplicateWarningFloor dead code, since nothing
-                // between 70 and 90 would ever classify as Single. Candidates (an
-                // ambiguous recall set) still carries a real top score in Matches;
-                // only None (nothing cleared the recall gate at all) has none.
-                if (outcome.PersonMatchType == PersonMatchType.None) continue;
-
-                var match = outcome.Matches[0];
-                if (match.FinalScore < DuplicateWarningFloor) continue;
-
-                var pairKey = string.CompareOrdinal(self.Id, match.Id) < 0
-                    ? (self.Id, match.Id) : (match.Id, self.Id);
-                if (!flaggedPairs.Add(pairKey)) continue;
-
-                diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, "GEN301",
-                    $"{pairKey.Item1} and {pairKey.Item2} score as a probable identity match ({match.FinalScore:0.0})",
-                    pairKey.Item1, "INDI"));
-            }
-        }
-    }
-
-    private static MatchHints HintsFor(PersonMatchCandidate c)
-    {
-        EventHint? birth = c.Birth is { } b ? new EventHint(b.Year, b.NormalizedPlace) : null;
-        ParentsHint? parents = c.Parents is { } p ? new ParentsHint(p.NormalizedFatherName, p.NormalizedMotherName) : null;
-        SpouseHint? spouse = c.Marriages.Count > 0 ? new SpouseHint(c.Marriages[0].NormalizedSpouseName) : null;
-        return new MatchHints(Birth: birth, Parents: parents, Spouse: spouse, IsMale: c.IsMale);
+        var pairs = PossibleDuplicateFinder.Find(PersonRecordIndex.Build(doc), duplicateCheckScope, cancellationToken);
+        foreach (var pair in pairs)
+            diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, "GEN301",
+                $"{pair.FirstId} and {pair.SecondId} score as a probable identity match ({pair.Score:0.0})",
+                pair.FirstId, "INDI"));
     }
 
     // -------------------------------------------------------------------
