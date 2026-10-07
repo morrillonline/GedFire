@@ -38,7 +38,7 @@ public sealed class FindPersonTool
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "The name as the user said it: a full name, given name, shortened prefix such as Fred for Frederick, a documented nickname such as Bill for William, or a close spelling. Pass it unchanged; the tool normalizes it."
+              "description": "The name as the user said it: a full name, given name, shortened prefix such as Fred for Frederick, a documented nickname such as Bill for William, or a close spelling. Pass it unchanged; the tool normalizes it. A part written Unknown (Mary Unknown, Unknown Pike) is a wildcard: it matches any value and adds no score, and people recorded with an Unknown part rank below exact name matches."
             },
             "hints": {
               "type": "object",
@@ -269,9 +269,13 @@ public sealed class FindPersonTool
                 "matchScore": {
                   "type": "number",
                   "description": "The normalized name-and-available-hint evidence score used for ranking. This is not a probability."
+                },
+                "surnameUnknown": {
+                  "type": "boolean",
+                  "description": "True when the person's surname is recorded as Unknown. The surname then added no evidence to matchScore."
                 }
               },
-              "required": ["xref", "name", "birth", "death", "parents", "spouses", "matchScore"]
+              "required": ["xref", "name", "birth", "death", "parents", "spouses", "matchScore", "surnameUnknown"]
             },
             "SpouseFamilyIdentity": {
               "type": "object",
@@ -325,9 +329,13 @@ public sealed class FindPersonTool
                 "name": { "type": "string", "description": "The person's display name." },
                 "birth": { "$ref": "#/$defs/EventIdentity", "description": "Recorded birth evidence." },
                 "death": { "$ref": "#/$defs/EventIdentity", "description": "Recorded death evidence." },
-                "families": { "$ref": "#/$defs/FamiliesIdentity", "description": "Family handoff identifiers." }
+                "families": { "$ref": "#/$defs/FamiliesIdentity", "description": "Family handoff identifiers." },
+                "surnameUnknown": {
+                  "type": "boolean",
+                  "description": "True when the person's surname is recorded as Unknown. The surname then added no evidence to the match."
+                }
               },
-              "required": ["xref", "name", "birth", "death", "families"]
+              "required": ["xref", "name", "birth", "death", "families", "surnameUnknown"]
             },
             "Suggestion": {
               "type": "object",
@@ -608,7 +616,8 @@ public sealed class FindPersonTool
         PersonDisplay.FullName(indi),
         MapEvent(indi.Birth),
         MapEvent(indi.Death),
-        new FamiliesIdentity(MapAsChild(indi), MapAsParent(indi)));
+        new FamiliesIdentity(MapAsChild(indi), MapAsParent(indi)),
+        indi.SurnameUnknown);
 
     static CandidateIdentity MapCandidate(ScoredMatch match)
     {
@@ -620,7 +629,8 @@ public sealed class FindPersonTool
             MapEvent(indi.Death),
             MapParents(indi.FamChild),
             MapSpouseNames(indi),
-            match.FinalScore);
+            match.FinalScore,
+            indi.SurnameUnknown);
     }
 
     static SuggestionIdentity MapSuggestion(Suggestion s) => new(

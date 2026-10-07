@@ -285,6 +285,38 @@ public class ApplyOpTests : ApplyTestBase
         Assert.Contains("@S00002@", sources);   // new citation attached
     }
 
+    [Theory]
+    [InlineData("keep", "replacedCitations=keep: kept @S00001@ (p. 1)")]
+    [InlineData("drop", "replacedCitations=drop: dropped @S00001@ (p. 1)")]
+    [InlineData("moveToNote", "replacedCitations=moveToNote: moved to note @S00001@ (p. 1)")]
+    public void Vital_ReplacingAValue_LogsWhatBecameOfEachExistingCitation(string mode, string expected)
+    {
+        SeedBirtWithExistingCitation();
+
+        var result = RunExpectSuccess($$"""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
+                "value": { "date": "2 APR 1928" },
+                "replacedCitations": "{{mode}}" } ] } ] }
+            """);
+
+        Assert.Contains(result.Log, line => line.Contains(expected));
+    }
+
+    [Fact]
+    public void Vital_ReplacingAValueOnAFactWithNoCitations_LogsNoDisposition()
+    {
+        WriteBaseFile();
+
+        var result = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
+                "value": { "date": "2 APR 1928" } } ] } ] }
+            """);
+
+        Assert.DoesNotContain(result.Log, line => line.Contains("replacedCitations="));
+    }
+
     [Fact]
     public void Vital_ReplacedCitationsDrop_RemovesPreexistingCitation()
     {

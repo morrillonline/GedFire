@@ -49,7 +49,9 @@ public sealed record PersonMatchCandidate(
     IReadOnlyList<PersonMatchMarriage> Marriages);
 
 /// <summary>One matched or candidate person's id, with the scores that placed it.</summary>
-public sealed record PersonMatchScore(string Id, double FinalScore, double RawScore, double NameOnlyScore);
+/// <param name="Wildcard">A name part (query or candidate) is Unknown, so that part carried no evidence.</param>
+public sealed record PersonMatchScore(
+    string Id, double FinalScore, double RawScore, double NameOnlyScore, bool Wildcard = false);
 
 /// <summary>One near-miss offered when nothing cleared the recall gate.</summary>
 public sealed record PersonMatchSuggestion(string Id, SuggestionReason Reason, double Score);
@@ -180,6 +182,9 @@ public sealed class PersonMatchCore
             // a candidate reduced to "shares a surname" never counts as a
             // probable identity match.
             scored = scored.Where(s => s.Hinted.AvailableWeight > s.NameOnly.Weight).ToList();
+            // A name with an Unknown part is too common to identify anyone, so a pair involving
+            // one also needs a parent or spouse name that agrees.
+            scored = scored.Where(s => !s.NameOnly.Wildcard || s.Hinted.RelationalAgreement).ToList();
             if (scored.Count == 0)
                 return NoMatchOutcome(nameScored);
         }
@@ -233,19 +238,38 @@ public sealed class PersonMatchCore
     // Name-only scoring and the recall gate
     // -------------------------------------------------------------------
 
-    readonly record struct NameOnlyScore(double Points, double Weight, double Value, double DecisiveSimilarity, bool FieldFloorsMet);
+    readonly record struct NameOnlyScore(
+        double Points, double Weight, double Value, double DecisiveSimilarity, bool FieldFloorsMet, bool Wildcard = false);
 
+    // A part that is Unknown on either side is dropped: its points and its weight both leave the
+    // score, and its floor no longer applies. With both parts dropped there is no name evidence.
     static NameOnlyScore ScoreNameOnly(
         PersonMatchCandidate candidate, string querySurname, string queryGiven, bool oneToken, NicknameDirectory nicknames)
     {
+        bool surnameWild = UnknownName.IsPlaceholder(querySurname) || UnknownName.IsPlaceholder(candidate.NormalizedSurname);
+        bool givenWild = UnknownName.IsPlaceholder(queryGiven) || UnknownName.IsPlaceholder(candidate.NormalizedGiven);
+        if (surnameWild && givenWild)
+            return new NameOnlyScore(0.0, 0.0, 0.0, 0.0, false, Wildcard: true);
+
         double surnameSim = JaroWinkler.Similarity(querySurname, candidate.NormalizedSurname);
         double givenSim = JaroWinkler.Similarity(queryGiven, candidate.NormalizedGiven);
         bool nicknameEquivalent = nicknames.AreEquivalent(FirstToken(queryGiven), FirstToken(candidate.NormalizedGiven), candidate.IsMale);
         double givenPoints = Math.Max(givenSim * GivenWeight, nicknameEquivalent ? GivenNicknameFixedPoints : 0.0);
+        bool givenFloorMet = givenSim >= GivenNameAdmissionFloor || nicknameEquivalent;
+        bool surnameFloorMet = surnameSim >= CloseSpellingThreshold;
+        bool wildcard = surnameWild || givenWild;
 
         double points, weight, decisive;
         bool fieldFloorsMet;
-        if (!oneToken)
+        if (surnameWild)
+        {
+            (points, weight, decisive, fieldFloorsMet) = (givenPoints, GivenWeight, givenSim, givenFloorMet);
+        }
+        else if (givenWild)
+        {
+            (points, weight, decisive, fieldFloorsMet) = (surnameSim * SurnameWeight, SurnameWeight, surnameSim, surnameFloorMet);
+        }
+        else if (!oneToken)
         {
             points = surnameSim * SurnameWeight + givenPoints;
             weight = SurnameWeight + GivenWeight;
@@ -254,8 +278,7 @@ public sealed class PersonMatchCore
             // candidate on the weighted sum alone -- gate that admission on
             // both fields clearing their own floor (a documented nickname
             // stands in for the given-name floor).
-            fieldFloorsMet = (givenSim >= GivenNameAdmissionFloor || nicknameEquivalent) &&
-                             surnameSim >= CloseSpellingThreshold;
+            fieldFloorsMet = givenFloorMet && surnameFloorMet;
         }
         else
         {
@@ -281,7 +304,7 @@ public sealed class PersonMatchCore
         }
 
         double value = weight > 0 ? points * 100.0 / weight : 0.0;
-        return new NameOnlyScore(points, weight, value, decisive, fieldFloorsMet);
+        return new NameOnlyScore(points, weight, value, decisive, fieldFloorsMet, wildcard);
     }
 
     static string FirstToken(string normalized)
@@ -294,7 +317,7 @@ public sealed class PersonMatchCore
     // Hint-augmented scoring (recall-set candidates only)
     // -------------------------------------------------------------------
 
-    readonly record struct HintedScore(double Raw, double AvailableWeight, double FinalScore);
+    readonly record struct HintedScore(double Raw, double AvailableWeight, double FinalScore, bool RelationalAgreement);
 
     static HintedScore ApplyHints(NameOnlyScore nameOnly, PersonMatchCandidate candidate, MatchHints hints)
     {
@@ -304,16 +327,17 @@ public sealed class PersonMatchCore
         AddEventHint(hints.Birth, candidate.Birth, ref raw, ref available);
         AddEventHint(hints.Death, candidate.Death, ref raw, ref available);
 
+        bool relational = false;
         if (hints.Parents is { } parentHints && candidate.Parents is { } parents)
         {
-            AddNameHint(parentHints.Father, parents.NormalizedFatherName, ParentNameWeight, ref raw, ref available);
-            AddNameHint(parentHints.Mother, parents.NormalizedMotherName, ParentNameWeight, ref raw, ref available);
+            relational |= AddNameHint(parentHints.Father, parents.NormalizedFatherName, ParentNameWeight, ref raw, ref available);
+            relational |= AddNameHint(parentHints.Mother, parents.NormalizedMotherName, ParentNameWeight, ref raw, ref available);
         }
 
-        AddSpouseHint(hints.Spouse, candidate.Marriages, ref raw, ref available);
+        relational |= AddSpouseHint(hints.Spouse, candidate.Marriages, ref raw, ref available);
 
         double finalScore = available > 0 ? raw * 100.0 / available : 0.0;
-        return new HintedScore(raw, available, finalScore);
+        return new HintedScore(raw, available, finalScore, relational);
     }
 
     static void AddEventHint(
@@ -325,22 +349,24 @@ public sealed class PersonMatchCore
         AddPlaceHint(hint.Place, candidate.NormalizedPlace, EventPlaceWeight, ref raw, ref available);
     }
 
-    static void AddSpouseHint(
+    // True when the spouse name of the best-scoring marriage agrees.
+    static bool AddSpouseHint(
         SpouseHint? hint, IReadOnlyList<PersonMatchMarriage> marriages, ref double raw, ref double available)
     {
-        if (hint is null || marriages.Count == 0) return;
+        if (hint is null || marriages.Count == 0) return false;
 
         double bestRaw = 0.0;
         double bestAvailable = 0.0;
         double bestNormalized = 0.0;
         bool found = false;
+        bool bestAgreed = false;
 
         foreach (var marriage in marriages)
         {
             double marriageRaw = 0.0;
             double marriageAvailable = 0.0;
 
-            AddNameHint(
+            bool agreed = AddNameHint(
                 hint.Name, marriage.NormalizedSpouseName, SpouseNameWeight,
                 ref marriageRaw, ref marriageAvailable);
             AddYearHint(
@@ -360,11 +386,13 @@ public sealed class PersonMatchCore
                 bestRaw = marriageRaw;
                 bestAvailable = marriageAvailable;
                 bestNormalized = normalized;
+                bestAgreed = agreed;
             }
         }
 
         raw += bestRaw;
         available += bestAvailable;
+        return bestAgreed;
     }
 
     static void AddYearHint(
@@ -399,17 +427,20 @@ public sealed class PersonMatchCore
         }
     }
 
-    static void AddNameHint(
+    // True when the hint was comparable and agreed.
+    static bool AddNameHint(
         string? hint, string? candidate, double weight, ref double raw, ref double available)
     {
-        if (string.IsNullOrWhiteSpace(hint) || string.IsNullOrEmpty(candidate)) return;
+        if (string.IsNullOrWhiteSpace(hint) || string.IsNullOrEmpty(candidate)) return false;
 
         string normalizedHint = PersonNameNormalizer.Normalize(hint);
-        if (normalizedHint.Length == 0) return;
+        if (normalizedHint.Length == 0) return false;
 
         available += weight;
-        if (JaroWinkler.Similarity(normalizedHint, candidate) >= RelationalHintThreshold)
-            raw += weight;
+        if (JaroWinkler.Similarity(normalizedHint, candidate) < RelationalHintThreshold) return false;
+
+        raw += weight;
+        return true;
     }
 
     // -------------------------------------------------------------------
@@ -421,7 +452,8 @@ public sealed class PersonMatchCore
     static List<CandidateScore> Order(List<CandidateScore> scored) =>
     [
         .. scored
-            .OrderByDescending(s => s.Hinted.FinalScore)
+            .OrderBy(s => s.NameOnly.Wildcard)
+            .ThenByDescending(s => s.Hinted.FinalScore)
             .ThenByDescending(s => s.Hinted.Raw)
             .ThenByDescending(s => s.NameOnly.Value)
             .ThenBy(s => s.Candidate.DisplayName, StringComparer.Ordinal)
@@ -429,7 +461,7 @@ public sealed class PersonMatchCore
     ];
 
     static PersonMatchScore ToScore(CandidateScore s) =>
-        new(s.Candidate.Id, s.Hinted.FinalScore, s.Hinted.Raw, s.NameOnly.Value);
+        new(s.Candidate.Id, s.Hinted.FinalScore, s.Hinted.Raw, s.NameOnly.Value, s.NameOnly.Wildcard);
 
     static PersonMatchOutcome NoMatchOutcome(List<(PersonMatchCandidate Candidate, NameOnlyScore Score)> nameScored)
     {

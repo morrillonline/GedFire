@@ -81,4 +81,60 @@ public class DuplicateAnnotatorTests
         Assert.Equal(1, result.Seed);
         Assert.Empty(result.LegendaryDiscards);
     }
+
+    [Fact]
+    public void Annotate_MoreDuplicatesThanTheCap_ListsTheCapAndCountsAll()
+    {
+        const string manyTwins = """
+            0 HEAD
+            1 GEDC
+            2 VERS 5.5.1
+            0 @I1@ INDI
+            1 NAME William /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1852
+            2 PLAC Missouri
+            0 @I2@ INDI
+            1 NAME William /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1852
+            2 PLAC Missouri
+            0 @I3@ INDI
+            1 NAME William /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1852
+            2 PLAC Missouri
+            0 @I4@ INDI
+            1 NAME William /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1852
+            2 PLAC Missouri
+            0 @I5@ INDI
+            1 NAME William /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1852
+            2 PLAC Missouri
+            """;
+        var index = new MatchIndex(ModelBuilder.Build(Ged55Parser.Parse(manyTwins)));
+
+        var result = DuplicateAnnotator.Annotate(Draw("@I1@", "@I2@", "@I3@", "@I4@", "@I5@"), index);
+
+        var first = result.Targets[0];
+        Assert.Equal(DuplicateAnnotator.MaxListedDuplicates, first.PossibleDuplicateOf.Count);
+        Assert.Equal(4, first.PossibleDuplicateCount);
+        Assert.All(result.Targets, t => Assert.True(t.PossibleDuplicateOf.Count <= t.PossibleDuplicateCount));
+    }
+
+    [Fact]
+    public void Annotate_TargetWithoutTwin_CountsZero()
+    {
+        var result = DuplicateAnnotator.Annotate(Draw("@I3@"), Index());
+
+        Assert.Equal(0, Assert.Single(result.Targets).PossibleDuplicateCount);
+    }
 }

@@ -92,7 +92,7 @@ public static class ChangesetOpsCatalog
                 new("mode", "string", false, "\"upsert\" (default) or \"add\" (always creates a new instance; forbids \"match\")."),
                 new("substructures", "array", false, "Extra GEDCOM substructures: [{\"tag\", \"value\"}]."),
                 new("citation / citations", "object | array", false, CitationNote),
-                new("replacedCitations", "string", false, "\"keep\" (default), \"drop\", or \"moveToNote\" — disposition of citations already on a fact whose value this op replaces."),
+                new("replacedCitations", "string", false, "\"keep\" (default), \"drop\", or \"moveToNote\" — disposition of citations already on a fact whose value this op replaces; the log names each one as kept, dropped, or moved to note."),
             ],
             Ex("""
                 { "op": "createOrUpdateVital", "record": "@I2@", "fact": "DEAT",

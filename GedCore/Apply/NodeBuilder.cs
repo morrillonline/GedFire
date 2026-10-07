@@ -252,20 +252,24 @@ internal static class NodeBuilder
     ///                  note op added earlier in the same item if present;
     ///                  otherwise creates a minimal superseded-value note.
     /// </summary>
-    public static void DisposeCitations(ApplyState state, GedRecord record,
-                                        GedRecord factNode, string factTag, string mode)
+    /// <summary>Returns a log fragment naming what became of each existing citation, or null when there were none.</summary>
+    public static string? DisposeCitations(ApplyState state, GedRecord record,
+                                           GedRecord factNode, string factTag, string mode)
     {
-        if (mode == "keep") return;
-
         var citations = factNode.ChildrenByTag("SOUR").ToList();
-        if (citations.Count == 0) return;
+        if (citations.Count == 0) return null;
+
+        string fate = mode switch { "drop" => "dropped", "moveToNote" => "moved to note", _ => "kept" };
+        string disposition = $"replacedCitations={mode}: " +
+            string.Join(", ", citations.Select(c => $"{fate} {DescribeExisting(c)}"));
+        if (mode == "keep") return disposition;
 
         foreach (var cit in citations)
             factNode.Children.Remove(cit);
         state.Mutated();
         state.Touch(record);
 
-        if (mode == "drop") return;
+        if (mode == "drop") return disposition;
 
         if (!state.NotesAddedThisItem.TryGetValue(record.Xref!, out var note))
         {
@@ -276,7 +280,11 @@ internal static class NodeBuilder
         }
         foreach (var cit in citations)
             Attach(note, Relevel(cit, note.Level + 1));
+        return disposition;
     }
+
+    static string DescribeExisting(GedRecord citation) =>
+        citation.FirstChild("PAGE")?.Value is { Length: > 0 } page ? $"{citation.Value} ({page})" : citation.Value;
 }
 
 /// <summary>Validation helpers shared by the op classes.</summary>
