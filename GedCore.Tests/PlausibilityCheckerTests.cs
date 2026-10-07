@@ -478,7 +478,7 @@ public class PlausibilityCheckerTests
             """.Replace("\\U0001F600", "\U0001F600"));
 
         var diag = Single(doc, "GEN401");
-        Assert.Equal(GedDiagnosticSeverity.Warning, diag.Severity);
+        Assert.Equal(GedDiagnosticSeverity.Error, diag.Severity);
         Assert.Equal("@I1@", diag.Xref);
     }
 
@@ -495,7 +495,7 @@ public class PlausibilityCheckerTests
             """);
 
         var diag = Single(doc, "GEN401");
-        Assert.Equal(GedDiagnosticSeverity.Warning, diag.Severity);
+        Assert.Equal(GedDiagnosticSeverity.Error, diag.Severity);
         Assert.Contains("3", diag.Message);
     }
 
@@ -527,6 +527,85 @@ public class PlausibilityCheckerTests
             """);
 
         Assert.Empty(PlausibilityChecker.Check(doc).Where(d => d.Code == "GEN401"));
+    }
+
+    [Fact]
+    public void GEN401_QuestionMark_AdvisesFootnoteAndUnknown()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Polly? /Smith/
+            0 TRLR
+            """);
+
+        var diag = Single(doc, "GEN401");
+        Assert.Contains("put a suspected name in a footnote and use Unknown in the name field", diag.Message);
+    }
+
+    [Fact]
+    public void GEN401_OtherSymbol_AdvisesUnknownNickAndSuffix()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME John_Q /Smith/
+            0 TRLR
+            """);
+
+        Assert.Contains("NICK", Single(doc, "GEN401").Message);
+    }
+
+    [Fact]
+    public void GEN401_OrdinalSuffix_IsNotFlagged()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME John /Smith/ 3rd
+            0 TRLR
+            """);
+
+        Assert.Empty(PlausibilityChecker.Check(doc).Where(d => d.Code is "GEN401" or "GEN404"));
+    }
+
+    [Fact]
+    public void GEN404_HyphenRunAsPlaceholder_WarnsToUseUnknown()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Mary /----/
+            0 TRLR
+            """);
+
+        var diag = Single(doc, "GEN404");
+        Assert.Equal(GedDiagnosticSeverity.Warning, diag.Severity);
+        Assert.Contains("Unknown", diag.Message);
+        Assert.Empty(PlausibilityChecker.Check(doc).Where(d => d.Code == "GEN401"));
+    }
+
+    [Fact]
+    public void GEN404_UnknownPlaceholder_IsNotFlagged()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Mary /Unknown/
+            0 TRLR
+            """);
+
+        Assert.Empty(PlausibilityChecker.Check(doc).Where(d => d.Code is "GEN401" or "GEN404"));
     }
 
     [Fact]

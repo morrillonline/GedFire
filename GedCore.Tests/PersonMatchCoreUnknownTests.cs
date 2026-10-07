@@ -104,4 +104,13 @@ public class PersonMatchCoreUnknownTests
 
         Assert.False(outcome.Matches[0].Wildcard);
     }
+
+    [Fact]
+    public void Candidate_SurnameOfOnlyPunctuation_IsAWildcardLikeUnknown()
+    {
+        var outcome = Core.Match([Person("@I1@", "Mary", "----")], "Mary Smith", null, NoNicknames);
+
+        Assert.Equal(["@I1@"], Ids(outcome));
+        Assert.True(outcome.Matches[0].Wildcard);
+    }
 }
