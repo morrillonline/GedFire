@@ -635,6 +635,7 @@ static async Task<int> RunMcp(string[] args)
         // itself.
         ServerInstructions = instructions,
     };
+    serverOptions.Filters.Request.CallToolFilters.Add(new ToolArgumentGuard(toolCollection).AsFilter());
 
     await using var transport = new StdioServerTransport(serverOptions, loggerFactory: null);
     var server = McpServer.Create(transport, serverOptions, loggerFactory: null, serviceProvider: null);

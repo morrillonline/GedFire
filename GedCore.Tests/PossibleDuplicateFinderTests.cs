@@ -103,4 +103,27 @@ public class PossibleDuplicateFinderTests
         Assert.Empty(PossibleDuplicateFinder.Find(
             [Person("@I1@", "Unknown", "Unknown", father: "John Smith"), Person("@I2@", "Unknown", "Unknown", father: "John Smith")]));
     }
+
+    static PersonMatchCandidate MarriedWoman(string id, string surname, string spouse, int birthYear) => new(
+        id, $"Mary {surname}", PersonNameNormalizer.Normalize(surname), "MARY", false,
+        new PersonMatchEvent(birthYear, null), null, null,
+        [new PersonMatchMarriage(PersonNameNormalizer.Normalize(spouse), null, null)]);
+
+    [Fact]
+    public void Find_UnknownSurnameWhoseSpouseHasADifferentGivenName_IsNotPaired()
+    {
+        var pairs = PossibleDuplicateFinder.Find(
+            [MarriedWoman("@I1@", "Unknown", "Jabez Morrill", 1759), MarriedWoman("@I2@", "Clapp", "James Morrill", 1759)]);
+
+        Assert.Empty(pairs);
+    }
+
+    [Fact]
+    public void Find_UnknownSurnameWhoseSpouseIsTheSameMan_IsPaired()
+    {
+        var pairs = PossibleDuplicateFinder.Find(
+            [MarriedWoman("@I1@", "Unknown", "James Morrill", 1759), MarriedWoman("@I2@", "Clapp", "James Morrill", 1759)]);
+
+        Assert.Single(pairs);
+    }
 }

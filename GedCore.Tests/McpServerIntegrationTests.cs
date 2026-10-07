@@ -204,6 +204,30 @@ public class McpServerIntegrationTests : IDisposable
         Assert.Equal("63y 4m 2d", structured.GetProperty("age").GetString());
     }
 
+    [Theory]
+    [InlineData("find_person", """{"nme": "Frederick Morrill"}""", "missing required parameter \"query\"; unrecognized parameter \"nme\"")]
+    [InlineData("find_person", """{"query": "Frederick", "surname": "Morrill"}""", "unrecognized parameter \"surname\"")]
+    [InlineData("get_document_stats", """{"verbose": true}""", "This tool takes no parameters.")]
+    [InlineData("find_family", """{}""", "missing required parameter")]
+    public async Task ToolsCall_InvalidArguments_NamesTheParametersAndListsAcceptedOnes(
+        string tool, string arguments, string expected)
+    {
+        await using var client = McpStdioTestClient.Start(WriteGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = tool,
+            arguments = JsonDocument.Parse(arguments).RootElement,
+        }, ShortTimeout);
+
+        var result = response.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        string text = result.GetProperty("content")[0].GetProperty("text").GetString()!;
+        Assert.Contains(expected, text);
+        Assert.StartsWith(tool + ":", text);
+    }
+
     [Fact]
     public async Task ToolsCall_Success_UsesStructuredContentAndTextFallback()
     {

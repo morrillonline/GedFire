@@ -140,12 +140,93 @@ public class GetRecordsToolTests : IDisposable
         Assert.Contains("xrefs must contain 1 to 500 xrefs, got 501", ((TextContentBlock)result.Content[0]).Text);
     }
 
+    static async Task<CallToolResult> CallWithFields(GetRecordsTool tool, string xrefs, string fields, bool includeSources = false) =>
+        await tool.HandleAsync(Json(xrefs), CancellationToken.None, includeSources, Json(fields));
+
+    static IEnumerable<string> PropertyNames(JsonElement record) => record.EnumerateObject().Select(p => p.Name);
+
+    [Fact]
+    public async Task GetRecords_WithFields_ReturnsRecordTypeXrefAndOnlyTheNamedFields()
+    {
+        var result = await CallWithFields(Tool(), "[\"@I1@\"]", "[\"name\"]");
+
+        Assert.NotEqual(true, result.IsError);
+        var record = Records(result)[0];
+        Assert.Equal(["recordType", "xref", "name"], PropertyNames(record));
+        Assert.Equal("Cornelius Ashworth", record.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task GetRecords_WithFields_AppliesEachRecordTypesOwnFieldsAndSkipsTheRest()
+    {
+        var result = await CallWithFields(Tool(), "[\"@I1@\",\"@F1@\",\"@S1@\"]", "[\"name\",\"husband\",\"publication\"]");
+
+        var records = Records(result);
+        Assert.Equal(["recordType", "xref", "name"], PropertyNames(records[0]));
+        Assert.Equal(["recordType", "xref", "husband"], PropertyNames(records[1]));
+        Assert.Equal(["recordType", "xref", "publication"], PropertyNames(records[2]));
+    }
+
+    [Fact]
+    public async Task GetRecords_WithFields_LeavesNotFoundRecordsAsTheyAre()
+    {
+        var result = await CallWithFields(Tool(), "[\"@I99@\"]", "[\"name\"]");
+
+        Assert.Equal(["recordType", "xref"], PropertyNames(Records(result)[0]));
+        Assert.Equal("not_found", Records(result)[0].GetProperty("recordType").GetString());
+    }
+
+    [Fact]
+    public async Task GetRecords_WithoutFields_IsUnchanged()
+    {
+        var whole = await Call(Tool(), "[\"@I1@\"]");
+        var explicitNull = await CallWithFields(Tool(), "[\"@I1@\"]", "null");
+
+        Assert.Equal(Records(whole).GetRawText(), Records(explicitNull).GetRawText());
+        Assert.Contains("birth", PropertyNames(Records(whole)[0]));
+    }
+
+    [Fact]
+    public async Task GetRecords_WithFieldsAndIncludeSources_StillReturnsTheTopLevelSources()
+    {
+        const string cited = Ged + "\n0 @I3@ INDI\n1 NAME Cited /Person/\n2 SOUR @S1@";
+        var tool = new GetRecordsTool(_sessions.Open(cited), new ToolGate(), Path.GetTempPath());
+
+        var result = await CallWithFields(tool, "[\"@I3@\"]", "[\"name\"]", includeSources: true);
+
+        Assert.Equal(["recordType", "xref", "name"], PropertyNames(Records(result)[0]));
+        Assert.Equal("@S1@", result.StructuredContent!.Value.GetProperty("sources")[0].GetProperty("xref").GetString());
+    }
+
+    [Theory]
+    [InlineData("\"name\"", "fields must be an array")]
+    [InlineData("[]", "fields must name at least one field")]
+    [InlineData("[\"name\", 3]", "fields[1] must be a non-blank string")]
+    [InlineData("[\"name\", \"nme\"]", "fields[1] \"nme\" is not a record field. Accepted fields:")]
+    public async Task GetRecords_BadFields_AreRejectedByFieldName(string fields, string expected)
+    {
+        var result = await CallWithFields(Tool(), "[\"@I1@\"]", fields);
+
+        Assert.True(result.IsError);
+        Assert.Contains(expected, ((TextContentBlock)result.Content[0]).Text);
+    }
+
+    [Fact]
+    public void RecordProjector_AcceptedFields_ExcludeTheTwoAlwaysPresentOnes()
+    {
+        Assert.DoesNotContain("recordType", RecordProjector.AcceptedFields);
+        Assert.DoesNotContain("xref", RecordProjector.AcceptedFields);
+        Assert.Contains("name", RecordProjector.AcceptedFields);
+        Assert.Contains("husband", RecordProjector.AcceptedFields);
+        Assert.Contains("publication", RecordProjector.AcceptedFields);
+    }
+
     [Fact]
     public void Tool_OutputSchemaReusesGetRecordDefinitionsForEveryRecordKind()
     {
         var schema = Json(GetRecordsTool.OutputSchemaJson);
 
-        Assert.Equal(4, schema.GetProperty("properties").GetProperty("records").GetProperty("items").GetProperty("oneOf").GetArrayLength());
+        Assert.Equal(5, schema.GetProperty("properties").GetProperty("records").GetProperty("items").GetProperty("anyOf").GetArrayLength());
         Assert.True(schema.GetProperty("$defs").TryGetProperty("PersonRecord", out _));
     }
 
