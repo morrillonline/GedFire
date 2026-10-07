@@ -113,4 +113,35 @@ public class PersonMatchCoreUnknownTests
         Assert.Equal(["@I1@"], Ids(outcome));
         Assert.True(outcome.Matches[0].Wildcard);
     }
+
+    static PersonMatchCandidate MarriedTo(string id, string given, string surname, string spouse) => new(
+        id, $"{given} {surname}", PersonNameNormalizer.Normalize(surname), PersonNameNormalizer.Normalize(given), false,
+        null, null, null, [new PersonMatchMarriage(PersonNameNormalizer.Normalize(spouse), null, null)]);
+
+    static PersonMatchOutcome DuplicateCheckWithSpouse(string candidateSpouse, string hintSpouse) =>
+        Core.Match([MarriedTo("@I1@", "Mary", "Clapp", candidateSpouse)], "Mary Unknown",
+            new MatchHints(Spouse: new SpouseHint(hintSpouse)), NoNicknames, forDuplicateDetection: true);
+
+    [Fact]
+    public void DuplicateDetection_SpouseWithSameSurnameButDifferentGivenName_IsNotAgreement()
+    {
+        Assert.Equal(PersonMatchType.None, DuplicateCheckWithSpouse("James Morrill", "Jabez Morrill").PersonMatchType);
+    }
+
+    [Fact]
+    public void DuplicateDetection_SpouseWithSameGivenNameAndSurname_IsAgreement()
+    {
+        Assert.Equal(["@I1@"], Ids(DuplicateCheckWithSpouse("James Morrill", "James Morrill")));
+    }
+
+    [Fact]
+    public void DuplicateDetection_FatherWithSameSurnameButDifferentGivenName_IsNotAgreement()
+    {
+        var candidate = Person("@I1@", "Mary", "Smith", father: "John Smith");
+        var hints = new MatchHints(Parents: new ParentsHint("James Smith", null));
+
+        var outcome = Core.Match([candidate], "Mary Unknown", hints, NoNicknames, forDuplicateDetection: true);
+
+        Assert.Equal(PersonMatchType.None, outcome.PersonMatchType);
+    }
 }

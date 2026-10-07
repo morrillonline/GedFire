@@ -105,6 +105,11 @@ local server if prompted, and confirm that it discovers `find_person`,
 `describe_changeset_ops`, `validate_changeset`,
 `check_plausibility`, `validate_document`, and `apply_changeset`.
 
+A call with a missing required parameter or an unrecognized one is refused for
+every tool, and the error names each offending parameter and lists the accepted
+ones, for example `find_person: missing required parameter "query"; unrecognized
+parameter "nme". Accepted parameters: query (required), hints, maxResults.`
+
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
@@ -122,7 +127,7 @@ a change `apply_changeset` itself just wrote — no restart needed:
 | `find_family` | Find people through a relative whose name is all you know: `relation` `spouse` ("the widow of Joseph"), `child` (the parents of someone named X), or `parent` (the children of someone named X), with optional `birth`/`death` hints describing the person sought. Each result gives the person, the connecting family xref, and the matched relative. |
 | `get_document_stats` | Report person/family counts, the declared GEDCOM version, and the running gedfire version, for a quick orientation before other work. |
 | `get_record` | Fetch the full detail of a specific person, family, or source by xref. Every citation carries its source xref, page, quoted text (`dataText`), and quality (`quay`); a person's burial, baptism, and other individual events come back in `otherEvents`, each with its tag and citations, and a family's own citations come back in `citations`; set `includeSources` to also get the full text of each source cited on a person or family. Looking up a source lists every structure that cites it (`citedBy`). |
-| `get_records` | Fetch several people, families, or sources in one call, each in the shape `get_record` returns, in the order requested (`includeSources` adds one top-level `sources` array covering the whole call). An xref that does not exist comes back as a `not_found` record in its own slot (up to 500 xrefs per call). |
+| `get_records` | Fetch several people, families, or sources in one call, each in the shape `get_record` returns, in the order requested (`includeSources` adds one top-level `sources` array covering the whole call; `fields` such as `["name"]` narrows each record to `recordType`, `xref` and just those fields, and an unknown field name is an error that lists the accepted ones). An xref that does not exist comes back as a `not_found` record in its own slot (up to 500 xrefs per call). |
 | `list_people` | List every person — xref, primary name, surname, birth and death year — in a stable order (surname, given name, xref), optionally limited to a list of surnames, in pages (`pageSize` 1–2000, default 500; pass each result's `nextCursor` back as `cursor`). |
 | `list_unanchored_people` | List people the tree cannot place: no dated event, no place, and no parent, spouse, or child who is placed (family ties only to other unplaced people count as unplaced). Reports each person's fact count and unplaced relatives. People hidden by `--enforce-privacy` are never listed. |
 | `select_targets` | The `gedfire select-targets` command as a tool: detect research gaps for the given surnames and draw `count` targets, returned as the `wanted.json` document without the GEDCOM path. Each target lists `possibleDuplicateOf`: the people the `check_plausibility` GEN301 duplicate test pairs with it (`[]` when none); at most three are listed, best first, and `possibleDuplicateCount` gives the full number; such a target is still drawn. A person with an Unknown name part is paired only through an agreeing parent or spouse name. Seeded from the clock, like the command. |

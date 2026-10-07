@@ -171,7 +171,7 @@ public sealed class PersonMatchCore
             return NoMatchOutcome(nameScored);
 
         var scored = recall
-            .Select(x => new CandidateScore(x.Candidate, x.Score, ApplyHints(x.Score, x.Candidate, hints)))
+            .Select(x => new CandidateScore(x.Candidate, x.Score, ApplyHints(x.Score, x.Candidate, hints, nicknames)))
             .ToList();
 
         if (forDuplicateDetection)
@@ -319,7 +319,8 @@ public sealed class PersonMatchCore
 
     readonly record struct HintedScore(double Raw, double AvailableWeight, double FinalScore, bool RelationalAgreement);
 
-    static HintedScore ApplyHints(NameOnlyScore nameOnly, PersonMatchCandidate candidate, MatchHints hints)
+    static HintedScore ApplyHints(
+        NameOnlyScore nameOnly, PersonMatchCandidate candidate, MatchHints hints, NicknameDirectory nicknames)
     {
         double raw = nameOnly.Points;
         double available = nameOnly.Weight;
@@ -330,11 +331,13 @@ public sealed class PersonMatchCore
         bool relational = false;
         if (hints.Parents is { } parentHints && candidate.Parents is { } parents)
         {
-            relational |= AddNameHint(parentHints.Father, parents.NormalizedFatherName, ParentNameWeight, ref raw, ref available);
-            relational |= AddNameHint(parentHints.Mother, parents.NormalizedMotherName, ParentNameWeight, ref raw, ref available);
+            relational |= AddNameHint(
+                parentHints.Father, parents.NormalizedFatherName, ParentNameWeight, nicknames, isMale: true, ref raw, ref available);
+            relational |= AddNameHint(
+                parentHints.Mother, parents.NormalizedMotherName, ParentNameWeight, nicknames, isMale: false, ref raw, ref available);
         }
 
-        relational |= AddSpouseHint(hints.Spouse, candidate.Marriages, ref raw, ref available);
+        relational |= AddSpouseHint(hints.Spouse, candidate.Marriages, nicknames, ref raw, ref available);
 
         double finalScore = available > 0 ? raw * 100.0 / available : 0.0;
         return new HintedScore(raw, available, finalScore, relational);
@@ -351,7 +354,8 @@ public sealed class PersonMatchCore
 
     // True when the spouse name of the best-scoring marriage agrees.
     static bool AddSpouseHint(
-        SpouseHint? hint, IReadOnlyList<PersonMatchMarriage> marriages, ref double raw, ref double available)
+        SpouseHint? hint, IReadOnlyList<PersonMatchMarriage> marriages, NicknameDirectory nicknames,
+        ref double raw, ref double available)
     {
         if (hint is null || marriages.Count == 0) return false;
 
@@ -367,7 +371,7 @@ public sealed class PersonMatchCore
             double marriageAvailable = 0.0;
 
             bool agreed = AddNameHint(
-                hint.Name, marriage.NormalizedSpouseName, SpouseNameWeight,
+                hint.Name, marriage.NormalizedSpouseName, SpouseNameWeight, nicknames, isMale: null,
                 ref marriageRaw, ref marriageAvailable);
             AddYearHint(
                 hint.Marriage?.Year, marriage.Year, MarriageYearWeight,
@@ -427,9 +431,12 @@ public sealed class PersonMatchCore
         }
     }
 
-    // True when the hint was comparable and agreed.
+    // True when the hint was comparable and agreed. The score credits any full-name similarity at the
+    // threshold, but the return value also needs the given names to agree: relatives usually share a
+    // surname, so Jabez Morrill and James Morrill are similar as whole names yet different people.
     static bool AddNameHint(
-        string? hint, string? candidate, double weight, ref double raw, ref double available)
+        string? hint, string? candidate, double weight, NicknameDirectory nicknames, bool? isMale,
+        ref double raw, ref double available)
     {
         if (string.IsNullOrWhiteSpace(hint) || string.IsNullOrEmpty(candidate)) return false;
 
@@ -440,8 +447,11 @@ public sealed class PersonMatchCore
         if (JaroWinkler.Similarity(normalizedHint, candidate) < RelationalHintThreshold) return false;
 
         raw += weight;
-        return true;
+        return GivenNamesAgree(FirstToken(normalizedHint), FirstToken(candidate), nicknames, isMale);
     }
+
+    static bool GivenNamesAgree(string a, string b, NicknameDirectory nicknames, bool? isMale) =>
+        a == b || JaroWinkler.Similarity(a, b) >= RelationalHintThreshold || nicknames.AreEquivalent(a, b, isMale);
 
     // -------------------------------------------------------------------
     // Ordering and shape selection
