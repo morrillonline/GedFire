@@ -127,6 +127,8 @@ public sealed class GedIndividual
     // Computed display properties (mirror VB Individual members)
     // -----------------------------------------------------------------------
 
+    public bool SurnameUnknown => LastName == UnknownString;
+
     public string LastName =>
         string.Equals(LastNameRaw, "unknown", StringComparison.OrdinalIgnoreCase)
             ? UnknownString : LastNameRaw;

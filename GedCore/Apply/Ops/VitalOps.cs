@@ -132,8 +132,9 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         }
 
         var updates = PendingValueUpdates(existingFact);
-        if (updates.Count > 0)
-            NodeBuilder.DisposeCitations(state, target, existingFact, Fact, ReplacedCitations);
+        string? disposition = updates.Count > 0
+            ? NodeBuilder.DisposeCitations(state, target, existingFact, Fact, ReplacedCitations)
+            : null;
         foreach (var update in updates)
         {
             update.Write();
@@ -142,6 +143,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         }
 
         var changes = updates.Select(u => u.Description).ToList();
+        if (disposition is not null) changes.Add(disposition);
         foreach (var sub in Substructures)
             if (!existingFact.Children.Any(c => c.Tag == sub.Tag && c.Value == sub.Value))
             {

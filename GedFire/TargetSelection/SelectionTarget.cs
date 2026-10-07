@@ -21,8 +21,11 @@ public sealed record SelectionTarget
     /// <summary>NominalPoints + Difficulty's bonus: the total expected payoff shown to the researcher.</summary>
     public required int Score { get; init; }
 
-    /// <summary>Other people the GEN301 duplicate test pairs with this one; empty when none.</summary>
+    /// <summary>The best-scoring people the GEN301 duplicate test pairs with this one; empty when none.</summary>
     public IReadOnlyList<PossibleDuplicateEntry> PossibleDuplicateOf { get; init; } = [];
+
+    /// <summary>How many people the duplicate test paired with this one, including any beyond the listed few.</summary>
+    public int PossibleDuplicateCount { get; init; }
 
     /// <summary>New parent only: the one recorded parent, if any.</summary>
     public KnownParentEntry? KnownParent { get; init; }

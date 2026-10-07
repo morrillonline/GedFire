@@ -65,6 +65,18 @@ public class FindPersonToolTests : IDisposable
         1 HUSB @I1@
         """;
 
+    const string UnknownSurnameGed = """
+        0 @I1@ INDI
+        1 NAME Mary /Smith/
+        1 SEX F
+        0 @I2@ INDI
+        1 NAME Mary /Unknown/
+        1 SEX F
+        0 @I3@ INDI
+        1 NAME John /Smith/
+        1 SEX M
+        """;
+
     const string SparsePersonGed = """
         0 @I1@ INDI
         1 NAME Alone /Nobody/
@@ -718,5 +730,43 @@ public class FindPersonToolTests : IDisposable
         }
 
         CheckRefs(doc.RootElement);
+    }
+
+    // -------------------------------------------------------------------
+    // Unknown name parts
+    // -------------------------------------------------------------------
+
+    static List<(string Xref, bool SurnameUnknown)> Candidates(CallToolResult result) =>
+        [.. StructuredContent(result).GetProperty("candidates").EnumerateArray()
+            .Select(c => (c.GetProperty("xref").GetString()!, c.GetProperty("surnameUnknown").GetBoolean()))];
+
+    [Fact]
+    public async Task HandleAsync_QueryWithUnknownSurname_MatchesEveryPersonWithTheGivenName()
+    {
+        var tool = ToolOver(UnknownSurnameGed, out _, _dir);
+
+        var result = await tool.HandleAsync("Mary Unknown", null, CancellationToken.None);
+
+        Assert.Equal([("@I1@", false), ("@I2@", true)], Candidates(result).OrderBy(c => c.Xref));
+    }
+
+    [Fact]
+    public async Task HandleAsync_QueryWithUnknownGiven_MatchesEveryPersonWithTheSurname()
+    {
+        var tool = ToolOver(UnknownSurnameGed, out _, _dir);
+
+        var result = await tool.HandleAsync("Unknown Smith", null, CancellationToken.None);
+
+        Assert.Equal(["@I1@", "@I3@"], Candidates(result).Select(c => c.Xref).Order());
+    }
+
+    [Fact]
+    public async Task HandleAsync_PersonRecordedWithUnknownSurname_RanksBelowTheExactNameAndIsMarked()
+    {
+        var tool = ToolOver(UnknownSurnameGed, out _, _dir);
+
+        var result = await tool.HandleAsync("Mary Smith", null, CancellationToken.None);
+
+        Assert.Equal([("@I1@", false), ("@I2@", true)], Candidates(result));
     }
 }

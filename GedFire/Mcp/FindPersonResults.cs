@@ -19,7 +19,8 @@ public sealed record CandidateIdentity(
     EventIdentity? Death,
     ParentsIdentity? Parents,
     IReadOnlyList<string> Spouses,
-    double MatchScore);
+    double MatchScore,
+    bool SurnameUnknown);
 
 public sealed record SpouseFamilyIdentity(string Xref, string? MarriageDate, string? SpouseName);
 
@@ -32,7 +33,8 @@ public sealed record ResolvedPersonIdentity(
     string Name,
     EventIdentity? Birth,
     EventIdentity? Death,
-    FamiliesIdentity Families);
+    FamiliesIdentity Families,
+    bool SurnameUnknown);
 
 public sealed record SuggestionIdentity(string Xref, string Name, string Reason, double MatchScore);
 
