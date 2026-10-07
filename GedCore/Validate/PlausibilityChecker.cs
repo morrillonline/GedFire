@@ -17,7 +17,7 @@ namespace GedCore.Validate;
 /// gate (see <see cref="ConformanceChecker"/>'s own summary).
 ///
 /// Every rule here is a <see cref="GedDiagnosticSeverity.Warning"/> except
-/// GEN302 (ancestor cycle): a chronological or age outlier sometimes is
+/// GEN302 (ancestor cycle) and GEN401 (invalid name characters, a house policy): a chronological or age outlier sometimes is
 /// correct and this checker cannot see the source behind the fact, but a
 /// person being their own ancestor is not a judgment call — it is
 /// logically impossible by construction, the same bar GED-family
@@ -73,7 +73,7 @@ public static class PlausibilityChecker
         cancellationToken.ThrowIfCancellationRequested();
         CheckDisconnectedIndividual(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
-        CheckInvalidNameCharacters(doc, diags);
+        CheckNameCharacters(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
         CheckMissingSex(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
@@ -593,21 +593,13 @@ public static class PlausibilityChecker
     }
 
     // -------------------------------------------------------------------
-    // GEN401 — invalid characters in a name
+    // GEN401 — invalid characters in a name; GEN404 — punctuation used as a placeholder
     // -------------------------------------------------------------------
 
-    // Not a FamilySearch/Gramps rule -- both sources' own "invalid
-    // characters" checks key off proprietary standardization data no parsed
-    // GedDocument carries (see design doc's Not-adopted section). This is a
-    // self-specified policy instead: a name's payload (both NAME.FullValue()
-    // and its structural "/" surname delimiters stripped out) may contain
-    // Unicode letters -- any script, diacritics included -- plus whitespace,
-    // a hyphen, an apostrophe, and a period (a middle-initial or suffix
-    // abbreviation, e.g. "Albin H. /Test/" or "/Test/ Jr."). Anything else
-    // (digits, emoji, other punctuation/symbols) is flagged. Runs per-Rune,
-    // not per-char, so a surrogate-pair emoji is reported once, not as two
-    // orphaned halves.
-    private static void CheckInvalidNameCharacters(GedDocument doc, List<GedDiagnostic> diags)
+    // A self-specified policy (see NameCharacterPolicy), not a FamilySearch or Gramps rule: their
+    // checks key off standardization data a parsed document does not carry. Invalid characters are
+    // an Error so a changeset cannot introduce them; placeholder punctuation is a Warning.
+    private static void CheckNameCharacters(GedDocument doc, List<GedDiagnostic> diags)
     {
         foreach (var indi in doc.Records.Where(r => r.Tag == "INDI"))
         {
@@ -615,23 +607,27 @@ public static class PlausibilityChecker
             foreach (var nameRec in indi.ChildrenByTag("NAME"))
             {
                 string raw = nameRec.FullValue();
-                string nameOnly = raw.Replace("/", "");
-                var invalid = nameOnly.EnumerateRunes()
-                    .Where(r => !IsAllowedNameRune(r))
-                    .Select(r => r.ToString())
-                    .Distinct()
-                    .ToList();
-                if (invalid.Count == 0) continue;
+                var invalid = NameCharacterPolicy.DisallowedCharacters(raw);
+                if (invalid.Count > 0)
+                    diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Error, "GEN401",
+                        $"{indi.Xref} NAME \"{raw}\" contains disallowed character(s): {string.Join(" ", invalid)}; " +
+                        InvalidCharacterAdvice(invalid),
+                        indi.Xref, "NAME"));
 
-                diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, "GEN401",
-                    $"{indi.Xref} NAME \"{raw}\" contains disallowed character(s): {string.Join(" ", invalid)}",
-                    indi.Xref, "NAME"));
+                if (NameCharacterPolicy.HasPlaceholderPunctuation(raw))
+                    diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, "GEN404",
+                        $"{indi.Xref} NAME \"{raw}\" uses punctuation as a placeholder; " +
+                        "use Unknown when a name part is unknown",
+                        indi.Xref, "NAME"));
             }
         }
     }
 
-    private static bool IsAllowedNameRune(Rune r) =>
-        Rune.IsWhiteSpace(r) || Rune.IsLetter(r) || r.Value is '-' or '\'' or '.';
+    // A question mark marks a guess ("Polly?"), which belongs in a footnote, not in the name.
+    private static string InvalidCharacterAdvice(IReadOnlyList<string> invalid) =>
+        invalid.Contains("?")
+            ? "put a suspected name in a footnote and use Unknown in the name field"
+            : "use Unknown for an unknown part, NICK for a nickname, NSFX for a suffix";
 
     // -------------------------------------------------------------------
     // GEN402 — sex not specified

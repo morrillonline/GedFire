@@ -127,7 +127,7 @@ public sealed class GedIndividual
     // Computed display properties (mirror VB Individual members)
     // -----------------------------------------------------------------------
 
-    public bool SurnameUnknown => LastName == UnknownString;
+    public bool SurnameUnknown => GedCore.Matching.UnknownName.IsPlaceholder(GedCore.Matching.PersonNameNormalizer.Normalize(LastNameRaw));
 
     public string LastName =>
         string.Equals(LastNameRaw, "unknown", StringComparison.OrdinalIgnoreCase)

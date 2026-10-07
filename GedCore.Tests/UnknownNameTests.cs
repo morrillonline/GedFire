@@ -9,9 +9,9 @@ public class UnknownNameTests
     [InlineData("____", true)]
     [InlineData("SMITH", false)]
     [InlineData("UNKNOWNSON", false)]
-    [InlineData("", false)]
-    [InlineData(null, false)]
-    public void IsPlaceholder_RecognizesTheNormalizedUnknownSpellings(string? part, bool expected)
+    [InlineData("", true)]
+    [InlineData(null, true)]
+    public void IsPlaceholder_RecognizesUnknownAndEmptyNormalizedParts(string? part, bool expected)
     {
         Assert.Equal(expected, UnknownName.IsPlaceholder(part));
     }
