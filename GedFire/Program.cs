@@ -316,7 +316,7 @@ static int RunSelectTargets(string[] args)
         Console.WriteLine($"    {group.Count(),6:N0}  {group.Key}");
 
     long seed = DateTime.UtcNow.Ticks;
-    var draw = TargetDrawer.Draw(candidates, count, seed);
+    var draw = DuplicateAnnotator.Annotate(TargetDrawer.Draw(candidates, count, seed), new MatchIndex(model));
     if (draw.LegendaryDiscards.Count > 0)
         Console.WriteLine($"  {draw.LegendaryDiscards.Count:N0} extra Legendary-band candidate(s) discarded (one-per-pack cap)");
 

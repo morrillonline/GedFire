@@ -12,7 +12,6 @@ public sealed record SelectionTarget
     public required string Name { get; init; }
     public required string Surname { get; init; }
     public string? Born { get; init; }
-    public string? BirthPlace { get; init; }
     public string? Died { get; init; }
 
     public required string CardType { get; init; }
@@ -21,6 +20,9 @@ public sealed record SelectionTarget
 
     /// <summary>NominalPoints + Difficulty's bonus: the total expected payoff shown to the researcher.</summary>
     public required int Score { get; init; }
+
+    /// <summary>Other people the GEN301 duplicate test pairs with this one; empty when none.</summary>
+    public IReadOnlyList<PossibleDuplicateEntry> PossibleDuplicateOf { get; init; } = [];
 
     /// <summary>New parent only: the one recorded parent, if any.</summary>
     public KnownParentEntry? KnownParent { get; init; }
@@ -39,6 +41,8 @@ public sealed record DifficultyEntry
     public required int GeoWeight { get; init; }
     public required int ContextAdjustment { get; init; }
 }
+
+public sealed record PossibleDuplicateEntry(string Xref, double Score);
 
 public sealed record KnownParentEntry
 {

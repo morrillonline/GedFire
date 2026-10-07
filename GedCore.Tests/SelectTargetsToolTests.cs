@@ -57,6 +57,48 @@ public class SelectTargetsToolTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectTargets_EveryTargetCarriesPossibleDuplicateOfAndNoBirthPlace()
+    {
+        var result = await Call(Tool(), "50", "[\"Ashworth\"]");
+
+        foreach (var target in result.StructuredContent!.Value.GetProperty("targets").EnumerateArray())
+        {
+            Assert.Equal(JsonValueKind.Array, target.GetProperty("possibleDuplicateOf").ValueKind);
+            Assert.False(target.TryGetProperty("birthPlace", out _));
+        }
+    }
+
+    [Fact]
+    public async Task SelectTargets_TargetWithTwin_IsStillDrawnAndNamesTheTwin()
+    {
+        const string twinGed = Ged + """
+
+            0 @I4@ INDI
+            1 NAME William /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1852
+            2 PLAC Missouri
+            """;
+        var tool = new SelectTargetsTool(_sessions.Open(twinGed), new ToolGate());
+
+        var result = await Call(tool, "50", "[\"Ashworth\"]");
+
+        var targets = result.StructuredContent!.Value.GetProperty("targets").EnumerateArray().ToList();
+        var twinned = targets.Where(t => t.GetProperty("xref").GetString() == "@I1@").ToList();
+        Assert.NotEmpty(twinned);
+        foreach (var target in twinned)
+        {
+            var duplicate = Assert.Single(target.GetProperty("possibleDuplicateOf").EnumerateArray());
+            Assert.Equal("@I4@", duplicate.GetProperty("xref").GetString());
+            Assert.True(duplicate.GetProperty("score").GetDouble() >= 70);
+        }
+        var others = targets.Where(t => t.GetProperty("xref").GetString() == "@I2@").ToList();
+        Assert.NotEmpty(others);
+        Assert.All(others, t => Assert.Equal(0, t.GetProperty("possibleDuplicateOf").GetArrayLength()));
+    }
+
+    [Fact]
     public async Task SelectTargets_OnlyDrawsPeopleWhoMatchTheSurnames()
     {
         var result = await Call(Tool(), "50", "[\"Ashworth\"]");

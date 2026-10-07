@@ -63,6 +63,11 @@ public sealed class PersonMatcher
         return outcome.Matches.Count > 0 ? outcome.Matches[0].FinalScore : 0;
     }
 
+    /// <summary>The GEN301 duplicate pairs involving a person in <paramref name="scope"/>.</summary>
+    public static IReadOnlyList<PossibleDuplicatePair> FindPossibleDuplicates(
+        MatchIndex index, IReadOnlySet<string> scope, CancellationToken cancellationToken = default) =>
+        PossibleDuplicateFinder.Find([.. index.Entries.Select(ToCandidate)], scope, cancellationToken);
+
     // Query splitting is a pure string operation with no GedIndividual
     // involvement; PersonMatcherTests exercises it directly through this
     // pass-through, keeping the one implementation in GedCore.Matching.

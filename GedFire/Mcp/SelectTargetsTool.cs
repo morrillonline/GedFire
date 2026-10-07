@@ -21,7 +21,8 @@ public sealed class SelectTargetsTool
         "relationship (a missing parent, spouse, or child, or a date or place that is not exact) among the " +
         "people who bear, or are married to someone who bears, one of the given surnames. Returns \"count\" " +
         "targets drawn at random, each with its gap type, difficulty band, points, and the facts needed to " +
-        "start work; the draw keeps at most one Legendary-band target, so a pack can come up short. This is " +
+        "start work, including possibleDuplicateOf (people the duplicate test pairs with the target); the " +
+        "draw keeps at most one Legendary-band target, so a pack can come up short. This is " +
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
         "never selected.";
 
@@ -138,7 +139,8 @@ public sealed class SelectTargetsTool
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var candidates = GapDetector.Detect(snapshot.Model, surnameList);
-        var draw = TargetDrawer.Draw(candidates, drawCount, DateTime.UtcNow.Ticks);
+        var draw = DuplicateAnnotator.Annotate(
+            TargetDrawer.Draw(candidates, drawCount, DateTime.UtcNow.Ticks), snapshot.MatchIndex, cancellationToken);
 
         string json = WantedFileWriter.ToJson(surnameList, candidates.Count, draw);
         using var document = JsonDocument.Parse(json);
