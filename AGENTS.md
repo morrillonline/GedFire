@@ -37,6 +37,8 @@ Before declaring that a change is ready to commit, run the full test suite to en
 ## Engineering Conventions
 
 - Prefer existing third party packages over reinventing the wheel.
+- Follow clean coding principles and the SOLID principles: single responsibility, open/closed, Liskov substitution, interface segregation, and dependency inversion.
+- Leave every class you touch a little cleaner than you found it: a clearer name, a smaller method, a removed duplicate or stale comment. Keep the cleanup proportionate to the change and covered by tests.
 - Each class should have one well defined responsibility. 
 - Avoid methods with high cyclomatic complexity. Introduce component methods. Replace a long argument list with one or two objects that carry the information.
 - Use unit testing to prove correctness. Adhere to the principle of one unit test class per production class, and isolate the class under test from other classes as much as possible.
