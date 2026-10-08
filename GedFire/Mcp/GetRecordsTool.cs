@@ -114,29 +114,9 @@ public sealed class GetRecordsTool
         _mapper = new RecordMapper(mediaDir);
     }
 
-    public McpServerTool ToMcpServerTool()
-    {
-        var createOptions = new McpServerToolCreateOptions
-        {
-            Name = ToolName,
-            Description = Description,
-            ReadOnly = true,
-            Destructive = false,
-            Idempotent = true,
-        };
-
-        var tool = McpServerTool.Create(InvokeAsync, createOptions);
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = true,
-            DestructiveHint = false,
-            IdempotentHint = true,
-        };
-        return tool;
-    }
+    public McpServerTool ToMcpServerTool() =>
+        new ToolDefinition(ToolName, Description, InputSchemaJson, OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent)
+            .CreateTool(InvokeAsync);
 
     // xrefs is bound as a raw JsonElement so a wrong shape reaches ExecuteAsync
     // and is reported by field name instead of failing inside the SDK binder.
@@ -149,22 +129,9 @@ public sealed class GetRecordsTool
         return HandleAsync(xrefs ?? default, cancellationToken, include, fields ?? default);
     }
 
-    public async Task<CallToolResult> HandleAsync(
-        JsonElement xrefs, CancellationToken cancellationToken, bool includeSources = false, JsonElement fields = default)
-    {
-        try
-        {
-            return await _gate.RunAsync(ct => ExecuteAsync(xrefs, includeSources, fields, ct), cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
+    public Task<CallToolResult> HandleAsync(
+        JsonElement xrefs, CancellationToken cancellationToken, bool includeSources = false, JsonElement fields = default) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(xrefs, includeSources, fields, ct), cancellationToken);
 
     async Task<CallToolResult> ExecuteAsync(
         JsonElement xrefs, bool includeSources, JsonElement fields, CancellationToken cancellationToken)

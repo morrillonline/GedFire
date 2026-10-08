@@ -1,7 +1,7 @@
 namespace GedCore.Tests;
 
 // ---------------------------------------------------------------------------
-// End-to-end coverage for the `gedfire date-calc` CLI verb: Program.RunDateCalc
+// End-to-end coverage for the `gedfire date-calc` CLI verb: DateCalcCommand
 // is a thin argument-and-output adapter over GedCore.GedDate/GedAge
 // (GedDateArithmeticTests proves the engine itself); these tests exercise the
 // actual process, its flag validation, output formatting, and exit codes. No

@@ -71,47 +71,14 @@ public sealed class ListUnanchoredPeopleTool
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
     }
 
-    public McpServerTool ToMcpServerTool()
-    {
-        var createOptions = new McpServerToolCreateOptions
-        {
-            Name = ToolName,
-            Description = Description,
-            ReadOnly = true,
-            Destructive = false,
-            Idempotent = true,
-        };
-
-        var tool = McpServerTool.Create(InvokeAsync, createOptions);
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = true,
-            DestructiveHint = false,
-            IdempotentHint = true,
-        };
-        return tool;
-    }
+    public McpServerTool ToMcpServerTool() =>
+        new ToolDefinition(ToolName, Description, InputSchemaJson, OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent)
+            .CreateTool(InvokeAsync);
 
     Task<CallToolResult> InvokeAsync(CancellationToken cancellationToken = default) => HandleAsync(cancellationToken);
 
-    public async Task<CallToolResult> HandleAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _gate.RunAsync(ExecuteAsync, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
+    public Task<CallToolResult> HandleAsync(CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ExecuteAsync, cancellationToken);
 
     async Task<CallToolResult> ExecuteAsync(CancellationToken cancellationToken)
     {

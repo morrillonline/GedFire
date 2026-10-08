@@ -88,29 +88,9 @@ public sealed class ValidateDocumentTool
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
     }
 
-    public McpServerTool ToMcpServerTool()
-    {
-        var createOptions = new McpServerToolCreateOptions
-        {
-            Name = ToolName,
-            Description = Description,
-            ReadOnly = true,
-            Destructive = false,
-            Idempotent = true,
-        };
-
-        var tool = McpServerTool.Create(InvokeAsync, createOptions);
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = true,
-            DestructiveHint = false,
-            IdempotentHint = true,
-        };
-        return tool;
-    }
+    public McpServerTool ToMcpServerTool() =>
+        new ToolDefinition(ToolName, Description, InputSchemaJson, OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent)
+            .CreateTool(InvokeAsync);
 
     // The delegate McpServerTool.Create binds arguments to and invokes.
     Task<CallToolResult> InvokeAsync(bool warningsAsErrors = false, CancellationToken cancellationToken = default) =>
@@ -122,23 +102,10 @@ public sealed class ValidateDocumentTool
     /// Never throws: every failure becomes an isError CallToolResult, the
     /// same last-chance-handler pattern as the other document tools.
     /// </summary>
-    public async Task<CallToolResult> HandleAsync(bool warningsAsErrors, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _gate.RunAsync(
+    public Task<CallToolResult> HandleAsync(bool warningsAsErrors, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, 
                 ct => Task.FromResult(Execute(_absoluteGedcomPath, warningsAsErrors, ct)),
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
+                cancellationToken);
 
     static CallToolResult Execute(string absoluteGedcomPath, bool warningsAsErrors, CancellationToken cancellationToken)
     {

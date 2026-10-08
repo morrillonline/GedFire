@@ -41,29 +41,9 @@ public sealed class ApplyChangesetTool
         _readOnly = readOnly;
     }
 
-    public McpServerTool ToMcpServerTool()
-    {
-        var createOptions = new McpServerToolCreateOptions
-        {
-            Name = ToolName,
-            Description = Description,
-            ReadOnly = false,
-            Destructive = true,
-            Idempotent = false,
-        };
-
-        var tool = McpServerTool.Create(InvokeAsync, createOptions);
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = false,
-            DestructiveHint = true,
-            IdempotentHint = false,
-        };
-        return tool;
-    }
+    public McpServerTool ToMcpServerTool() =>
+        new ToolDefinition(ToolName, Description, InputSchemaJson, OutputSchemaJson, ToolBehavior.Writes)
+            .CreateTool(InvokeAsync);
 
     // The delegate McpServerTool.Create binds arguments to and invokes.
     Task<CallToolResult> InvokeAsync(string changesetPath, string items, CancellationToken cancellationToken = default)
@@ -76,21 +56,8 @@ public sealed class ApplyChangesetTool
     /// becomes an isError CallToolResult, the same last-chance-handler
     /// pattern as the other document tools.
     /// </summary>
-    public async Task<CallToolResult> HandleAsync(string changesetPath, string items, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _gate.RunAsync(ct => Task.FromResult(Execute(changesetPath, items, ct)), cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
+    public Task<CallToolResult> HandleAsync(string changesetPath, string items, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => Task.FromResult(Execute(changesetPath, items, ct)), cancellationToken);
 
     CallToolResult Execute(string changesetPath, string items, CancellationToken cancellationToken)
     {

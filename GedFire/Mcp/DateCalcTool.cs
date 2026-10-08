@@ -113,29 +113,9 @@ public sealed class DateCalcTool
     public DateCalcTool(ToolGate gate) =>
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
 
-    public McpServerTool ToMcpServerTool()
-    {
-        var createOptions = new McpServerToolCreateOptions
-        {
-            Name = ToolName,
-            Description = Description,
-            ReadOnly = true,
-            Destructive = false,
-            Idempotent = true,
-        };
-
-        var tool = McpServerTool.Create(InvokeAsync, createOptions);
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = true,
-            DestructiveHint = false,
-            IdempotentHint = true,
-        };
-        return tool;
-    }
+    public McpServerTool ToMcpServerTool() =>
+        new ToolDefinition(ToolName, Description, InputSchemaJson, OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent)
+            .CreateTool(InvokeAsync);
 
     Task<CallToolResult> InvokeAsync(
         string operation,
@@ -146,29 +126,16 @@ public sealed class DateCalcTool
         CancellationToken cancellationToken = default) =>
         HandleAsync(operation, date, age, from, to, cancellationToken);
 
-    public async Task<CallToolResult> HandleAsync(
+    public Task<CallToolResult> HandleAsync(
         string operation,
         string? date,
         string? age,
         string? from,
         string? to,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _gate.RunAsync(
+        CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, 
                 _ => Task.FromResult(Execute(operation, date, age, from, to)),
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
+                cancellationToken);
 
     static CallToolResult Execute(string operation, string? date, string? age, string? from, string? to)
     {
