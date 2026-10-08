@@ -816,7 +816,7 @@ static bool TryParseOptionalYear(string? raw, string optionName, out int? value)
 static async Task<int> RunFindPerson(string[] args)
 {
     var cl = CommandLine.Parse(args, [
-        "--input", "--query", "--max-results",
+        "--input", "--query", "--max-results", "--sex",
         "--birth-year", "--birth-place", "--death-year", "--death-place",
         "--father", "--mother",
         "--spouse-name", "--marriage-year", "--marriage-place",
@@ -825,7 +825,7 @@ static async Task<int> RunFindPerson(string[] args)
     string? query = cl.Value("--query");
 
     const string usage =
-        "Usage: gedfire find-person --input <ged> --query <name> [--max-results N]\n" +
+        "Usage: gedfire find-person --input <ged> --query <name> [--max-results N] [--sex M|F]\n" +
         "       [--birth-year Y] [--birth-place P] [--death-year Y] [--death-place P]\n" +
         "       [--father NAME] [--mother NAME]\n" +
         "       [--spouse-name NAME] [--marriage-year Y] [--marriage-place P]";
@@ -873,9 +873,16 @@ static async Task<int> RunFindPerson(string[] args)
     FindPersonSpouseHintArgs? spouse = spouseName is not null || marriage is not null
         ? new FindPersonSpouseHintArgs { Name = spouseName, Marriage = marriage } : null;
 
-    FindPersonHintsArgs? hints = birth is null && death is null && parents is null && spouse is null
+    string? sex = cl.Value("--sex")?.ToUpperInvariant();
+    if (sex is not (null or "M" or "F"))
+    {
+        Console.Error.WriteLine($"--sex must be M or F, got: {cl.Value("--sex")}");
+        return 1;
+    }
+
+    FindPersonHintsArgs? hints = sex is null && birth is null && death is null && parents is null && spouse is null
         ? null
-        : new FindPersonHintsArgs { Birth = birth, Death = death, Parents = parents, Spouse = spouse };
+        : new FindPersonHintsArgs { Sex = sex, Birth = birth, Death = death, Parents = parents, Spouse = spouse };
 
     if (!TryLoadOneShotSession(input, out var session, out _)) return 1;
 
@@ -1034,6 +1041,7 @@ static void PrintHelp()
                         One-shot mirror of the mcp server's find_person tool:
                         same matcher, same JSON result, no protocol needed.
                           [--max-results N]                 1-20, default 8
+                          [--sex M|F]                       ranks a differing recorded sex lower
                           [--birth-year Y] [--birth-place P]
                           [--death-year Y] [--death-place P]
                           [--father NAME] [--mother NAME]

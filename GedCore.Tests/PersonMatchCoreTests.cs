@@ -94,6 +94,56 @@ public class PersonMatchCoreTests
     }
 
     [Fact]
+    public void SexHint_RanksDifferingSexBelowMatchingAndUnrecorded()
+    {
+        var candidates = new List<PersonMatchCandidate>
+        {
+            Candidate("a-differs", "Smith", "Xvqz", isMale: false),
+            Candidate("b-unrecorded", "Smith", "Xvqz", isMale: null),
+            Candidate("c-matches", "Smith", "Xvqz", isMale: true),
+        };
+        var outcome = new PersonMatchCore().Match(candidates, "Xvqz Smith", new MatchHints(IsMale: true), Nicknames());
+
+        Assert.Equal(["c-matches", "b-unrecorded", "a-differs"], outcome.Matches.Select(m => m.Id));
+        Assert.Equal(3, outcome.TotalMatches);
+    }
+
+    [Fact]
+    public void SexHint_NeverRemovesADifferingCandidate()
+    {
+        var candidates = new List<PersonMatchCandidate> { Candidate("only", "Smith", "Xvqz", isMale: false) };
+        var outcome = new PersonMatchCore().Match(candidates, "Xvqz Smith", new MatchHints(IsMale: true), Nicknames());
+
+        Assert.Equal("only", Assert.Single(outcome.Matches).Id);
+    }
+
+    [Fact]
+    public void SexHint_AloneIsNotComparableEvidenceForDuplicateDetection()
+    {
+        var candidates = new List<PersonMatchCandidate> { Candidate("same-sex", "Smith", "Xvqz", isMale: true) };
+        var outcome = new PersonMatchCore().Match(
+            candidates, "Xvqz Smith", new MatchHints(IsMale: true), Nicknames(), forDuplicateDetection: true);
+
+        Assert.Equal(PersonMatchType.None, outcome.PersonMatchType);
+    }
+
+    [Fact]
+    public void SexHint_ScoresTheSameForDuplicateDetection()
+    {
+        var candidates = new List<PersonMatchCandidate>
+        {
+            Candidate("b-unrecorded", "Smith", "Xvqz", birthYear: 1800, isMale: null),
+            Candidate("c-matches", "Smith", "Xvqz", birthYear: 1800, isMale: true),
+        };
+        var hints = new MatchHints(Birth: new EventHint(Year: 1800), IsMale: true);
+
+        var search = new PersonMatchCore().Match(candidates, "Xvqz Smith", hints, Nicknames());
+        var duplicates = new PersonMatchCore().Match(candidates, "Xvqz Smith", hints, Nicknames(), forDuplicateDetection: true);
+
+        Assert.Equal(search.Matches.Select(m => (m.Id, m.FinalScore)), duplicates.Matches.Select(m => (m.Id, m.FinalScore)));
+    }
+
+    [Fact]
     public void DeathHint_DoesNotMatchBirthEvidence()
     {
         var candidates = new List<PersonMatchCandidate>

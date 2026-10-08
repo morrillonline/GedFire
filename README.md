@@ -163,7 +163,9 @@ For example, an MCP client can call `find_person` with:
 ```
 
 Every hint leaf is optional, but each supplied object must contain at least
-one fact. Birth and death places are event-specific; census or otherwise
+one fact. `sex` (`"M"` or `"F"`) ranks a candidate whose recorded sex differs
+lower; a candidate with no recorded sex is neither helped nor penalized, and
+none is removed (CLI: `--sex`). Birth and death places are event-specific; census or otherwise
 unclassified places are not hints. Parent names require a known `father` or
 `mother` role. All fields under `spouse` describe one marriage and are never
 combined across different marriages. Hints rank only people already recalled

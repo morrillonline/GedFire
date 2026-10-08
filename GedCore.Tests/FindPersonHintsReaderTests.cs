@@ -34,6 +34,25 @@ public class FindPersonHintsReaderTests
         Assert.Equal(1770, args.Spouse!.Marriage!.Year);
     }
 
+    [Fact]
+    public void Sex_IsDeserialized()
+    {
+        Assert.True(FindPersonHintsReader.TryRead(Json("""{"sex":"F"}"""), out var args, out _));
+        Assert.Equal("F", args!.Sex);
+    }
+
+    [Theory]
+    [InlineData("{\"sex\":\"X\"}", "hints.sex must be \"M\" or \"F\"", "a string")]
+    [InlineData("{\"sex\":\"m\"}", "hints.sex must be \"M\" or \"F\"", "a string")]
+    [InlineData("{\"sex\":1}", "hints.sex must be \"M\" or \"F\"", "a number")]
+    public void InvalidSex_IsRejected(string json, string expectedStart, string expectedDetail)
+    {
+        Assert.False(FindPersonHintsReader.TryRead(Json(json), out var args, out var error));
+        Assert.Null(args);
+        Assert.StartsWith(expectedStart, error);
+        Assert.Contains(expectedDetail, error);
+    }
+
     [Theory]
     [InlineData("\"birth 1741\"", "hints must be an object", "a string")]
     [InlineData("{\"birth\":\"1741\"}", "hints.birth must be an object such as", "a string")]

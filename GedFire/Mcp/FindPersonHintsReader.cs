@@ -30,6 +30,7 @@ public static class FindPersonHintsReader
         {
             error = property.Name switch
             {
+                "sex" => CheckSex(property.Value),
                 "birth" or "death" => CheckEvent(property.Value, $"hints.{property.Name}"),
                 "parents" => CheckParents(property.Value),
                 "spouse" => CheckSpouse(property.Value),
@@ -41,6 +42,11 @@ public static class FindPersonHintsReader
         args = hints.Deserialize<FindPersonHintsArgs>();
         return true;
     }
+
+    static string? CheckSex(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String && value.GetString() is "M" or "F"
+            ? null
+            : $"hints.sex must be \"M\" or \"F\", not {ToolArguments.Describe(value)}.";
 
     static string? CheckEvent(JsonElement value, string path)
     {
