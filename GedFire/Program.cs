@@ -555,6 +555,7 @@ static async Task<int> RunMcp(string[] args)
     var gate = new ToolGate();
     var dateCalc = new DateCalcTool(gate);
     var findPerson = new FindPersonTool(session, gate, nicknames);
+    var findSource = new FindSourceTool(session, gate);
     var getDocumentStats = new GetDocumentStatsTool(session, gate);
     var getRecord = new GetRecordTool(session, gate, absoluteMediaDir);
     var getRecords = new GetRecordsTool(session, gate, absoluteMediaDir);
@@ -583,6 +584,7 @@ static async Task<int> RunMcp(string[] args)
         describeChangesetOps.ToMcpServerTool(),
         findFamily.ToMcpServerTool(),
         findPerson.ToMcpServerTool(),
+        findSource.ToMcpServerTool(),
         getDocumentStats.ToMcpServerTool(),
         getRecord.ToMcpServerTool(),
         getRecords.ToMcpServerTool(),
@@ -596,7 +598,7 @@ static async Task<int> RunMcp(string[] args)
     string instructions =
         "Every xref returned by a tool on this server (an individual or family reference such as \"@I123@\" " +
         "or \"@F45@\") belongs only to the single GEDCOM document this server was started against, and is " +
-        "meaningless to any other document or provider. date_calc, find_family, find_person, get_document_stats, get_record, get_records, list_people, " +
+        "meaningless to any other document or provider. date_calc, find_family, find_person, find_source, get_document_stats, get_record, get_records, list_people, " +
         "list_unanchored_people, select_targets, " +
         "describe_changeset_ops, validate_changeset, validate_document, and check_plausibility never modify " +
         "that file. apply_changeset is the only tool that writes to it, and only after validation and " +

@@ -102,7 +102,7 @@ Restart or reload the client after changing its configuration, approve the
 local server if prompted, and confirm that it discovers `find_person`,
 `date_calc`, `get_document_stats`, `get_record`, `get_records`, `list_people`,
 `list_unanchored_people`, `find_family`, `select_targets`,
-`describe_changeset_ops`, `validate_changeset`,
+`find_source`, `describe_changeset_ops`, `validate_changeset`,
 `check_plausibility`, `validate_document`, and `apply_changeset`.
 
 A call with a missing required parameter or an unrecognized one is refused for
@@ -113,7 +113,7 @@ parameter "nme". Accepted parameters: query (required), hints, maxResults.`
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
-The server binds to one document over stdio and exposes fourteen tools. Thirteen
+The server binds to one document over stdio and exposes fifteen tools. Fourteen
 are read-only; `apply_changeset` is the only one that writes to the file,
 and only after validation and in-memory verification both pass (or not at
 all, if the server was started with `--read-only`). The server also watches
@@ -125,6 +125,7 @@ a change `apply_changeset` itself just wrote — no restart needed:
 | `date_calc` | Normalize a dual-dated year, add or subtract a genealogical age, or calculate elapsed years/months/days. Uses exact Gregorian dates supplied in the call and never reads or changes the bound document. |
 | `find_person` | Resolve a name the agent heard in conversation — "my great-grandfather Fred Morrill" — to scored candidates, a confident match when one exists, and family handoff identifiers. Optional structured hints distinguish birth from death, father from mother, and one marriage from another. Set `maxResults` to an integer from `1` through `20` (default `8`) without changing the matcher's confidence decision. A name part written `Unknown` (`Mary Unknown`, `Unknown Pike`) is a wildcard that adds no score; people recorded with an Unknown part rank below exact name matches, and each result carries `surnameUnknown`. |
 | `find_family` | Find people through a relative whose name is all you know: `relation` `spouse` ("the widow of Joseph"), `child` (the parents of someone named X), or `parent` (the children of someone named X), with optional `birth`/`death` hints describing the person sought. Each result gives the person, the connecting family xref, and the matched relative. |
+| `find_source` | Learn whether a source already exists before a changeset creates one: `title`, `author`, and `url` are case-insensitive substrings (supply at least one; a source must match all supplied). Returns each match as `xref`, `title`, `author`, and `url` (the web address recorded in the source note, or `null`), or an empty `sources` array when none match. |
 | `get_document_stats` | Report person/family counts, the declared GEDCOM version, and the running gedfire version, for a quick orientation before other work. |
 | `get_record` | Fetch the full detail of a specific person, family, or source by xref. Every citation carries its source xref, page, quoted text (`dataText`), and quality (`quay`); a person's burial, baptism, and other individual events come back in `otherEvents`, each with its tag and citations, and a family's own citations come back in `citations`; set `includeSources` to also get the full text of each source cited on a person or family. Looking up a source lists every structure that cites it (`citedBy`). |
 | `get_records` | Fetch several people, families, or sources in one call, each in the shape `get_record` returns, in the order requested (`includeSources` adds one top-level `sources` array covering the whole call; `fields` such as `["name"]` narrows each record to `recordType`, `xref` and just those fields, and an unknown field name is an error that lists the accepted ones). An xref that does not exist comes back as a `not_found` record in its own slot (up to 500 xrefs per call). |
