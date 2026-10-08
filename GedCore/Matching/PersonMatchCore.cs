@@ -89,6 +89,7 @@ public sealed class PersonMatchCore
     const double SpouseNameWeight = 20.0;
     const double MarriageYearWeight = 10.0;
     const double MarriagePlaceWeight = 10.0;
+    const double SexWeight = 10.0;
 
     // Recall gate, classification, and suggestion thresholds ("Recall gate,
     // classification, and ordering" / "Limits").
@@ -339,8 +340,23 @@ public sealed class PersonMatchCore
 
         relational |= AddSpouseHint(hints.Spouse, candidate.Marriages, nicknames, ref raw, ref available);
 
-        double finalScore = available > 0 ? raw * 100.0 / available : 0.0;
-        return new HintedScore(raw, available, finalScore, relational);
+        // Sex scores but stays out of AvailableWeight: duplicate detection needs evidence beyond
+        // the name, and a bare sex agreement is not that.
+        double scoredRaw = raw;
+        double scoredAvailable = available;
+        AddSexHint(hints.IsMale, candidate.IsMale, ref scoredRaw, ref scoredAvailable);
+
+        double finalScore = scoredAvailable > 0 ? scoredRaw * 100.0 / scoredAvailable : 0.0;
+        return new HintedScore(scoredRaw, available, finalScore, relational);
+    }
+
+    // Like every hint, it counts only when both sides have a value; a mismatch then scores below a candidate with no recorded sex.
+    static void AddSexHint(bool? hint, bool? candidate, ref double raw, ref double available)
+    {
+        if (hint is not bool expected || candidate is not bool actual) return;
+
+        available += SexWeight;
+        if (expected == actual) raw += SexWeight;
     }
 
     static void AddEventHint(

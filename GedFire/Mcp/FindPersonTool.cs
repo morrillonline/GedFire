@@ -46,6 +46,11 @@ public sealed class FindPersonTool
               "minProperties": 1,
               "description": "Structured facts the user mentioned, used only to rank and narrow people already recalled by query. Omit unknown facts and omit hints entirely when none are known. Empty objects, blank strings, legacy flat properties, and unknown properties are invalid. Missing candidate data is not penalized.",
               "properties": {
+                "sex": {
+                  "type": "string",
+                  "enum": ["M", "F"],
+                  "description": "The sought person's sex. A candidate whose recorded sex differs ranks lower; one with no recorded sex is neither helped nor penalized. It never removes a candidate."
+                },
                 "birth": {
                   "type": "object",
                   "additionalProperties": false,
@@ -484,7 +489,8 @@ public sealed class FindPersonTool
         hints.Parents is { } parents ? new ParentsHint(parents.Father, parents.Mother) : null,
         hints.Spouse is { } spouse
           ? new SpouseHint(spouse.Name, ToEventHint(spouse.Marriage))
-          : null);
+          : null,
+        hints.Sex is { } sex ? sex == "M" : null);
 
     static EventHint? ToEventHint(FindPersonEventHintArgs? hint) =>
       hint is null ? null : new EventHint(hint.Year, hint.Place);
@@ -498,9 +504,15 @@ public sealed class FindPersonTool
       }
 
       if (TryUnknownProperty("hints", hints.AdditionalProperties, out error)) return false;
-      if (hints.Birth is null && hints.Death is null && hints.Parents is null && hints.Spouse is null)
+      if (hints.Sex is null && hints.Birth is null && hints.Death is null && hints.Parents is null && hints.Spouse is null)
       {
-        error = "hints must contain at least one of birth, death, parents, or spouse.";
+        error = "hints must contain at least one of sex, birth, death, parents, or spouse.";
+        return false;
+      }
+
+      if (hints.Sex is not (null or "M" or "F"))
+      {
+        error = "hints.sex must be \"M\" or \"F\".";
         return false;
       }
 
@@ -680,6 +692,9 @@ public sealed class FindPersonTool
 /// </summary>
 public sealed class FindPersonHintsArgs
 {
+  [JsonPropertyName("sex")]
+  public string? Sex { get; init; }
+
   [JsonPropertyName("birth")]
   public FindPersonEventHintArgs? Birth { get; init; }
 

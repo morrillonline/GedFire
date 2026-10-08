@@ -83,7 +83,7 @@ public class PlausibilityGateTests : ApplyTestBase
         Assert.DoesNotContain(result.NewDiagnostics, d => d.Xref == "@I00003@");
     }
 
-    // "Allan /Test/" born 1930 scores 89.3 against the existing "Allen
+    // "Allan /Test/" born 1931 scores 84.7 against the existing "Allen
     // /Test/" born 1928 (@I00001@) -- close enough to recall, not close
     // enough for PersonMatchCore's own Single/hard-match classification
     // (needs >=90 with a 10-point margin), so the changeset is not blocked
@@ -98,7 +98,7 @@ public class PlausibilityGateTests : ApplyTestBase
             { "item": 1, "target": "@F00001@", "ops": [
               { "op": "createOrUpdateChild", "family": "@F00001@",
                 "child": { "xref": "@NewI1@", "name": "Allan /Test/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1930" } } ] } } ] }
+                           "facts": [ { "fact": "BIRT", "value": { "date": "1931" } } ] } } ] }
           ]
         }
         """;

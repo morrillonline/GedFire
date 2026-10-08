@@ -410,6 +410,27 @@ public class FindPersonToolTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_SexOutsideMOrF_ReturnsIsError()
+    {
+        var tool = ToolOver(SparsePersonGed, out _, _dir);
+        var result = await tool.HandleAsync(
+            "Alone Nobody", new FindPersonHintsArgs { Sex = "X" }, CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("hints.sex", TextOf(result));
+    }
+
+    [Fact]
+    public async Task HandleAsync_SexAloneIsAValidHint()
+    {
+        var tool = ToolOver(SparsePersonGed, out _, _dir);
+        var result = await tool.HandleAsync(
+            "Alone Nobody", new FindPersonHintsArgs { Sex = "F" }, CancellationToken.None);
+
+        Assert.False(result.IsError);
+    }
+
+    [Fact]
     public async Task HandleAsync_LegacyFlatHintCapturedAsUnknown_ReturnsIsError()
     {
         var hints = JsonSerializer.Deserialize<FindPersonHintsArgs>("""{"birthYear":1841}""");
