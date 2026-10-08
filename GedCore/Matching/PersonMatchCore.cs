@@ -79,7 +79,7 @@ public sealed record PersonMatchOutcome
 
 public sealed class PersonMatchCore
 {
-    // Evidence weights ("Evidence weights" table).
+    // Evidence weights.
     const double SurnameWeight = 35.0;
     const double GivenWeight = 25.0;
     const double GivenNicknameFixedPoints = 20.0;
@@ -91,8 +91,7 @@ public sealed class PersonMatchCore
     const double MarriagePlaceWeight = 10.0;
     const double SexWeight = 10.0;
 
-    // Recall gate, classification, and suggestion thresholds ("Recall gate,
-    // classification, and ordering" / "Limits").
+    // Recall gate, classification, and suggestion thresholds.
     const double RecallThreshold = 70.0;
     const double SuggestionLow = 55.0;
     const double SuggestionHigh = 69.0;

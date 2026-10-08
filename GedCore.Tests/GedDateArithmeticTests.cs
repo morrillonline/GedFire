@@ -4,7 +4,7 @@ namespace GedCore.Tests;
 
 // ---------------------------------------------------------------------------
 // date-calc's engine: GedAge parsing/formatting, GedDate.AddAge/SubtractAge/
-// Diff, and GedDate.ResolveDualYear. Program.RunDateCalc (the CLI adapter) is
+// Diff, and GedDate.ResolveDualYear. DateCalcCommand (the CLI adapter) is
 // exercised separately in CommandLineTests-adjacent coverage; this file is
 // the pure engine's own correctness proof.
 // ---------------------------------------------------------------------------

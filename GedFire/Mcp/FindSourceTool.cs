@@ -86,29 +86,9 @@ public sealed class FindSourceTool
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
     }
 
-    public McpServerTool ToMcpServerTool()
-    {
-        var createOptions = new McpServerToolCreateOptions
-        {
-            Name = ToolName,
-            Description = Description,
-            ReadOnly = true,
-            Destructive = false,
-            Idempotent = true,
-        };
-
-        var tool = McpServerTool.Create(InvokeAsync, createOptions);
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = true,
-            DestructiveHint = false,
-            IdempotentHint = true,
-        };
-        return tool;
-    }
+    public McpServerTool ToMcpServerTool() =>
+        new ToolDefinition(ToolName, Description, InputSchemaJson, OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent)
+            .CreateTool(InvokeAsync);
 
     // Arguments arrive as raw JsonElements so a wrong shape is reported by
     // field name in ExecuteAsync rather than failing inside the SDK binder.
@@ -117,22 +97,9 @@ public sealed class FindSourceTool
         CancellationToken cancellationToken = default)
         => HandleAsync(title ?? default, author ?? default, url ?? default, cancellationToken);
 
-    public async Task<CallToolResult> HandleAsync(
-        JsonElement title, JsonElement author, JsonElement url, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _gate.RunAsync(ct => ExecuteAsync(title, author, url, ct), cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
+    public Task<CallToolResult> HandleAsync(
+        JsonElement title, JsonElement author, JsonElement url, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(title, author, url, ct), cancellationToken);
 
     async Task<CallToolResult> ExecuteAsync(
         JsonElement title, JsonElement author, JsonElement url, CancellationToken cancellationToken)

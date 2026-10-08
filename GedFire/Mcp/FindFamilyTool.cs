@@ -141,29 +141,9 @@ public sealed class FindFamilyTool
         _matcher = new FamilyMatcher(nicknames ?? throw new ArgumentNullException(nameof(nicknames)));
     }
 
-    public McpServerTool ToMcpServerTool()
-    {
-        var createOptions = new McpServerToolCreateOptions
-        {
-            Name = ToolName,
-            Description = Description,
-            ReadOnly = true,
-            Destructive = false,
-            Idempotent = true,
-        };
-
-        var tool = McpServerTool.Create(InvokeAsync, createOptions);
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = true,
-            DestructiveHint = false,
-            IdempotentHint = true,
-        };
-        return tool;
-    }
+    public McpServerTool ToMcpServerTool() =>
+        new ToolDefinition(ToolName, Description, InputSchemaJson, OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent)
+            .CreateTool(InvokeAsync);
 
     // Arguments arrive as raw JsonElements so a wrong shape is reported by
     // field name in ExecuteAsync rather than failing inside the SDK binder.
@@ -172,24 +152,10 @@ public sealed class FindFamilyTool
         JsonElement? maxResults = null, CancellationToken cancellationToken = default)
         => HandleAsync(relation ?? default, name ?? default, hints ?? default, maxResults ?? default, cancellationToken);
 
-    public async Task<CallToolResult> HandleAsync(
+    public Task<CallToolResult> HandleAsync(
         JsonElement relation, JsonElement name, JsonElement hints, JsonElement maxResults,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _gate.RunAsync(ct => ExecuteAsync(relation, name, hints, maxResults, ct), cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
+        CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(relation, name, hints, maxResults, ct), cancellationToken);
 
     async Task<CallToolResult> ExecuteAsync(
         JsonElement relation, JsonElement name, JsonElement hints, JsonElement maxResults,
@@ -255,7 +221,7 @@ public sealed class FindFamilyTool
         hints = null;
         if (!FindPersonHintsReader.TryRead(element, out var args, out error)) return false;
         if (args is null) return true;
-        if (!FindPersonTool.TryValidateHints(args, out error)) return false;
+        if (!FindPersonHintsValidator.TryValidate(args, out error)) return false;
         if (args.Parents is not null || args.Spouse is not null)
         {
             error = $"hints.{(args.Parents is not null ? "parents" : "spouse")} is not accepted by find_family: " +

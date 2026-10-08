@@ -1,7 +1,7 @@
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// find_person's unified result shape, mirroring FindPersonTool.OutputSchemaJson
+// find_person's unified result shape, mirroring FindPersonSchemas.OutputSchemaJson
 // property-for-property. Serialized with System.Text.Json using
 // FindPersonTool's camelCase, nulls-emitted options. Pure data — every
 // mapping from a MatchOutcome to these records happens in FindPersonTool,
@@ -41,7 +41,7 @@ public sealed record SuggestionIdentity(string Xref, string Name, string Reason,
 /// <summary>
 /// find_person's one unified response shape. Every call returns every
 /// field; unused fields for a given matchType are null or empty per the
-/// invariants documented on FindPersonTool.OutputSchemaJson.
+/// invariants documented on FindPersonSchemas.OutputSchemaJson.
 /// </summary>
 public sealed record FindPersonResult(
     string MatchType,

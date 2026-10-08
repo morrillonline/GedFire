@@ -6,7 +6,7 @@ namespace GedCore.Validate;
 
 /// <summary>
 /// Genealogical plausibility checks (GEN1xx date/age/order, GEN3xx
-/// identity/topology, GEN4xx name-format) — see docs/design/plausibility-checker.md. Distinct
+/// identity/topology, GEN4xx name-format). Distinct
 /// from <see cref="ConformanceChecker"/>: that proves a file is
 /// syntactically well-formed, this flags facts that don't make
 /// chronological or biological sense. Same shape as
@@ -88,9 +88,8 @@ public static class PlausibilityChecker
 
     // One generic rule driven by a canonical per-person tag sequence
     // (BIRT -> BAPT/CHR -> MARR (via FAMS) -> DEAT -> BURI/PROB) rather than
-    // one hand-written rule per event pair — see design doc for why. Plus
-    // one cross-person check a per-person sequence can't see on its own: a
-    // family's MARR recorded after either spouse's own DEAT.
+    // one rule per event pair, plus one cross-person check: a family's MARR
+    // recorded after either spouse's own DEAT.
 
     private static void CheckCanonicalEventOrder(GedDocument doc, List<GedDiagnostic> diags)
     {
@@ -296,8 +295,8 @@ public static class PlausibilityChecker
     // family's or person's own stated child count) or a never-married fact.
     // There is no single standard tag for the latter; this reads the common
     // "_MSTAT" extension tag (GEDCOM 7's underscore-prefixed convention for
-    // an undeclared extension) with a NO/never-married value, per the design
-    // doc's own hedge that this is a study-level convention, not a GEDCOM one.
+    // an undeclared extension) with a NO/never-married value. That is a research
+    // convention, not a GEDCOM one.
     private static void CheckChildrenOrMarriageMismatch(GedDocument doc, List<GedDiagnostic> diags)
     {
         foreach (var fam in doc.Records.Where(r => r.Tag == "FAM"))
@@ -488,8 +487,7 @@ public static class PlausibilityChecker
     // (deduped by child xref), not per family — Gramps' own rule is about a
     // person's total recorded children, not one marriage's. Requires a
     // recorded SEX (M or F): GEDCOM 7 decouples the HUSB/WIFE role tags from
-    // sex (see the design doc's Not-adopted section on FemaleHusband/MaleWife),
-    // so the role tag alone isn't a safe stand-in for "mother" or "father" here.
+    // sex, so the role tag alone isn't a safe stand-in for "mother" or "father" here.
     private const int MaxPlausibleChildrenForMother = 12;
     private const int MaxPlausibleChildrenForFather = 15;
 

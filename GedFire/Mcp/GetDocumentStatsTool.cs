@@ -74,29 +74,9 @@ public sealed class GetDocumentStatsTool
     /// hand-written, doc-verbatim constants — see FindPersonTool.ToMcpServerTool
     /// for why (the SDK's reflection-derived schema is not the contract).
     /// </summary>
-    public McpServerTool ToMcpServerTool()
-    {
-        var createOptions = new McpServerToolCreateOptions
-        {
-            Name = ToolName,
-            Description = Description,
-            ReadOnly = true,
-            Destructive = false,
-            Idempotent = true,
-        };
-
-        var tool = McpServerTool.Create(InvokeAsync, createOptions);
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = true,
-            DestructiveHint = false,
-            IdempotentHint = true,
-        };
-        return tool;
-    }
+    public McpServerTool ToMcpServerTool() =>
+        new ToolDefinition(ToolName, Description, InputSchemaJson, OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent)
+            .CreateTool(InvokeAsync);
 
     // The delegate McpServerTool.Create binds arguments to and invokes.
     // There are no business parameters — only the SDK-injected CancellationToken.
@@ -108,21 +88,8 @@ public sealed class GetDocumentStatsTool
     /// Never throws: every failure becomes an isError CallToolResult, the
     /// same last-chance-handler pattern as FindPersonTool.HandleAsync.
     /// </summary>
-    public async Task<CallToolResult> HandleAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _gate.RunAsync(ExecuteAsync, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return CallToolResults.Error($"{ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}");
-        }
-    }
+    public Task<CallToolResult> HandleAsync(CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ExecuteAsync, cancellationToken);
 
     async Task<CallToolResult> ExecuteAsync(CancellationToken cancellationToken)
     {

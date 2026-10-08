@@ -523,12 +523,12 @@ public class FindPersonToolTests : IDisposable
         Assert.True(tool.ProtocolTool.Annotations!.IdempotentHint);
 
         // The declared schemas are exactly the hand-written constants.
-        using var expectedInput = JsonDocument.Parse(FindPersonTool.InputSchemaJson);
+        using var expectedInput = JsonDocument.Parse(FindPersonSchemas.InputSchemaJson);
         Assert.Equal(
             JsonSerializer.Serialize(expectedInput.RootElement),
             JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
 
-        using var expectedOutput = JsonDocument.Parse(FindPersonTool.OutputSchemaJson);
+        using var expectedOutput = JsonDocument.Parse(FindPersonSchemas.OutputSchemaJson);
         Assert.Equal(
             JsonSerializer.Serialize(expectedOutput.RootElement),
             JsonSerializer.Serialize(tool.ProtocolTool.OutputSchema!.Value));
@@ -537,8 +537,8 @@ public class FindPersonToolTests : IDisposable
     [Fact]
     public void Schemas_DescribeEveryObjectProperty()
     {
-        using var input = JsonDocument.Parse(FindPersonTool.InputSchemaJson);
-        using var output = JsonDocument.Parse(FindPersonTool.OutputSchemaJson);
+        using var input = JsonDocument.Parse(FindPersonSchemas.InputSchemaJson);
+        using var output = JsonDocument.Parse(FindPersonSchemas.OutputSchemaJson);
 
         AssertPropertyDescriptions(input.RootElement, "input");
         AssertPropertyDescriptions(output.RootElement, "output");
@@ -726,7 +726,7 @@ public class FindPersonToolTests : IDisposable
         // validator dependency: every $ref in the document resolves to a
         // $defs entry that actually exists, and every $defs entry the oneOf
         // branches (transitively) reach is present.
-        using var doc = JsonDocument.Parse(FindPersonTool.OutputSchemaJson);
+        using var doc = JsonDocument.Parse(FindPersonSchemas.OutputSchemaJson);
         var defs = doc.RootElement.GetProperty("$defs");
         var defNames = defs.EnumerateObject().Select(p => p.Name).ToHashSet();
 

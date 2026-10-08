@@ -5,7 +5,7 @@ namespace GedFire.Match;
 
 // ---------------------------------------------------------------------------
 // PersonMatcher's domain result. References model objects and xrefs, not
-// DTOs — mapping to the MCP JSON shapes is FindPersonTool's job, not this
+// DTOs — mapping to the MCP JSON shapes is FindPersonResultMapper's job, not this
 // one's. PersonMatchType/SuggestionReason are GedCore.Matching's, kept as
 // a single classifier rather than a duplicate per caller; this file just
 // carries the GedIndividual-typed records that reference them.

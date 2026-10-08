@@ -162,16 +162,9 @@ public static class ChangesetApplier
 
         result.Log.Add($"validation OK ({selectedOps.Count} ops, items {string.Join(",", itemNumbers.OrderBy(n => n))})");
 
-        // Prerequisite fix (see docs/design/plausibility-checker.md): dry-run
-        // performs the identical in-memory Apply sequence as the real path,
-        // on the parsed doc, same as today -- but skips StampChangeDates,
-        // serialization, and OutputBytes. That in-memory (never persisted)
-        // mutation is what gives dry-run the same "after" state the real-apply
-        // path already computes, so validate_changeset reports a new
-        // conformance/plausibility warning exactly like apply_changeset does,
-        // before anything is written. Nothing about the file changes: dry-run
-        // still writes nothing, still needs only read access -- the mutation
-        // happens on doc, discarded when this method returns.
+        // Dry-run runs the same in-memory Apply sequence as the real path but skips
+        // StampChangeDates, serialization, and OutputBytes, so validate_changeset sees the
+        // same "after" state apply_changeset does. The mutation is on doc and is discarded.
         var state = utcNow is { } fixedClock ? new ApplyState(doc) { UtcNow = fixedClock } : new ApplyState(doc);
         try
         {
@@ -444,8 +437,7 @@ public static class ChangesetApplier
     /// Conformance and plausibility diagnostics together, for the before/after
     /// diff gate: <see cref="ConformanceChecker"/> stays conformance-only, but
     /// every call site that diffs it against a baseline gets
-    /// <see cref="PlausibilityChecker"/>'s findings too — see
-    /// docs/design/plausibility-checker.md's Integration section.
+    /// <see cref="PlausibilityChecker"/>'s findings too.
     /// <paramref name="duplicateCheckScope"/> is threaded straight through to
     /// <see cref="PlausibilityChecker.Check"/> to keep GEN301 fast — see this
     /// method's call sites above. <paramref name="cancellationToken"/> is

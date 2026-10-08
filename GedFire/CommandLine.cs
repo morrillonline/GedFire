@@ -69,6 +69,10 @@ public sealed class CommandLine
     public string? Value(string name) =>
         _values.TryGetValue(name, out var v) ? v : null;
 
+    /// <summary>The value of an option the caller has already checked was supplied.</summary>
+    public string Require(string name) =>
+        Value(name) ?? throw new InvalidOperationException($"Option {name} was not supplied.");
+
     /// <summary>Whether a switch was supplied.</summary>
     public bool Has(string name) => _switches.Contains(name);
 }
