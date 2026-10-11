@@ -70,11 +70,68 @@ public class CardScorerTests
     }
 
     [Fact]
-    public void EnrichCardWithoutAGap_ReportsWhy()
+    public void EnrichCardWithAnUnrecognizedGap_ReportsWhy()
     {
-        var preview = CardScorer.Preview([new PointsCard("@I1@", "enrich-person", null, null, 7)], Facts());
+        var preview = CardScorer.Preview([Enrich("enrich-occupation")], Facts());
 
         Assert.Contains("does not name a birth, death, marriage, burial or name fact", Assert.Single(preview.NotClosed).Reason);
+    }
+
+    [Theory]
+    [InlineData("enrich-fact")]
+    [InlineData(null)]
+    public void AGenericEnrichCard_ClosesOnAnyFactAndPricesEachImprovement(string? gap)
+    {
+        var card = new PointsCard("@I1@", "enrich-person", gap, null, 1);
+        var changes = Facts(
+            new FactWrite("@I1@", "DEAT", "1 JAN 1900", "Salem"),
+            new FactWrite("@I1@", "BIRT", null, "Duluth", DateImproved: false, PlaceImproved: true),
+            new FactWrite("@I2@", "DEAT", "1901", null));
+
+        var preview = CardScorer.Preview([card], changes);
+
+        var closed = Assert.Single(preview.Closed);
+        Assert.Equal(3, closed.Points);
+        Assert.Equal("DEAT @I1@ (date and place); BIRT @I1@ (place)", closed.Wrote);
+        Assert.Equal(3, preview.Total);
+    }
+
+    [Fact]
+    public void AGenericEnrichCard_AddsItsDifficultyBonusOnceNotPerImprovement()
+    {
+        var card = new PointsCard("@I1@", "enrich-person", "enrich-fact", null, 1, Bonus: 4);
+        var changes = Facts(new FactWrite("@I1@", "DEAT", "1 JAN 1900", "Salem"), new FactWrite("@I1@", "BIRT", "1850", "Duluth"));
+
+        Assert.Equal(8, Assert.Single(CardScorer.Preview([card], changes).Closed).Points);
+    }
+
+    [Fact]
+    public void AGenericEnrichCard_EarnsNoBonusWhenNothingIsWritten()
+    {
+        var card = new PointsCard("@I1@", "enrich-person", "enrich-fact", null, 1, Bonus: 4);
+
+        var preview = CardScorer.Preview([card], Facts());
+
+        Assert.Empty(preview.Closed);
+        Assert.Equal(0, preview.Total);
+    }
+
+    [Fact]
+    public void ANamedGapCard_IgnoresTheBonusBecauseItsPointsAlreadyIncludeIt()
+    {
+        var card = new PointsCard("@I1@", "enrich-person", "enrich-death", null, 7, Bonus: 4);
+
+        var preview = CardScorer.Preview([card], Facts(new FactWrite("@I1@", "DEAT", "1900", null)));
+
+        Assert.Equal(7, Assert.Single(preview.Closed).Points);
+    }
+
+    [Fact]
+    public void AGenericEnrichCard_StaysOpenWhenNoFactIsWrittenOnTheSubject()
+    {
+        var preview = CardScorer.Preview([Enrich("enrich-fact")], Facts(new FactWrite("@I2@", "DEAT", "1901", null)));
+
+        Assert.Equal("no fact written on the subject", Assert.Single(preview.NotClosed).Reason);
     }
 
     [Fact]

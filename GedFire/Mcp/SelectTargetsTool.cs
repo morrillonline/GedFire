@@ -21,7 +21,9 @@ public sealed class SelectTargetsTool
         "relationship (a missing parent, spouse, or child, or a date or place that is not exact) among the " +
         "people who bear, or are married to someone who bears, one of the given surnames. Returns \"count\" " +
         "targets drawn at random, each with its gap type, difficulty band, points, and the facts needed to " +
-        "start work, including possibleDuplicateOf (the best few people the duplicate test pairs with the target) and possibleDuplicateCount; the " +
+        "start work (an Enrich person target is one card per person: \"enrichments\" lists every birth, " +
+        "marriage and death with an inexact date or place, nominalPoints is one per missing date or place, and " +
+        "the difficulty bonus is added once), including possibleDuplicateOf (the best few people the duplicate test pairs with the target) and possibleDuplicateCount; the " +
         "draw keeps at most one Legendary-band target, so a pack can come up short. This is " +
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
         "never selected.";

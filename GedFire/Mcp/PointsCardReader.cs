@@ -47,7 +47,8 @@ public static class PointsCardReader
             || !ToolArguments.TryReadOptionalString(Property(card, "class"), $"{path}.class", out cls, out error)
             || !ToolArguments.TryReadOptionalString(Property(card, "gap"), $"{path}.gap", out gap, out error)
             || !ToolArguments.TryReadOptionalString(Property(card, "name"), $"{path}.name", out name, out error)
-            || !ToolArguments.TryReadOptionalInt(Property(card, "points"), $"{path}.points", 0, int.MaxValue, -1, out int points, out error))
+            || !ToolArguments.TryReadOptionalInt(Property(card, "points"), $"{path}.points", 0, int.MaxValue, -1, out int points, out error)
+            || !ToolArguments.TryReadOptionalInt(Property(card, "bonus"), $"{path}.bonus", 0, int.MaxValue, 0, out int bonus, out error))
             return false;
 
         if (string.IsNullOrWhiteSpace(xref)) error = $"{path}.xref is required: the card subject's xref such as \"@I00006@\".";
@@ -55,7 +56,7 @@ public static class PointsCardReader
         else if (points < 0) error = $"{path}.points is required: a non-negative integer.";
         if (error is not null) return false;
 
-        read = new PointsCard(xref!.Trim(), cls!.Trim(), gap?.Trim(), name?.Trim(), points);
+        read = new PointsCard(xref!.Trim(), cls!.Trim(), gap?.Trim(), name?.Trim(), points, bonus);
         return true;
     }
 

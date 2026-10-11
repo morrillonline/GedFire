@@ -60,9 +60,7 @@ public static class GapDetector
                 DetectNewParent(person, targets);
             DetectNewSpouse(person, targets);
             DetectNewChild(person, newChildFamiliesSeen, targets);
-            DetectEnrichBirth(person, targets);
-            DetectEnrichDeath(person, targets);
-            DetectEnrichMarriages(person, marriageEnrichFamiliesSeen, targets);
+            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets);
         }
 
         return targets;
@@ -179,54 +177,51 @@ public static class GapDetector
     }
 
     // -------------------------------------------------------------------
-    // Enrich person — birth/marriage/death date or place not exact.
-    // Geography always keys off the subject's own birth place, even when
-    // enriching a different fact.
+    // Enrich person — one card per person listing every birth, marriage and
+    // death whose date or place is not exact. Each missing part is a point;
+    // the difficulty bonus is added once. Geography keys off the subject's
+    // own birth place.
     // -------------------------------------------------------------------
 
-    static void DetectEnrichBirth(GedIndividual person, List<SelectionTarget> targets)
+    static void DetectEnrichPerson(GedIndividual person, HashSet<string> familiesSeen, List<SelectionTarget> targets)
     {
-        AddEnrichmentIfInexact(person, "Birth", person.Birth?.Date, person.Birth?.Place, targets);
-    }
-
-    static void DetectEnrichDeath(GedIndividual person, List<SelectionTarget> targets)
-    {
-        AddEnrichmentIfInexact(person, "Death", person.Death?.Date, person.Death?.Place, targets);
-    }
-
-    static void DetectEnrichMarriages(GedIndividual person, HashSet<string> familiesSeen, List<SelectionTarget> targets)
-    {
-        foreach (var fam in person.FamSpouse)
-        {
-            if (!familiesSeen.Add(fam.Xref)) continue;
+        var facts = new List<EnrichmentEntry>();
+        AddIfInexact(facts, "Birth", person.Birth?.Date, person.Birth?.Place);
+        AddIfInexact(facts, "Death", person.Death?.Date, person.Death?.Place);
+        foreach (var fam in person.FamSpouse.Where(f => familiesSeen.Add(f.Xref)))
             // A missing MARR record (fam.Marriage null) still counts as "not
             // exact" because both date and place are absent.
-            AddEnrichmentIfInexact(person, "Marriage", fam.Marriage?.Date, fam.Marriage?.Place, targets);
-        }
+            AddIfInexact(facts, "Marriage", fam.Marriage?.Date, fam.Marriage?.Place);
+        if (facts.Count == 0) return;
+
+        int nominal = facts.Sum(f => (f.MissingDate ? 1 : 0) + (f.MissingPlace ? 1 : 0));
+        var difficulty = DifficultyScore.Compute(
+            EraWeightForDate(EarliestDate(person, facts)),
+            ExactnessRules.GeographyWeight(person.Birth?.Place),
+            contextAdjustment: 0); // anchor strength does not apply to Enrich person
+
+        targets.Add(BuildTarget(person, CardType.EnrichPerson, nominal, difficulty, enrichments: facts));
     }
 
-    static void AddEnrichmentIfInexact(GedIndividual person, string fact, string? date, string? place, List<SelectionTarget> targets)
+    static void AddIfInexact(List<EnrichmentEntry> facts, string fact, string? date, string? place)
     {
         bool missingDate = !ExactnessRules.IsExactDate(date);
         bool missingPlace = !ExactnessRules.IsExactPlace(place);
         if (!missingDate && !missingPlace) return;
 
-        int nominal = (missingDate ? 1 : 0) + (missingPlace ? 1 : 0);
-        var difficulty = DifficultyScore.Compute(
-            EraWeightForDate(date),
-            ExactnessRules.GeographyWeight(person.Birth?.Place),
-            contextAdjustment: 0); // anchor strength does not apply to Enrich person
-
-        targets.Add(BuildTarget(person, CardType.EnrichPerson, nominal, difficulty,
-            enrichment: new EnrichmentEntry
-            {
-                Fact = fact,
-                CurrentDate = NullIfEmpty(date),
-                CurrentPlace = NullIfEmpty(place),
-                MissingDate = missingDate,
-                MissingPlace = missingPlace,
-            }));
+        facts.Add(new EnrichmentEntry
+        {
+            Fact = fact,
+            CurrentDate = NullIfEmpty(date),
+            CurrentPlace = NullIfEmpty(place),
+            MissingDate = missingDate,
+            MissingPlace = missingPlace,
+        });
     }
+
+    // The era of the person's own birth, else of the first listed fact that has a date.
+    static string? EarliestDate(GedIndividual person, List<EnrichmentEntry> facts) =>
+        NullIfEmpty(person.Birth?.Date) ?? facts.Select(f => f.CurrentDate).FirstOrDefault(d => d is not null);
 
     // -------------------------------------------------------------------
     // Shared helpers
@@ -243,7 +238,7 @@ public static class GapDetector
 
     static SelectionTarget BuildTarget(
         GedIndividual person, CardType cardType, int nominalPoints, DifficultyScore difficulty,
-        KnownParentEntry? knownParent = null, SpouseFamilyEntry? spouseFamily = null, EnrichmentEntry? enrichment = null) =>
+        KnownParentEntry? knownParent = null, SpouseFamilyEntry? spouseFamily = null, IReadOnlyList<EnrichmentEntry>? enrichments = null) =>
         new()
         {
             Xref = person.Xref,
@@ -263,7 +258,7 @@ public static class GapDetector
             Score = nominalPoints + difficulty.Bonus,
             KnownParent = knownParent,
             SpouseFamily = spouseFamily,
-            Enrichment = enrichment,
+            Enrichments = enrichments,
         };
 
     static string DisplayName(GedIndividual p) => (p.FirstMiddle() + " " + p.LastName).Trim();
