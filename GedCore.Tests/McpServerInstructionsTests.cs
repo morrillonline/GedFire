@@ -25,6 +25,16 @@ public class McpServerInstructionsTests
     }
 
     [Fact]
+    public void Policy_AddsTheEnforcementNotice()
+    {
+        string withPolicy = McpServerInstructions.Build(readOnly: false, enforcePrivacy: false, hasPolicy: true);
+        string without = McpServerInstructions.Build(readOnly: false, enforcePrivacy: false);
+
+        Assert.Contains("policy file", withPolicy);
+        Assert.DoesNotContain("policy file", without);
+    }
+
+    [Fact]
     public void EnforcePrivacy_AddsThePlaceholderNotice()
     {
         string text = McpServerInstructions.Build(readOnly: false, enforcePrivacy: true);
@@ -42,7 +52,7 @@ public class McpServerInstructionsTests
         {
             "date_calc", "find_family", "find_person", "find_source", "get_document_stats", "get_record",
             "get_records", "list_people", "list_unanchored_people", "select_targets",
-            "describe_changeset_ops", "validate_changeset", "validate_document", "check_plausibility",
+            "describe_changeset_ops", "draft_changeset", "validate_changeset", "validate_document", "check_plausibility",
         })
             Assert.Contains(tool, text);
     }

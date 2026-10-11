@@ -17,7 +17,7 @@ public static class McpServerInstructions
         "meaningless to any other document or provider. date_calc, find_family, find_person, find_source, " +
         "get_document_stats, get_record, get_records, list_people, " +
         "list_unanchored_people, select_targets, " +
-        "describe_changeset_ops, validate_changeset, validate_document, and check_plausibility never modify " +
+        "describe_changeset_ops, draft_changeset, validate_changeset, validate_document, and check_plausibility never modify " +
         "that file. apply_changeset is the only tool that writes to it, and only after validation and " +
         "in-memory verification both pass; call validate_changeset first with the same arguments to preview a " +
         "changeset without writing. check_plausibility runs that same preview and returns just the " +
@@ -35,9 +35,14 @@ public static class McpServerInstructions
         " This server was started with --read-only: every call to apply_changeset is refused. " +
         "validate_changeset remains available to preview changesets.";
 
-    public static string Build(bool readOnly, bool enforcePrivacy)
+    const string PolicyNotice =
+        " This server was started with a policy file: validate_changeset reports every violation of it as an " +
+        "error, and apply_changeset refuses a changeset that violates it, so fix violations at the dry run.";
+
+    public static string Build(bool readOnly, bool enforcePrivacy, bool hasPolicy = false)
     {
         string instructions = Base;
+        if (hasPolicy) instructions += PolicyNotice;
         if (readOnly) instructions += ReadOnlyNotice;
         if (enforcePrivacy) instructions += EnforcePrivacyNotice();
         return instructions;
