@@ -1,5 +1,6 @@
 using GedCore;
 using GedCore.Matching;
+using GedCore.Policy;
 using GedFire.Gen;
 using GedFire.Mcp;
 using ModelContextProtocol.Protocol;
@@ -12,9 +13,9 @@ public sealed class McpCommand : OptionCommand
 {
     public override string Name => "mcp";
 
-    protected override string Usage => "Usage: gedfire mcp --input <ged> [--read-only] [--enforce-privacy]";
+    protected override string Usage => "Usage: gedfire mcp --input <ged> [--policy <json>] [--read-only] [--enforce-privacy]";
 
-    protected override IReadOnlyCollection<string> ValueOptions => ["--input"];
+    protected override IReadOnlyCollection<string> ValueOptions => ["--input", "--policy"];
 
     protected override IReadOnlyCollection<string> RequiredOptions => ["--input"];
 
@@ -26,6 +27,8 @@ public sealed class McpCommand : OptionCommand
         bool readOnly = commandLine.Has("--read-only");
         bool enforcePrivacy = commandLine.Has("--enforce-privacy");
         if (context.FileMissing(input)) return 1;
+        string? policyPath = commandLine.Value("--policy");
+        if (policyPath is not null && context.FileMissing(policyPath)) return 1;
 
         string absoluteInput = Path.GetFullPath(input);
         NicknameDirectory nicknames;
@@ -40,12 +43,26 @@ public sealed class McpCommand : OptionCommand
             return context.Fail($"Failed to start MCP server: {ex.Message}");
         }
 
+        ChangesetPolicy? policy = null;
+        if (policyPath is not null)
+        {
+            try
+            {
+                using var policyStream = File.OpenRead(policyPath);
+                policy = ChangesetPolicy.Load(policyStream);
+            }
+            catch (Exception ex) when (ex is FormatException or IOException or UnauthorizedAccessException)
+            {
+                return context.Fail($"Failed to load policy {policyPath}: {ex.Message}");
+            }
+        }
+
         var session = new DocumentSession(absoluteInput, initialSnapshot, enforcePrivacy);
         await using var watcher = new DocumentFileWatcher(session, absoluteInput);
         var tools = McpToolCollectionFactory.Create(
-            session, new ToolGate(), nicknames, absoluteInput, MediaDirectory.For(absoluteInput), readOnly);
+            session, new ToolGate(), nicknames, absoluteInput, MediaDirectory.For(absoluteInput), readOnly, policy);
 
-        await RunServerAsync(tools, McpServerInstructions.Build(readOnly, enforcePrivacy)).ConfigureAwait(false);
+        await RunServerAsync(tools, McpServerInstructions.Build(readOnly, enforcePrivacy, policy is not null)).ConfigureAwait(false);
         return 0;
     }
 

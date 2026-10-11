@@ -84,11 +84,12 @@ command = "gedfire"
 args = ["mcp", "--input", "/absolute/path/to/family.ged"]
 ```
 
-Two optional flags follow `--input` in `args` (or after `--input <path>` on
+Three optional flags follow `--input` in `args` (or after `--input <path>` on
 the `claude mcp add` / TOML command lines above):
 
 | Flag | Effect |
 |---|---|
+| `--policy <json>` | Enforce a [policy file](#changeset-policy-file) on every changeset: `validate_changeset` reports each violation as an error at the dry run, and `apply_changeset` refuses a changeset that has any. |
 | `--read-only` | Disable `apply_changeset`: every call to it is refused with an error, and the bound file is never written. `validate_changeset` and every other (already read-only) tool stay available — an agent can still preview changesets, it just can't apply them. Use this for a client you trust to look and propose, but not to write, even after review. |
 | `--enforce-privacy` | Run every tool's view of the document through the same privacy filter `generate` applies before publishing a site: individuals with an RESN of CONFIDENTIAL or PRIVACY, and individuals plausibly still living (no death-class fact, born within the last 100 years), are reduced to a "Living \<Surname\>" placeholder — no dates, places, notes, or media. Use this when the MCP client is one you don't want seeing the living branches of the file. |
 
@@ -102,7 +103,7 @@ Restart or reload the client after changing its configuration, approve the
 local server if prompted, and confirm that it discovers `find_person`,
 `date_calc`, `get_document_stats`, `get_record`, `get_records`, `list_people`,
 `list_unanchored_people`, `find_family`, `select_targets`,
-`find_source`, `describe_changeset_ops`, `validate_changeset`,
+`find_source`, `describe_changeset_ops`, `draft_changeset`, `validate_changeset`,
 `check_plausibility`, `validate_document`, and `apply_changeset`.
 
 A call with a missing required parameter or an unrecognized one is refused for
@@ -113,10 +114,11 @@ parameter "nme". Accepted parameters: query (required), hints, maxResults.`
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
-The server binds to one document over stdio and exposes fifteen tools. Fourteen
+The server binds to one document over stdio and exposes sixteen tools. Fourteen
 are read-only; `apply_changeset` is the only one that writes to the file,
 and only after validation and in-memory verification both pass (or not at
-all, if the server was started with `--read-only`). The server also watches
+all, if the server was started with `--read-only`); `draft_changeset` never
+touches the file either, but with `outPath` it creates a new changeset file. The server also watches
 the bound file and reloads automatically if it changes on disk — including
 a change `apply_changeset` itself just wrote — no restart needed:
 
@@ -134,7 +136,8 @@ a change `apply_changeset` itself just wrote — no restart needed:
 | `select_targets` | The `gedfire select-targets` command as a tool: detect research gaps for the given surnames and draw `count` targets, returned as the `wanted.json` document without the GEDCOM path. Each target lists `possibleDuplicateOf`: the people the `check_plausibility` GEN301 duplicate test pairs with it (`[]` when none); at most three are listed, best first, and `possibleDuplicateCount` gives the full number; such a target is still drawn. A person with an Unknown name part is paired only through an agreeing parent or spouse name. Seeded from the clock, like the command. |
 | `describe_changeset_ops` | Return the changeset envelope shape and the full v2 op dialect (every `createOrUpdate`/`delete`/`merge` op, its required and optional fields, and one worked example) — so an agent can compose a valid changeset without external documentation or trial-and-error against `validate_changeset`'s error text. Takes no arguments. |
 | `check_plausibility` | Preview a proposal changeset and return only the chronological and biological plausibility findings it would introduce, structured for routing by severity. Name characters are checked too: digits and symbols (other than apostrophe, hyphen and period) are errors that block a changeset, an ordinal suffix such as `3rd` is allowed, and punctuation standing in for a name (`----`) is a warning to use `Unknown`. Always available, even under `--read-only`. |
-| `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but nothing is written. Always available, even under `--read-only`. |
+| `draft_changeset` | Compile findings into a changeset in the op dialect (see [Drafting a changeset](#drafting-a-changeset)). Reuses an existing source or mints one per collection, merges each (source, page, grade) group's extracts into one `dataText`, copies the locator verbatim into the citation page, adds a verification note for every fact graded at or below the policy ceiling, and refuses a QUAY the source and information class cannot support, a target name that differs from the recorded one, and prose the policy bans. Returns the changeset, a `decisions` list, and `errors`; `outPath` writes it to a new file, never overwriting one. |
+| `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but nothing is written. Policy violations are reported as errors. Pass `cards` to get a `pointsPreview` (see [Points preview](#points-preview)). Always available, even under `--read-only`. |
 | `validate_document` | Run the same GEDCOM 7 conformance checks as `gedfire validate` against the whole bound document — independent of any changeset — and return the findings structured instead of as plain-text lines. Optional `warningsAsErrors` mirrors the CLI flag. Always available, even under `--read-only`. |
 | `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. Refuses to run under `--read-only`. |
 
@@ -145,6 +148,50 @@ starting a server. `validate_changeset` and `apply_changeset` mirror the
 CLI's own `apply --dry-run` and `apply`, and `validate_document` mirrors
 `validate`, described under "Command reference" below, rather than having
 a same-named CLI counterpart of their own.
+
+### Changeset policy file
+
+`--policy <json>` loads editorial rules the server enforces on every changeset.
+Every key is optional, an absent rule is not enforced, and an unknown key stops
+the server from starting. [`docs/policy.example.json`](docs/policy.example.json)
+shows all four:
+
+| Key | Rule |
+|---|---|
+| `bannedPhrases` | Case-insensitive phrases that may not appear in note text or a citation page. |
+| `bannedPatterns` | Regular expressions that may not match note text or a citation page (for example, record ids such as `@S00123@`). |
+| `verificationNote` | `{"maxQuay": 1, "notePrefix": "needs independent verification:"}`. Every record that receives a fact cited at `maxQuay` or lower must be named by a note containing the prefix: a note on that record, a note naming the person's given name, or for a marriage a note mentioning marriage. |
+| `deathPlaceEvidence` | A regular expression. A `DEAT` fact with a place needs a citation whose page or `dataText` matches it, so a burial record alone cannot supply a death place. |
+
+Violations read `policy: item 2: ...`. Only the selected items are checked.
+
+### Points preview
+
+`validate_changeset` takes an optional `cards` array, each
+`{"xref", "class", "gap"?, "name"?, "points"}`, where `class` is
+`enrich-person`, `new-parent`, `new-spouse` or `new-child` (a `select_targets`
+card type) and `gap` is `enrich-birth`, `enrich-death` or `enrich-marriage`,
+optionally ending in `-date` or `-place`. The result then carries
+`pointsPreview`, found by diffing the touched records before and after:
+
+- `closed`: cards the changeset closes, each with the `wrote` fact or relationship. An enrich card closes only when the fact it names (and a date or place, if the gap says so) is written on the subject; a new card closes only when the subject's family gains that relative. A citation alone, or a restated identical fact, writes nothing.
+- `notClosed`: the other cards, each with a `reason` such as `no DEAT place written on the subject (wrote BURI)`.
+- `subjectMismatch`: cards left open by a name that differs. For an enrich card, the changeset renamed the subject. For a new-parent, new-spouse or new-child card, `name` is the person to mint, and a person the changeset creates under it must carry that name exactly (case and spelling), so a one-letter drift keeps the card open.
+- `total`: the closed cards' points.
+
+### Drafting a changeset
+
+`draft_changeset` takes `findings`, each with an `id`, `extract`, `source`
+(`name`, `locator`, `class`, `information`, optional `author`, `url`,
+`accessed`), `target` (`xref`, optional `card`, `name`), `facts`
+(`record`, `fact`, optional `date` and `place`, a per-fact `quay`, optional
+`excerpt`, `class`, `information`) and optional `notes`. The values and grades
+are yours; the compiler does the rest the same way every time. Findings with
+the same target become one item, and one source record is made per collection
+and author. The QUAY ceiling follows the source class and information class:
+original or image copy 3 for primary information and 2 otherwise, derivative 2
+for primary and 1 otherwise, authored 1, user-contributed 0. Unrecognized
+fields are rejected by path.
 
 For example, an MCP client can call `find_person` with:
 

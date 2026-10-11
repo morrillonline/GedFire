@@ -1,4 +1,5 @@
 using GedCore.Matching;
+using GedCore.Policy;
 using ModelContextProtocol.Server;
 
 namespace GedFire.Mcp;
@@ -14,12 +15,13 @@ public static class McpToolCollectionFactory
 {
     public static McpServerPrimitiveCollection<McpServerTool> Create(
         DocumentSession session, ToolGate gate, NicknameDirectory nicknames,
-        string documentPath, string mediaDirectory, bool readOnly) =>
+        string documentPath, string mediaDirectory, bool readOnly, ChangesetPolicy? policy = null) =>
     [
-        new ApplyChangesetTool(documentPath, gate, readOnly).ToMcpServerTool(),
+        new ApplyChangesetTool(documentPath, gate, readOnly, policy).ToMcpServerTool(),
         new CheckPlausibilityTool(documentPath, gate).ToMcpServerTool(),
         new DateCalcTool(gate).ToMcpServerTool(),
         new DescribeChangesetOpsTool(gate).ToMcpServerTool(),
+        new DraftChangesetTool(session, gate, policy).ToMcpServerTool(),
         new FindFamilyTool(session, gate, nicknames).ToMcpServerTool(),
         new FindPersonTool(session, gate, nicknames).ToMcpServerTool(),
         new FindSourceTool(session, gate).ToMcpServerTool(),
@@ -29,7 +31,7 @@ public static class McpToolCollectionFactory
         new ListPeopleTool(session, gate).ToMcpServerTool(),
         new ListUnanchoredPeopleTool(session, gate).ToMcpServerTool(),
         new SelectTargetsTool(session, gate).ToMcpServerTool(),
-        new ValidateChangesetTool(documentPath, gate).ToMcpServerTool(),
+        new ValidateChangesetTool(documentPath, gate, policy).ToMcpServerTool(),
         new ValidateDocumentTool(documentPath, gate).ToMcpServerTool(),
     ];
 }

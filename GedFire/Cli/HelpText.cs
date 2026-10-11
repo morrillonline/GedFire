@@ -50,7 +50,7 @@ public static class HelpText
                         Extract a GEDZIP archive's gedcom.ged and media files
                         into a directory.
 
-          mcp       --input <ged> [--read-only] [--enforce-privacy]
+          mcp       --input <ged> [--policy <json>] [--read-only] [--enforce-privacy]
                         Start a stdio Model Context Protocol server exposing
                         this GEDCOM to MCP-compatible agent clients. Resident
                         process: stays running until stdin closes. Every tool

@@ -105,7 +105,7 @@ public class McpServerIntegrationTests : IDisposable
 
         var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Equal(15, tools.GetArrayLength());
+        Assert.Equal(16, tools.GetArrayLength());
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
@@ -114,24 +114,26 @@ public class McpServerIntegrationTests : IDisposable
         // membership is asserted.
         Assert.Equal(
             new HashSet<string> {
-                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "find_family", "find_person", "find_source",
+                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "draft_changeset", "find_family", "find_person", "find_source",
                 "get_document_stats", "get_record", "get_records", "list_people", "list_unanchored_people", "select_targets",
                 "validate_changeset", "validate_document",
             },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
 
         // apply_changeset is the one tool on this server that writes to the
-        // file, so it alone carries the opposite annotations; every other
-        // tool — including validate_changeset, its dry-run twin — is
-        // read-only, non-destructive, and idempotent.
+        // file, so it alone is destructive. draft_changeset can create a new
+        // changeset file (never overwriting one), so it is neither read-only
+        // nor destructive. Every other tool — including validate_changeset,
+        // its dry-run twin — is read-only, non-destructive, and idempotent.
         foreach (var tool in tools.EnumerateArray())
         {
             string name = tool.GetProperty("name").GetString()!;
             bool isApply = name == "apply_changeset";
+            bool isDraft = name == "draft_changeset";
             var annotations = tool.GetProperty("annotations");
-            Assert.Equal(!isApply, annotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.Equal(!isApply && !isDraft, annotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.Equal(isApply, annotations.GetProperty("destructiveHint").GetBoolean());
-            Assert.Equal(!isApply && name != "select_targets", annotations.GetProperty("idempotentHint").GetBoolean());
+            Assert.Equal(!isApply && !isDraft && name != "select_targets", annotations.GetProperty("idempotentHint").GetBoolean());
             Assert.Equal("object", tool.GetProperty("inputSchema").GetProperty("type").GetString());
             Assert.True(tool.TryGetProperty("outputSchema", out _));
         }
@@ -801,6 +803,68 @@ public class McpServerIntegrationTests : IDisposable
         var structured = response.GetProperty("result").GetProperty("structuredContent");
         Assert.True(structured.GetProperty("success").GetBoolean());
         Assert.Equal(before, File.ReadAllBytes(gedPath));
+    }
+
+    string WritePolicy(string json)
+    {
+        string path = Path.Combine(_dir, "policy.json");
+        File.WriteAllText(path, json);
+        return path;
+    }
+
+    [Fact]
+    public async Task PolicyFile_ThatIsMalformed_Exits1WithEmptyStdout()
+    {
+        string policy = WritePolicy("""{ "bannedPhrase": [] }""");
+
+        var (exitCode, stdout, stderr) = await McpStdioTestClient.RunToCompletionAsync(
+            ShortTimeout, "mcp", "--input", WriteGed(), "--policy", policy);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("", stdout);
+        Assert.Contains("unknown key \"bannedPhrase\"", stderr);
+    }
+
+    [Fact]
+    public async Task ToolsCall_ValidateChangeset_UnderAPolicy_ReportsTheViolation()
+    {
+        string gedPath = WriteGed();
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        string policy = WritePolicy("""{ "bannedPhrases": ["a note"] }""");
+        await using var client = McpStdioTestClient.Start(gedPath, "--policy", policy);
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "validate_changeset",
+            arguments = new { changesetPath, items = "all" },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.False(structured.GetProperty("success").GetBoolean());
+        Assert.Contains("banned phrase", structured.GetProperty("errors")[0].GetString());
+    }
+
+    [Fact]
+    public async Task ToolsCall_ValidateChangeset_WithCards_ReturnsAPointsPreview()
+    {
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        await using var client = McpStdioTestClient.Start(WriteGed());
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "validate_changeset",
+            arguments = new
+            {
+                changesetPath, items = "all",
+                cards = new[] { new { xref = "@I1@", @class = "enrich-person", gap = "enrich-death", points = 7 } },
+            },
+        }, ShortTimeout);
+
+        var preview = response.GetProperty("result").GetProperty("structuredContent").GetProperty("pointsPreview");
+        Assert.Equal(0, preview.GetProperty("total").GetInt32());
+        Assert.Single(preview.GetProperty("notClosed").EnumerateArray());
     }
 
     [Fact]

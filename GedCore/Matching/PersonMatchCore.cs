@@ -82,7 +82,7 @@ public sealed class PersonMatchCore
     // Evidence weights.
     const double SurnameWeight = 35.0;
     const double GivenWeight = 25.0;
-    const double GivenNicknameFixedPoints = 20.0;
+    const double GivenNicknameFixedPoints = 24.0;
     const double EventYearWeight = 15.0;
     const double EventPlaceWeight = 15.0;
     const double ParentNameWeight = 20.0;

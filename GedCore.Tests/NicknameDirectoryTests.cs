@@ -117,4 +117,19 @@ public class NicknameDirectoryTests
         // An exact-name pair with no documented relationship at all.
         Assert.False(dir.AreEquivalent("Fred", "William", isMale: true));
     }
+
+    [Theory]
+    [InlineData("Sally", "Sarah")]
+    [InlineData("Sadie", "Sarah")]
+    [InlineData("Polly", "Mary")]
+    [InlineData("Peggy", "Margaret")]
+    [InlineData("Hetty", "Hester")]
+    public void LoadEmbedded_RecognizesPeriodFemaleNicknames(string nickname, string formal)
+    {
+        var dir = NicknameDirectory.LoadEmbedded();
+
+        Assert.True(dir.AreEquivalent(nickname, formal, isMale: false));
+        Assert.True(dir.AreEquivalent(formal, nickname, isMale: null));
+        Assert.False(dir.AreEquivalent(nickname, formal, isMale: true));
+    }
 }

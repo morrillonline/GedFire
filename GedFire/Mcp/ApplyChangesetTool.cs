@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore.Policy;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -24,17 +25,20 @@ public sealed class ApplyChangesetTool
         "it to an in-memory copy, verify the result (byte-stable round-trip, pointer resolution, record-count " +
         "deltas, no newly created source left uncited), and only then write the file -- there is no window " +
         "where a bad state exists on disk. Call validate_changeset first with the same arguments to preview " +
-        "without writing. Refuses to run at all when this server was started with --read-only.";
+        "without writing. Refuses to run at all when this server was started with --read-only, and refuses a " +
+        "changeset that violates the server's policy file.";
 
-    public const string InputSchemaJson = ChangesetToolSupport.InputSchemaJson;
-    public const string OutputSchemaJson = ChangesetToolSupport.OutputSchemaJson;
+    public const string InputSchemaJson = ChangesetToolSchemas.InputSchemaJson;
+    public const string OutputSchemaJson = ChangesetToolSchemas.OutputSchemaJson;
 
     readonly string _absoluteGedcomPath;
     readonly ToolGate _gate;
     readonly bool _readOnly;
+    readonly ChangesetPolicy? _policy;
 
-    public ApplyChangesetTool(string absoluteGedcomPath, ToolGate gate, bool readOnly)
+    public ApplyChangesetTool(string absoluteGedcomPath, ToolGate gate, bool readOnly, ChangesetPolicy? policy = null)
     {
+        _policy = policy;
         if (string.IsNullOrEmpty(absoluteGedcomPath)) throw new ArgumentException("Path must not be empty.", nameof(absoluteGedcomPath));
         _absoluteGedcomPath = absoluteGedcomPath;
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
@@ -66,6 +70,7 @@ public sealed class ApplyChangesetTool
                 "This server was started with --read-only: apply_changeset is disabled. Restart `gedfire mcp` " +
                 "without --read-only to enable it, or use validate_changeset to preview the same changeset.");
 
-        return ChangesetToolSupport.Execute(_absoluteGedcomPath, changesetPath, items, dryRun: false, cancellationToken);
+        return ChangesetToolSupport.Execute(
+            _absoluteGedcomPath, changesetPath, items, dryRun: false, cancellationToken, _policy);
     }
 }

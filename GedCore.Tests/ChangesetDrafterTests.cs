@@ -1,0 +1,359 @@
+using System.Text;
+using System.Text.Json;
+using GedCore.Drafting;
+using GedCore.Policy;
+
+namespace GedCore.Tests;
+
+public class ChangesetDrafterTests
+{
+    sealed class FakeLookup(
+        Dictionary<string, string>? sources = null, Dictionary<string, string>? names = null,
+        Dictionary<string, ExistingCitation[]>? citations = null, Dictionary<string, string[]>? notes = null) : IDraftLookup
+    {
+        public IReadOnlyList<ExistingCitation> CitationsOn(string record, string tag) =>
+            citations?.GetValueOrDefault($"{record}|{tag}") ?? [];
+        public IReadOnlyList<string> NotesOn(string record) => notes?.GetValueOrDefault(record) ?? [];
+        public string? FindSource(string title, string? author) => sources?.GetValueOrDefault(title);
+        public string? PersonName(string xref) => names?.GetValueOrDefault(xref);
+    }
+
+    static DraftSource Memorial(string locator = "Memorial #1", string? url = null, string cls = "derivative", string info = "primary") =>
+        new("Find a Grave", null, url, locator, null, cls, info);
+
+    static DraftFact Fact(string tag, string? date, string? place, int quay, string record = "@I1@", string? excerpt = null) =>
+        new(record, tag, date, place, quay, null, null, excerpt);
+
+    static DraftFinding Finding(
+        string id, DraftSource source, string extract, IReadOnlyList<DraftFact> facts,
+        string xref = "@I1@", string? card = "enrich-death", string? name = null, IReadOnlyList<DraftNote>? notes = null) =>
+        new(id, source, extract, new DraftTarget(xref, card, name), facts, notes ?? []);
+
+    static JsonElement Json(DraftResult result) => JsonDocument.Parse(result.Changeset!.ToJsonString()).RootElement;
+
+    static JsonElement[] Ops(DraftResult result) =>
+        [.. Json(result).GetProperty("items").EnumerateArray().SelectMany(i => i.GetProperty("ops").EnumerateArray())];
+
+    // ---- sources ----
+
+    [Fact]
+    public void ACollectionNotInTheDocument_IsMintedOnceForEveryFinding()
+    {
+        var findings = new[]
+        {
+            Finding("F-1", Memorial("Memorial #1"), "extract one", [Fact("DEAT", "1 JAN 1900", "Salem", 2)], xref: "@I1@"),
+            Finding("F-2", Memorial("Memorial #2"), "extract two", [Fact("BURI", null, "Salem Cemetery", 2, "@I2@")], xref: "@I2@"),
+        };
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(findings);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var groups = Json(result).GetProperty("newSources");
+        Assert.Equal(1, groups.GetArrayLength());
+        Assert.Equal("@NewSource1@", groups[0].GetProperty("xref").GetString());
+        Assert.All(Ops(result).Where(o => o.GetProperty("op").GetString() == "createOrUpdateVital"),
+            o => Assert.Equal("@NewSource1@", o.GetProperty("citation").GetProperty("source").GetString()));
+        Assert.Single(result.Decisions, d => d.Kind == "minted-source");
+    }
+
+    [Fact]
+    public void AnExistingSource_IsCitedAndNothingIsMinted()
+    {
+        var lookup = new FakeLookup(sources: new() { ["Find a Grave"] = "@S00007@" });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)])]);
+
+        Assert.False(Json(result).TryGetProperty("newSources", out _));
+        Assert.Equal("@S00007@", Ops(result)[0].GetProperty("citation").GetProperty("source").GetString());
+        Assert.Single(result.Decisions, d => d.Kind == "reused-source" && d.Detail.Contains("@S00007@"));
+    }
+
+    [Fact]
+    public void TheSourceUrl_IsWrittenOnlyWhenEveryFindingAgrees()
+    {
+        var agreeing = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial(url: "https://example.org/fg"), "x", [Fact("DEAT", "1900", null, 2)]),
+            Finding("F-2", Memorial(url: "https://example.org/fg"), "y", [Fact("BURI", null, "Salem", 2, "@I2@")], xref: "@I2@")]);
+        var differing = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial(url: "https://example.org/1"), "x", [Fact("DEAT", "1900", null, 2)]),
+            Finding("F-2", Memorial(url: "https://example.org/2"), "y", [Fact("BURI", null, "Salem", 2, "@I2@")], xref: "@I2@")]);
+
+        string Source(DraftResult r) => Json(r).GetProperty("newSources")[0].GetProperty("ops")[0].GetRawText();
+        Assert.Contains("https://example.org/fg", Source(agreeing));
+        Assert.DoesNotContain("https://example.org", Source(differing));
+        Assert.Contains(differing.Decisions, d => d.Kind == "open" && d.Detail.Contains("url"));
+    }
+
+    // ---- citations ----
+
+    [Fact]
+    public void TheLocator_IsCopiedVerbatimIntoThePage()
+    {
+        string locator = "Memorial #108658590, Knox Lutheran Cemetery, Knox, Benson County, North Dakota (created by contributor 'High Plains')";
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(locator), "x", [Fact("DEAT", "26 MAR 2013", null, 2)])]);
+
+        Assert.Equal(locator, Ops(result)[0].GetProperty("citation").GetProperty("page").GetString());
+    }
+
+    [Fact]
+    public void FactsCitingTheSamePageAndGrade_ShareOneMergedDataText()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial(), "whole extract", [
+                Fact("DEAT", "1 JAN 1900", null, 2, excerpt: "DEATH 1 Jan 1900"),
+                Fact("BURI", null, "Salem Cemetery", 2, excerpt: "BURIAL Salem Cemetery")])]);
+
+        var citations = Ops(result).Select(o => o.GetProperty("citation").GetProperty("dataText").GetString()).ToList();
+        Assert.Equal(2, citations.Count);
+        Assert.All(citations, t => Assert.Equal("DEATH 1 Jan 1900 … BURIAL Salem Cemetery", t));
+        Assert.Single(result.Decisions, d => d.Kind == "merged-citation");
+    }
+
+    [Fact]
+    public void FactsAtDifferentGrades_KeepSeparateCitations()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial(), "whole extract", [
+                Fact("DEAT", "1 JAN 1900", null, 2, excerpt: "DEATH 1 Jan 1900"),
+                Fact("BIRT", "1 JAN 1850", null, 1, excerpt: "BIRTH 1 Jan 1850")])]);
+
+        var vitals = Ops(result).Where(o => o.GetProperty("op").GetString() == "createOrUpdateVital").ToList();
+        Assert.Equal(["DEATH 1 Jan 1900", "BIRTH 1 Jan 1850"],
+            vitals.Select(v => v.GetProperty("citation").GetProperty("dataText").GetString()));
+    }
+
+    [Fact]
+    public void DatesAreWrittenInUppercaseGedcomForm()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "26 Mar 2013", null, 2)])]);
+
+        Assert.Equal("26 MAR 2013", Ops(result)[0].GetProperty("value").GetProperty("date").GetString());
+    }
+
+    [Fact]
+    public void TheSameFactFromTwoFindings_BecomesOneOpWithBothCitations()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)]),
+            Finding("F-2", new DraftSource("County Register", null, null, "p. 4", null, "original", "primary"), "y",
+                [Fact("DEAT", "1 JAN 1900", "Salem", 3)])]);
+
+        var vital = Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateVital");
+        Assert.Equal(2, vital.GetProperty("citations").GetArrayLength());
+    }
+
+    [Fact]
+    public void ConflictingValuesForOneFact_AreLeftOpenNotGuessed()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1 JAN 1900", null, 2)]),
+            Finding("F-2", Memorial("Memorial #2"), "y", [Fact("DEAT", "2 JAN 1900", null, 2)])]);
+
+        Assert.DoesNotContain(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateVital");
+        Assert.Single(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("2 different values"));
+    }
+
+    // ---- verification notes ----
+
+    [Fact]
+    public void ALowGradedFact_GetsAVerificationNoteNamingIt()
+    {
+        var lookup = new FakeLookup(names: new() { ["@I1@"] = "Gladys Giedd" });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Memorial(info: "secondary"), "x", [Fact("BIRT", "1924", null, 1)])]);
+
+        var note = Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+        Assert.Equal("@I1@", note.GetProperty("record").GetString());
+        Assert.Equal(
+            "Needs independent verification: the birth of Gladys Giedd rests on Find a Grave (secondary information) alone and has not yet been confirmed by a second source.",
+            note.GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public void AHighGradedFact_GetsNoNote()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1900", null, 2)])]);
+
+        Assert.DoesNotContain(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+    }
+
+    [Fact]
+    public void AnAuthorsOwnVerificationNote_IsNotDuplicated()
+    {
+        var notes = new[] { new DraftNote("@I1@", "Needs independent verification: the birth is from one index.") };
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(info: "secondary"), "x", [Fact("BIRT", "1924", null, 1)], notes: notes)]);
+
+        Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+    }
+
+    [Fact]
+    public void ThePoliciesCeilingAndPrefix_GovernTheNote()
+    {
+        var policy = ChangesetPolicy.Load(new MemoryStream(Encoding.UTF8.GetBytes(
+            """{ "verificationNote": { "maxQuay": 2, "notePrefix": "unconfirmed:" } }""")));
+
+        var result = new ChangesetDrafter(new FakeLookup(), policy).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1900", null, 2)])]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var note = Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+        Assert.StartsWith("Unconfirmed: the death", note.GetProperty("text").GetString());
+    }
+
+    // ---- refusals ----
+
+    [Fact]
+    public void AQuayAboveWhatTheEvidenceSupports_IsRefusedNamingTheField()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(info: "undetermined"), "x", [Fact("BIRT", "1924", null, 3)])]);
+
+        Assert.False(result.Success);
+        Assert.Null(result.Changeset);
+        Assert.Contains("findings[0].facts[0].quay is 3", Assert.Single(result.Errors));
+    }
+
+    [Theory]
+    [InlineData("original", "primary", 3, true)]
+    [InlineData("original", "secondary", 3, false)]
+    [InlineData("image copy", "undetermined", 2, true)]
+    [InlineData("derivative", "primary", 2, true)]
+    [InlineData("derivative", "primary", 3, false)]
+    [InlineData("derivative", "secondary", 2, false)]
+    [InlineData("authored", "primary", 1, true)]
+    [InlineData("authored", "primary", 2, false)]
+    [InlineData("user-contributed", "primary", 0, true)]
+    [InlineData("user-contributed", "primary", 1, false)]
+    public void TheQuayCeiling_FollowsSourceAndInformationClass(string cls, string info, int quay, bool accepted)
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(cls: cls, info: info), "x", [Fact("BIRT", "1924", null, quay)])]);
+
+        Assert.Equal(accepted, result.Success);
+    }
+
+    [Fact]
+    public void AFactLevelClassOverride_RaisesTheCeilingForThatFactOnly()
+    {
+        var overridden = Fact("DEAT", "1900", null, 2) with { Information = "primary" };
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(info: "secondary"), "x", [overridden, Fact("BIRT", "1850", null, 2)])]);
+
+        Assert.Equal(["findings[0].facts[1].quay is 2, but a derivative source with secondary information supports at most 1."], result.Errors);
+    }
+
+    [Fact]
+    public void ATargetNameThatDiffersFromTheRecordedName_IsRefused()
+    {
+        var lookup = new FakeLookup(names: new() { ["@I1@"] = "Albert Augustus Beattie" });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1900", null, 2)], name: "Albert Agustus Beattie")]);
+
+        Assert.Contains("findings[0].target.name", Assert.Single(result.Errors));
+    }
+
+    [Fact]
+    public void ATargetNameThatMatchesIgnoringSlashesAndCase_IsAccepted()
+    {
+        var lookup = new FakeLookup(names: new() { ["@I1@"] = "Albert Beattie" });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1900", null, 2)], name: "albert /Beattie/")]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+    }
+
+    [Fact]
+    public void AuthorProseTheServersPolicyBans_IsRefused()
+    {
+        var policy = ChangesetPolicy.Load(new MemoryStream(Encoding.UTF8.GetBytes("""{ "bannedPhrases": ["Both readings are kept"] }""")));
+        var notes = new[] { new DraftNote("@I1@", "Both readings are kept in the record.") };
+
+        var result = new ChangesetDrafter(new FakeLookup(), policy).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1900", null, 2)], notes: notes)]);
+
+        Assert.False(result.Success);
+        Assert.NotNull(result.Changeset);
+        Assert.Contains("Both readings are kept", Assert.Single(result.Errors));
+    }
+
+    // ---- items ----
+
+    [Fact]
+    public void FindingsForTheSameTarget_BecomeOneItem_AndOthersGetTheirOwn()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1900", null, 2)], xref: "@I1@"),
+            Finding("F-2", Memorial("Memorial #2"), "y", [Fact("BURI", null, "Salem", 2)], xref: "@I1@"),
+            Finding("F-3", Memorial("Memorial #3"), "z", [Fact("DEAT", "1901", null, 2, "@I2@")], xref: "@I2@", name: null)]);
+
+        var items = Json(result).GetProperty("items");
+        Assert.Equal(2, items.GetArrayLength());
+        Assert.Equal(1, items[0].GetProperty("item").GetInt32());
+        Assert.Equal(2, items[1].GetProperty("item").GetInt32());
+        Assert.Equal("@I1@ enrich-death", items[0].GetProperty("target").GetString());
+    }
+
+    // ---- what the document already holds ----
+
+    [Fact]
+    public void ANewPageForASourceTheFactAlreadyCites_StatesTheOldCitationAgain()
+    {
+        var lookup = new FakeLookup(
+            sources: new() { ["Find a Grave"] = "@S1@" },
+            citations: new() { ["@I1@|DEAT"] = [new ExistingCitation("@S1@", "Memorial #0", "old text", 2)] });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1 JAN 1900", null, 2)])]);
+
+        var citations = Ops(result)[0].GetProperty("citations");
+        Assert.Equal(["Memorial #1", "Memorial #0"], citations.EnumerateArray().Select(c => c.GetProperty("page").GetString()));
+        Assert.Equal("old text", citations[1].GetProperty("dataText").GetString());
+        Assert.Single(result.Decisions, d => d.Kind == "kept-citation");
+    }
+
+    [Fact]
+    public void TheSamePageAsTheExistingCitation_IsLeftToUpdateIt()
+    {
+        var lookup = new FakeLookup(
+            sources: new() { ["Find a Grave"] = "@S1@" },
+            citations: new() { ["@I1@|DEAT"] = [new ExistingCitation("@S1@", "Memorial #1", null, 2)] });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1 JAN 1900", null, 2)])]);
+
+        Assert.True(Ops(result)[0].TryGetProperty("citation", out _));
+        Assert.DoesNotContain(result.Decisions, d => d.Kind == "kept-citation");
+    }
+
+    [Fact]
+    public void AnExistingVerificationNote_IsFlaggedOpenBesideTheNewOne()
+    {
+        var lookup = new FakeLookup(notes: new() { ["@I1@"] = ["Needs independent verification: no birth has been seen."] });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Memorial(info: "secondary"), "x", [Fact("BIRT", "1924", null, 1)])]);
+
+        Assert.Single(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("already has a verification note"));
+    }
+
+    [Fact]
+    public void TheSameCitationGradedDifferentlyInTwoItems_IsRefused()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial("Memorial #1"), "same", [Fact("DEAT", "1900", null, 2)], xref: "@I1@"),
+            Finding("F-2", Memorial("Memorial #1", info: "secondary"), "same", [Fact("BIRT", "1850", null, 1, "@I2@")], xref: "@I2@")]);
+
+        Assert.Contains("graded differently in different items", Assert.Single(result.Errors));
+    }
+}

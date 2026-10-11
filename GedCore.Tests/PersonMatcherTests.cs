@@ -434,10 +434,20 @@ public class PersonMatcherTests
         var outcome = Matcher(SyntheticNicknamesJson).Match(IndexOf(WilliamGed), "Bill Morrill");
 
         Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
-        // 35 (exact surname) + 20 (fixed nickname bonus, since Bill/William's
-        // raw similarity * 25 is below 20) = 55 raw, out of 60 available.
-        Assert.Equal(55.0, outcome.Matches[0].RawScore, 6);
-        Assert.Equal(55.0 * 100.0 / 60.0, outcome.Matches[0].FinalScore, 6);
+        // 35 (exact surname) + 24 (fixed nickname bonus, since Bill/William's
+        // raw similarity * 25 is below 24) = 59 raw, out of 60 available.
+        Assert.Equal(59.0, outcome.Matches[0].RawScore, 6);
+        Assert.Equal(59.0 * 100.0 / 60.0, outcome.Matches[0].FinalScore, 6);
+    }
+
+    [Fact]
+    public void DocumentedNickname_ScoresBelowAnExactGivenNameButAboveTheSingleThreshold()
+    {
+        var nickname = Matcher(SyntheticNicknamesJson).Match(IndexOf(WilliamGed), "Bill Morrill").Matches[0].FinalScore;
+        var exact = Matcher(SyntheticNicknamesJson).Match(IndexOf(WilliamGed), "William Morrill").Matches[0].FinalScore;
+
+        Assert.True(nickname < exact, $"{nickname} should be below {exact}");
+        Assert.True(nickname > 90.0, $"{nickname} should clear the 90 threshold");
     }
 
     [Fact]

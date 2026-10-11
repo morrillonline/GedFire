@@ -30,7 +30,7 @@ public sealed class CheckPlausibilityTool
         "rather than parsing validate_changeset's log lines. Writes nothing. Always requires a changeset -- " +
         "there is no whole-document plausibility sweep.";
 
-    public const string InputSchemaJson = ChangesetToolSupport.InputSchemaJson;
+    public const string InputSchemaJson = ChangesetToolSchemas.InputSchemaJson;
 
     public const string OutputSchemaJson = """
         {
@@ -104,23 +104,13 @@ public sealed class CheckPlausibilityTool
     static CallToolResult Execute(
         string absoluteGedcomPath, string changesetPath, string items, CancellationToken cancellationToken)
     {
-        string trimmedPath = (changesetPath ?? "").Trim();
-        if (trimmedPath.Length == 0)
-            return CallToolResults.Error("changesetPath must not be blank.");
-
-        string resolvedChangesetPath = Path.GetFullPath(trimmedPath);
-        if (!File.Exists(resolvedChangesetPath))
-            return CallToolResults.Error($"Changeset file not found: {changesetPath}");
-
-        var changeset = Changeset.LoadFile(resolvedChangesetPath);
-
-        if (!ItemSelector.TryParse(items ?? "", changeset, out int[] itemNumbers, out string? itemsError))
-            return CallToolResults.Error(itemsError!);
+        if (!ChangesetRequest.TryLoad(changesetPath, items, out var request, out var error))
+            return error!;
 
         ApplyResult result;
         try
         {
-            result = ChangesetApplier.Run(absoluteGedcomPath, changeset, itemNumbers, dryRun: true,
+            result = ChangesetApplier.Run(absoluteGedcomPath, request!.Changeset, request.ItemNumbers, dryRun: true,
                 cancellationToken: cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

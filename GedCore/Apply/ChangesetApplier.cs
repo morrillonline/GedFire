@@ -236,6 +236,7 @@ public static class ChangesetApplier
             .ToHashSet(StringComparer.Ordinal);
         cancellationToken.ThrowIfCancellationRequested();
         var beforeDoc = Ged70Parser.Read(new MemoryStream(originalBytes));
+        result.Changes = TreeChanges.Between(beforeDoc, doc, state.TouchedRoots);
         var beforeDiags = AllDiagnostics(beforeDoc, touchedIndiXrefs, cancellationToken);
         var afterDiags = AllDiagnostics(doc, touchedIndiXrefs, cancellationToken);
         var newDiags = ConformanceChecker.DiffDiagnostics(beforeDiags, afterDiags);
@@ -481,4 +482,11 @@ public sealed class ApplyResult
     /// check_plausibility can read it from a dry run without writing anything.
     /// </summary>
     public List<GedDiagnostic> NewDiagnostics { get; internal set; } = [];
+
+    /// <summary>
+    /// What the run changed in the tree (facts written, name changes, family
+    /// membership), diffed from the records it touched. <see cref="TreeChanges.None"/>
+    /// when validation failed or the run was an all-no-op.
+    /// </summary>
+    public TreeChanges Changes { get; internal set; } = TreeChanges.None;
 }
