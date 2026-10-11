@@ -266,10 +266,10 @@ public class GapDetectorTests
             2 DATE ABT 1780
             """;
         var targets = Detect(ged, "Morrill");
-        var target = Assert.Single(targets, t => t.CardType == "Enrich person" && t.Enrichment!.Fact == "Birth");
-        Assert.Equal(2, target.NominalPoints);
-        Assert.True(target.Enrichment!.MissingDate);
-        Assert.True(target.Enrichment.MissingPlace);
+        var target = Assert.Single(targets, t => t.CardType == "Enrich person");
+        var birth = Assert.Single(target.Enrichments!, e => e.Fact == "Birth");
+        Assert.True(birth.MissingDate);
+        Assert.True(birth.MissingPlace);
     }
 
     [Fact]
@@ -284,11 +284,12 @@ public class GapDetectorTests
             2 PLAC Boston, Massachusetts
             """;
         var targets = Detect(ged, "Morrill");
-        Assert.DoesNotContain(targets, t => t.CardType == "Enrich person" && t.Enrichment!.Fact == "Birth");
+        var target = Assert.Single(targets, t => t.CardType == "Enrich person");
+        Assert.DoesNotContain(target.Enrichments!, e => e.Fact == "Birth");
     }
 
     [Fact]
-    public void EnrichPerson_DeathPlaceMissingOnly_NominalPointsIsOne()
+    public void EnrichPerson_DeathPlaceMissingOnly_ListsOnlyThePlace()
     {
         const string ged = """
             0 @I1@ INDI
@@ -298,10 +299,10 @@ public class GapDetectorTests
             2 DATE 10 MAR 1854
             """;
         var targets = Detect(ged, "Morrill");
-        var target = Assert.Single(targets, t => t.CardType == "Enrich person" && t.Enrichment!.Fact == "Death");
-        Assert.Equal(1, target.NominalPoints);
-        Assert.False(target.Enrichment!.MissingDate);
-        Assert.True(target.Enrichment.MissingPlace);
+        var target = Assert.Single(targets, t => t.CardType == "Enrich person");
+        var death = Assert.Single(target.Enrichments!, e => e.Fact == "Death");
+        Assert.False(death.MissingDate);
+        Assert.True(death.MissingPlace);
     }
 
     [Fact]
@@ -323,7 +324,34 @@ public class GapDetectorTests
             2 DATE ABT 1820
             """;
         var targets = Detect(ged, "Morrill");
-        Assert.Single(targets, t => t.CardType == "Enrich person" && t.Enrichment!.Fact == "Marriage");
+        var marriages = targets.Where(t => t.CardType == "Enrich person").SelectMany(t => t.Enrichments!).Where(e => e.Fact == "Marriage");
+        Assert.Single(marriages);
+    }
+
+    [Fact]
+    public void EnrichPerson_IsOneCardPerPersonWithOnePointPerMissingDateOrPlace()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE ABT 1780
+            1 DEAT
+            2 DATE 10 MAR 1854
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 MARR
+            2 PLAC Boston, Massachusetts
+            """;
+        var targets = Detect(ged, "Morrill");
+
+        var card = Assert.Single(targets, t => t.CardType == "Enrich person");
+        Assert.Equal(["Birth", "Death", "Marriage"], card.Enrichments!.Select(e => e.Fact));
+        // birth: inexact date and no place (2); death: no place (1); marriage: no date (1)
+        Assert.Equal(4, card.NominalPoints);
+        Assert.True(card.Score >= card.NominalPoints, "the difficulty bonus is added once, never subtracted");
     }
 
     [Fact]

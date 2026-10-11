@@ -107,4 +107,31 @@ public class TreeChangesTests : ApplyTestBase
         Assert.True(result.Success, string.Join("; ", result.Errors));
         Assert.Empty(result.Changes.Facts);
     }
+
+    [Fact]
+    public void AddingOnlyAPlaceToAnExistingFact_ImprovesThePlaceNotTheDate()
+    {
+        WriteBaseFile();
+        var result = Run("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
+                "value": { "date": "1928", "place": "Duluth, Minnesota" } } ] } ] }
+            """, dryRun: true);
+
+        var write = Assert.Single(result.Changes.Facts);
+        Assert.False(write.DateImproved);
+        Assert.True(write.PlaceImproved);
+        Assert.Equal(1, write.Improvements);
+    }
+
+    [Fact]
+    public void ANewFact_ImprovesBothItsDateAndItsPlace()
+    {
+        var write = Assert.Single(DryRunChanges("""
+            { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "DEAT",
+              "value": { "date": "3 MAR 1950", "place": "Duluth, Minnesota" } }
+            """).Facts);
+
+        Assert.Equal(2, write.Improvements);
+    }
 }

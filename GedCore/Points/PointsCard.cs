@@ -5,7 +5,7 @@ namespace GedCore.Points;
 /// ("enrich-person", "new-parent", "new-spouse", "new-child"), for an enrich
 /// card the gap it names ("enrich-death", "enrich-death-place"), and its points.
 /// </summary>
-public sealed record PointsCard(string Xref, string Class, string? Gap, string? Name, int Points)
+public sealed record PointsCard(string Xref, string Class, string? Gap, string? Name, int Points, int Bonus = 0)
 {
     public string Key => Gap is null ? $"{Xref}|{Class}" : $"{Xref}|{Class}|{Gap}";
 }

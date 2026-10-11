@@ -1,7 +1,17 @@
 namespace GedCore.Apply;
 
-/// <summary>A dated or placed fact present after a changeset that was not present before.</summary>
-public sealed record FactWrite(string Record, string Tag, string? Date, string? Place);
+/// <summary>
+/// A dated or placed fact present after a changeset that was not present before.
+/// <see cref="DateImproved"/> and <see cref="PlaceImproved"/> say which parts are new or changed
+/// against the record's closest prior fact of the same tag.
+/// </summary>
+public sealed record FactWrite(string Record, string Tag, string? Date, string? Place, bool DateImproved, bool PlaceImproved)
+{
+    public FactWrite(string record, string tag, string? date, string? place)
+        : this(record, tag, date, place, date is not null, place is not null) { }
+
+    public int Improvements => (DateImproved ? 1 : 0) + (PlaceImproved ? 1 : 0);
+}
 
 /// <summary>A person's primary name before and after; <see cref="Before"/> is null for a new person.</summary>
 public sealed record NameChange(string? Before, string? After);
@@ -62,8 +72,19 @@ public sealed class TreeChanges
         foreach (var fact in FactSignatures(current))
         {
             if (remaining.Remove(fact)) continue;
-            yield return new FactWrite(xref, fact.Tag, fact.Date, fact.Place);
+            yield return Written(xref, fact, remaining.Where(r => r.Tag == fact.Tag).ToList());
         }
+    }
+
+    // The prior fact sharing the date or place is the one this write refines; otherwise the first of that tag.
+    static FactWrite Written(string xref, (string Tag, string? Date, string? Place) fact, List<(string Tag, string? Date, string? Place)> sameTag)
+    {
+        if (sameTag.Count == 0) return new FactWrite(xref, fact.Tag, fact.Date, fact.Place);
+
+        var prior = sameTag.FirstOrDefault(r => r.Date == fact.Date || r.Place == fact.Place);
+        if (prior.Tag is null) prior = sameTag[0];
+        return new FactWrite(xref, fact.Tag, fact.Date, fact.Place,
+            fact.Date is not null && fact.Date != prior.Date, fact.Place is not null && fact.Place != prior.Place);
     }
 
     static IEnumerable<(string Tag, string? Date, string? Place)> FactSignatures(GedRecord record) =>

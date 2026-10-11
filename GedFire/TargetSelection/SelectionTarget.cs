@@ -4,7 +4,7 @@ namespace GedFire.TargetSelection;
 /// One self-contained research target — enough detail that an agent can
 /// immediately start work with no further context.
 /// Exactly one of <see cref="KnownParent"/>, <see cref="SpouseFamily"/>,
-/// <see cref="Enrichment"/> is populated, matching <see cref="CardType"/>.
+/// <see cref="Enrichments"/> is populated, matching <see cref="CardType"/>.
 /// </summary>
 public sealed record SelectionTarget
 {
@@ -33,8 +33,8 @@ public sealed record SelectionTarget
     /// <summary>New child only: the spouse family that has no children recorded.</summary>
     public SpouseFamilyEntry? SpouseFamily { get; init; }
 
-    /// <summary>Enrich person only: which fact and which parts of it are inexact.</summary>
-    public EnrichmentEntry? Enrichment { get; init; }
+    /// <summary>Enrich person only: every fact with an inexact date or place, one entry per fact. The card's points are one per missing part across all of them.</summary>
+    public IReadOnlyList<EnrichmentEntry>? Enrichments { get; init; }
 }
 
 public sealed record DifficultyEntry
