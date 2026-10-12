@@ -24,7 +24,9 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         if (errors.Count > 0) return new DraftResult(null, decisions, errors);
 
         var sources = SourcePlan.Build(findings, lookup, decisions);
-        var itemDrafter = new ItemDrafter(sources, lookup, lookup, policy?.VerificationNote ?? new VerificationNoteRule(1, DefaultNotePrefix));
+        var newPeople = findings.SelectMany(f => f.People).DistinctBy(p => p.Xref).ToDictionary(p => p.Xref);
+        decisions.AddRange(MintedPeople(findings));
+        var itemDrafter = new ItemDrafter(sources, lookup, lookup, policy?.VerificationNote ?? new VerificationNoteRule(1, DefaultNotePrefix), newPeople);
 
         var items = new JsonArray();
         foreach (var group in findings.GroupBy(f => (f.Target.Xref, f.Target.Card)))
@@ -38,6 +40,13 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         if (policy is not null) errors.AddRange(policy.Check(changeset.ToJsonString()));
         return new DraftResult(changeset, decisions, errors);
     }
+
+    static IEnumerable<DraftDecision> MintedPeople(IReadOnlyList<DraftFinding> findings) =>
+        findings.SelectMany(f => f.People.Select(p => (Finding: f, Person: p)))
+            .GroupBy(x => x.Person.Xref)
+            .Select(g => new DraftDecision(DraftDecisionKinds.MintedPerson,
+                $"{g.Key} for {g.First().Person.Name}, created through a relation",
+                [.. g.Select(x => x.Finding.Id).Distinct()]));
 
     // One (source, page, extract) carries one QUAY everywhere in the changeset.
     static IEnumerable<string> QuayDisagreements(JsonArray items) =>

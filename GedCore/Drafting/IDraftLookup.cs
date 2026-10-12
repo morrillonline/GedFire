@@ -17,8 +17,9 @@ public interface IPersonNames
 /// <summary>What the document already says about a record's facts and notes.</summary>
 public interface IRecordHistory
 {
-    /// <summary>The citations already on a fact (an existing record's tag), empty when there are none.</summary>
-    IReadOnlyList<ExistingCitation> CitationsOn(string record, string tag);
+    /// <summary>Every existing instance of a fact tag on a record, empty when there are none.</summary>
+
+    IReadOnlyList<ExistingFact> FactsOn(string record, string tag);
 
     /// <summary>The text of every note already on a record.</summary>
     IReadOnlyList<string> NotesOn(string record);
@@ -26,6 +27,9 @@ public interface IRecordHistory
 
 /// <summary>Everything a draft needs to know about the document it will be applied to.</summary>
 public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory;
+
+/// <summary>One fact instance the document already holds, with the citations on it.</summary>
+public sealed record ExistingFact(string? Date, string? Place, IReadOnlyList<ExistingCitation> Citations);
 
 /// <summary>A citation the document already holds on a fact.</summary>
 public sealed record ExistingCitation(string Source, string? Page, string? DataText, int? Quay);

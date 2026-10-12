@@ -9,10 +9,10 @@ public class ChangesetDrafterTests
 {
     sealed class FakeLookup(
         Dictionary<string, string>? sources = null, Dictionary<string, string>? names = null,
-        Dictionary<string, ExistingCitation[]>? citations = null, Dictionary<string, string[]>? notes = null) : IDraftLookup
+        Dictionary<string, ExistingFact[]>? facts = null, Dictionary<string, string[]>? notes = null) : IDraftLookup
     {
-        public IReadOnlyList<ExistingCitation> CitationsOn(string record, string tag) =>
-            citations?.GetValueOrDefault($"{record}|{tag}") ?? [];
+        public IReadOnlyList<ExistingFact> FactsOn(string record, string tag) =>
+            facts?.GetValueOrDefault($"{record}|{tag}") ?? [];
         public IReadOnlyList<string> NotesOn(string record) => notes?.GetValueOrDefault(record) ?? [];
         public string? FindSource(string title, string? author) => sources?.GetValueOrDefault(title);
         public string? PersonName(string xref) => names?.GetValueOrDefault(xref);
@@ -311,7 +311,7 @@ public class ChangesetDrafterTests
     {
         var lookup = new FakeLookup(
             sources: new() { ["Find a Grave"] = "@S1@" },
-            citations: new() { ["@I1@|DEAT"] = [new ExistingCitation("@S1@", "Memorial #0", "old text", 2)] });
+            facts: new() { ["@I1@|DEAT"] = [new ExistingFact(null, null, [new ExistingCitation("@S1@", "Memorial #0", "old text", 2)])] });
 
         var result = new ChangesetDrafter(lookup).Draft(
             [Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1 JAN 1900", null, 2)])]);
@@ -327,7 +327,7 @@ public class ChangesetDrafterTests
     {
         var lookup = new FakeLookup(
             sources: new() { ["Find a Grave"] = "@S1@" },
-            citations: new() { ["@I1@|DEAT"] = [new ExistingCitation("@S1@", "Memorial #1", null, 2)] });
+            facts: new() { ["@I1@|DEAT"] = [new ExistingFact(null, null, [new ExistingCitation("@S1@", "Memorial #1", null, 2)])] });
 
         var result = new ChangesetDrafter(lookup).Draft(
             [Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1 JAN 1900", null, 2)])]);
@@ -355,5 +355,126 @@ public class ChangesetDrafterTests
             Finding("F-2", Memorial("Memorial #1", info: "secondary"), "same", [Fact("BIRT", "1850", null, 1, "@I2@")], xref: "@I2@")]);
 
         Assert.Contains("graded differently in different items", Assert.Single(result.Errors));
+    }
+
+    // ---- text facts and repeatable tags ----
+
+    static DraftFact Text(string tag, string value, int quay, string record = "@I1@") =>
+        new(record, tag, null, null, quay, null, null, null, value);
+
+    static ExistingFact Held(string? date, string? place = null) => new(date, place, []);
+
+    [Fact]
+    public void ANameChange_IsCompiledAsATextValue()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "x", [Text("NAME", "Ralph /Morrill/", 2)])]);
+
+        var op = Ops(result)[0];
+        Assert.Equal("NAME", op.GetProperty("fact").GetString());
+        Assert.Equal("Ralph /Morrill/", op.GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public void TwoDifferentNames_AreLeftOpen()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "x", [Text("NAME", "Ralph /Morrill/", 2), Text("NAME", "Rafe /Morrill/", 2)])]);
+
+        Assert.Empty(Ops(result));
+        Assert.Single(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("NAME on @I1@"));
+    }
+
+    [Fact]
+    public void SeveralCensusFactsOnOnePerson_AreEachAddedAsAnInstance()
+    {
+        var facts = new[] { Fact("CENS", "1900", "Salem", 2), Fact("CENS", "1910", "Salem", 2), Fact("CENS", "1920", "Lynn", 2) };
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([Finding("F-1", Memorial(), "x", facts)]);
+
+        var ops = Ops(result);
+        Assert.Equal(["1900", "1910", "1920"], ops.Select(o => o.GetProperty("value").GetProperty("date").GetString()));
+        Assert.All(ops, o => Assert.Equal("add", o.GetProperty("mode").GetString()));
+        Assert.DoesNotContain(result.Decisions, d => d.Kind == "open");
+    }
+
+    [Fact]
+    public void ARepeatableFactNobodyHolds_IsAPlainUpsert()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("CENS", "1900", "Salem", 2)])]);
+
+        Assert.False(Ops(result)[0].TryGetProperty("mode", out _));
+        Assert.False(Ops(result)[0].TryGetProperty("match", out _));
+    }
+
+    [Fact]
+    public void ARepeatableFactBesideAnotherDate_IsAdded()
+    {
+        var lookup = new FakeLookup(facts: new() { ["@I1@|CENS"] = [Held("1900", "Salem")] });
+
+        var result = new ChangesetDrafter(lookup).Draft([Finding("F-1", Memorial(), "x", [Fact("CENS", "1910", "Salem", 2)])]);
+
+        Assert.Equal("add", Ops(result)[0].GetProperty("mode").GetString());
+    }
+
+    [Fact]
+    public void ARepeatableFactOnADateTheRecordHolds_UpdatesThatInstanceByMatch()
+    {
+        var lookup = new FakeLookup(facts: new() { ["@I1@|CENS"] = [Held("1900"), Held("1910")] });
+
+        var result = new ChangesetDrafter(lookup).Draft([Finding("F-1", Memorial(), "x", [Fact("CENS", "1910", "Salem", 2)])]);
+
+        var op = Ops(result)[0];
+        Assert.Equal("1910", op.GetProperty("match").GetProperty("date").GetString());
+        Assert.False(op.TryGetProperty("mode", out _));
+    }
+
+    [Fact]
+    public void TwoDifferentDeathFacts_AreStillLeftOpen()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1900", null, 2), Fact("DEAT", "1901", null, 2)])]);
+
+        Assert.Empty(Ops(result));
+        Assert.Single(result.Decisions, d => d.Kind == "open");
+    }
+
+    [Fact]
+    public void EveryDecisionKindTheDrafterEmits_IsListed()
+    {
+        var lookup = new FakeLookup(
+            sources: new() { ["Find a Grave"] = "@S1@" },
+            facts: new() { ["@I1@|DEAT"] = [new ExistingFact(null, null, [new ExistingCitation("@S1@", "Memorial #0", null, 2)])] });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1900", null, 1)])]);
+
+        Assert.All(result.Decisions, d => Assert.Contains(d.Kind, DraftDecisionKinds.All));
+    }
+
+    [Fact]
+    public void RepeatedCensusFacts_PassTheAppliersOverwriteGuard()
+    {
+        const string document = """
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Hiram /Test/
+            1 SEX M
+            1 CENS
+            2 DATE 1900
+            2 PLAC Salem
+            0 TRLR
+            """;
+        var lookup = new FakeLookup(facts: new() { ["@I1@|CENS"] = [Held("1900", "Salem")] });
+        var facts = new[] { Fact("CENS", "1900", "Salem, Essex", 2), Fact("CENS", "1910", "Salem", 2), Fact("CENS", "1920", "Lynn", 2) };
+
+        var drafted = new ChangesetDrafter(lookup).Draft([Finding("F-1", Memorial(), "x", facts)]);
+        var applied = GedCore.Apply.ChangesetApplier.Run(
+            Encoding.UTF8.GetBytes(document), GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString()), [1], dryRun: true);
+
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
     }
 }

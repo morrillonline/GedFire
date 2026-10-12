@@ -16,9 +16,11 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
     public string? PersonName(string xref) =>
         model.Individuals.TryGetValue(xref, out var person) && person.Fullname.Length > 0 ? person.Fullname : null;
 
-    public IReadOnlyList<ExistingCitation> CitationsOn(string record, string tag) =>
-        [.. EventsOf(record, tag)
-            .SelectMany(e => e.Sources)
+    public IReadOnlyList<ExistingFact> FactsOn(string record, string tag) =>
+        [.. EventsOf(record, tag).Select(e => new ExistingFact(NullIfEmpty(e.Date), NullIfEmpty(e.Place), CitationsOf(e)))];
+
+    static ExistingCitation[] CitationsOf(GedEvent fact) =>
+        [.. fact.Sources
             .Where(s => s.GlobalSource is not null)
             .Select(s => new ExistingCitation(s.GlobalSource!.Xref, NullIfEmpty(s.Page), NullIfEmpty(s.DataText), s.Quay))];
 

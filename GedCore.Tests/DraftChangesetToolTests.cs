@@ -45,7 +45,7 @@ public class DraftChangesetToolTests : IDisposable
     [Fact]
     public async Task ADraft_ReusesTheExistingSourceAndReturnsTheChangeset()
     {
-        var result = await Tool().HandleAsync(Arg(Findings), Arg(null), CancellationToken.None);
+        var result = await Tool().HandleAsync(Arg(Findings), Arg(null), default, CancellationToken.None);
 
         var structured = Structured(result);
         Assert.True(structured.GetProperty("success").GetBoolean());
@@ -58,7 +58,7 @@ public class DraftChangesetToolTests : IDisposable
     [Fact]
     public async Task ADraft_IsAcceptedByTheDialectsReader()
     {
-        var result = await Tool().HandleAsync(Arg(Findings), Arg(null), CancellationToken.None);
+        var result = await Tool().HandleAsync(Arg(Findings), Arg(null), default, CancellationToken.None);
 
         var parsed = GedCore.Apply.Changeset.Parse(Structured(result).GetProperty("changeset").GetRawText());
         Assert.Single(parsed.Items);
@@ -69,7 +69,7 @@ public class DraftChangesetToolTests : IDisposable
     {
         string path = Path.Combine(_dir, "out.json");
 
-        var result = await Tool().HandleAsync(Arg(Findings), Arg(JsonSerializer.Serialize(path)), CancellationToken.None);
+        var result = await Tool().HandleAsync(Arg(Findings), Arg(JsonSerializer.Serialize(path)), default, CancellationToken.None);
 
         Assert.Equal(path, Structured(result).GetProperty("writtenTo").GetString());
         Assert.Contains("createOrUpdateVital", File.ReadAllText(path));
@@ -81,7 +81,7 @@ public class DraftChangesetToolTests : IDisposable
         string path = Path.Combine(_dir, "existing.json");
         File.WriteAllText(path, "keep me");
 
-        var result = await Tool().HandleAsync(Arg(Findings), Arg(JsonSerializer.Serialize(path)), CancellationToken.None);
+        var result = await Tool().HandleAsync(Arg(Findings), Arg(JsonSerializer.Serialize(path)), default, CancellationToken.None);
 
         var structured = Structured(result);
         Assert.False(structured.GetProperty("success").GetBoolean());
@@ -95,7 +95,7 @@ public class DraftChangesetToolTests : IDisposable
         string path = Path.Combine(_dir, "bad.json");
         string tooHigh = Findings.Replace("\"quay\": 2", "\"quay\": 3");
 
-        var result = await Tool().HandleAsync(Arg(tooHigh), Arg(JsonSerializer.Serialize(path)), CancellationToken.None);
+        var result = await Tool().HandleAsync(Arg(tooHigh), Arg(JsonSerializer.Serialize(path)), default, CancellationToken.None);
 
         Assert.False(Structured(result).GetProperty("success").GetBoolean());
         Assert.False(File.Exists(path));
@@ -104,7 +104,7 @@ public class DraftChangesetToolTests : IDisposable
     [Fact]
     public async Task AMalformedFinding_IsRejectedByFieldPath()
     {
-        var result = await Tool().HandleAsync(Arg("""[ { "id": "F-1" } ]"""), Arg(null), CancellationToken.None);
+        var result = await Tool().HandleAsync(Arg("""[ { "id": "F-1" } ]"""), Arg(null), default, CancellationToken.None);
 
         var errors = Structured(result).GetProperty("errors").EnumerateArray().Select(e => e.GetString()).ToList();
         Assert.Contains("findings[0].extract is required.", errors);
@@ -116,7 +116,7 @@ public class DraftChangesetToolTests : IDisposable
     {
         string wrong = Findings.Replace("Gladys Giedd", "Gladis Giedd");
 
-        var result = await Tool().HandleAsync(Arg(wrong), Arg(null), CancellationToken.None);
+        var result = await Tool().HandleAsync(Arg(wrong), Arg(null), default, CancellationToken.None);
 
         Assert.Contains("findings[0].target.name", Structured(result).GetProperty("errors")[0].GetString());
     }
@@ -127,7 +127,7 @@ public class DraftChangesetToolTests : IDisposable
         var policy = ChangesetPolicy.Load(new MemoryStream(Encoding.UTF8.GetBytes(
             """{ "verificationNote": { "maxQuay": 2, "notePrefix": "needs independent verification:" } }""")));
 
-        var result = await Tool(policy).HandleAsync(Arg(Findings), Arg(null), CancellationToken.None);
+        var result = await Tool(policy).HandleAsync(Arg(Findings), Arg(null), default, CancellationToken.None);
 
         var ops = Structured(result).GetProperty("changeset").GetProperty("items")[0].GetProperty("ops");
         Assert.Equal("createOrUpdateNote", ops[1].GetProperty("op").GetString());
@@ -137,8 +137,86 @@ public class DraftChangesetToolTests : IDisposable
     [Fact]
     public async Task ABlankOutPath_IsRefused()
     {
-        var result = await Tool().HandleAsync(Arg(Findings), Arg("\"  \""), CancellationToken.None);
+        var result = await Tool().HandleAsync(Arg(Findings), Arg("\"  \""), default, CancellationToken.None);
 
         Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public async Task OutPath_ReplacesAnExistingFileWhenOverwriteIsTrue()
+    {
+        string path = Path.Combine(_dir, "stale.json");
+        File.WriteAllText(path, "stale");
+
+        var result = await Tool().HandleAsync(Arg(Findings), Arg(JsonSerializer.Serialize(path)), Arg("true"), CancellationToken.None);
+
+        Assert.True(Structured(result).GetProperty("success").GetBoolean());
+        Assert.Contains("createOrUpdateVital", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public async Task ANonBooleanOverwrite_IsRefused()
+    {
+        var result = await Tool().HandleAsync(Arg(Findings), Arg(null), Arg("\"yes\""), CancellationToken.None);
+
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public void TheOutputSchemaListsEveryDecisionKind()
+    {
+        using var schema = JsonDocument.Parse(DraftChangesetTool.OutputSchemaJson);
+
+        var listed = schema.RootElement.GetProperty("properties").GetProperty("decisions").GetProperty("items")
+            .GetProperty("properties").GetProperty("kind").GetProperty("enum").EnumerateArray().Select(k => k.GetString());
+
+        Assert.Equal(GedCore.Drafting.DraftDecisionKinds.All.Order(), listed.Order());
+    }
+
+    [Fact]
+    public async Task ADraftThatRestatesAnExistingCitation_ReturnsItsKeptCitationDecision()
+    {
+        string cited = Ged.Replace("1 SEX F", "1 SEX F\n1 DEAT\n2 DATE 1 JAN 2000\n2 SOUR @S1@\n3 PAGE Memorial #0");
+        var tool = new DraftChangesetTool(_sessions.Open(cited), new ToolGate());
+
+        var result = await tool.HandleAsync(Arg(Findings), Arg(null), default, CancellationToken.None);
+
+        var kinds = Structured(result).GetProperty("decisions").EnumerateArray().Select(d => d.GetProperty("kind").GetString());
+        Assert.Contains("kept-citation", kinds);
+    }
+
+    const string RichFindings = """
+        [ { "id": "F-1", "extract": "Gladys Giedd, wife Mary, child Ann.",
+            "source": { "name": "Find a Grave", "locator": "Memorial #1", "class": "derivative", "information": "primary" },
+            "target": { "xref": "@I1@", "name": "Gladys Giedd" },
+            "people": [ { "xref": "@NewI1@", "name": "Mary /Giedd/", "sex": "M" }, { "xref": "@NewI2@", "name": "Ann /Giedd/" } ],
+            "relations": [
+              { "kind": "spouse", "person": "@I1@", "spouse": "@NewI1@", "family": "@NewF1@", "quay": 2, "excerpt": "wife Mary", "notDuplicateOf": [ "@I1@" ] },
+              { "kind": "child", "family": "@NewF1@", "child": "@NewI2@", "quay": 2, "excerpt": "child Ann" } ],
+            "facts": [
+              { "record": "@NewF1@", "fact": "MARR", "date": "1900", "quay": 2, "excerpt": "wife Mary" },
+              { "record": "@I1@", "fact": "NAME", "value": "Gladys /Giedd/", "quay": 2 },
+              { "record": "@I1@", "fact": "EVEN", "date": "1950", "quay": 2, "substructures": [ { "tag": "TYPE", "value": "Pension" } ] },
+              { "record": "@I1@", "fact": "DEAT", "quay": 2, "citeOnly": true } ],
+            "notes": [ { "record": "@I1@", "text": "A cited note.", "cites": [ { "quay": 2 } ] } ] } ]
+        """;
+
+    [Fact]
+    public async Task EveryNewInputField_ReachesTheChangesetThroughTheTool()
+    {
+        var result = await Tool().HandleAsync(Arg(RichFindings), Arg(null), default, CancellationToken.None);
+
+        var structured = Structured(result);
+        Assert.True(structured.GetProperty("success").GetBoolean(), structured.GetProperty("errors").GetRawText());
+        var ops = structured.GetProperty("changeset").GetProperty("items")[0].GetProperty("ops").EnumerateArray().ToList();
+        var verbs = ops.Select(o => o.GetProperty("op").GetString()).ToList();
+        Assert.Contains("createOrUpdateSpouse", verbs);
+        Assert.Contains("createOrUpdateChild", verbs);
+        Assert.Contains("createOrUpdateCitation", verbs);
+        Assert.Contains(ops, o => o.TryGetProperty("substructures", out _));
+        Assert.Contains(ops, o => o.TryGetProperty("notDuplicateOf", out _));
+        Assert.Contains(ops, o => o.TryGetProperty("value", out var v) && v.ValueKind == JsonValueKind.String);
+        var parsed = GedCore.Apply.Changeset.Parse(structured.GetProperty("changeset").GetRawText());
+        Assert.Single(parsed.Items);
     }
 }

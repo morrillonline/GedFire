@@ -29,14 +29,14 @@ internal sealed class SourcePlan
             if (catalog.FindSource(first.Name, first.Author) is { } existing)
             {
                 plan._refs[collection.Key] = existing;
-                decisions.Add(new DraftDecision("reused-source", $"cite {existing} for \"{first.Name}\"", ids));
+                decisions.Add(new DraftDecision(DraftDecisionKinds.ReusedSource, $"cite {existing} for \"{first.Name}\"", ids));
                 continue;
             }
 
             string placeholder = $"@NewSource{plan.NewSources.Count + 1}@";
             plan._refs[collection.Key] = placeholder;
             plan.NewSources.Add(NewSourceGroup(placeholder, members, decisions));
-            decisions.Add(new DraftDecision("minted-source", $"{placeholder} for \"{first.Name}\", one record for {members.Count} finding(s)", ids));
+            decisions.Add(new DraftDecision(DraftDecisionKinds.MintedSource, $"{placeholder} for \"{first.Name}\", one record for {members.Count} finding(s)", ids));
         }
         return plan;
     }
@@ -56,7 +56,7 @@ internal sealed class SourcePlan
         var values = members.Select(m => read(m.Source)).Where(v => v is not null).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (values.Count == 1) op[field] = values[0];
         else if (values.Count > 1)
-            decisions.Add(new DraftDecision("open",
+            decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
                 $"the findings of \"{members[0].Source.Name}\" give {values.Count} different {field} values, so the source record carries none; decide which belongs on it",
                 [.. members.Select(m => m.Id)]));
     }

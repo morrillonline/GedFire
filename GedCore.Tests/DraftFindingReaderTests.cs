@@ -68,11 +68,11 @@ public class DraftFindingReaderTests
     {
         var (_, errors) = Read($"[{Valid.Replace("\"date\": \"1 Jan 1900\", ", "")}]");
 
-        Assert.Contains("findings[0].facts[0] needs a date or a place", Assert.Single(errors));
+        Assert.Contains("findings[0].facts[0] needs a date, a place or a value", Assert.Single(errors));
     }
 
     [Fact]
-    public void AFindingWithNothingToAssert_IsRejected()
+    public void AFindingWithNothingToAssert_IsReadAndLeftToTheDraftChecks()
     {
         const string nothing = """
             { "id": "F-1", "extract": "text",
@@ -80,9 +80,10 @@ public class DraftFindingReaderTests
               "target": { "xref": "@I1@" } }
             """;
 
-        var (_, errors) = Read($"[{nothing}]");
+        var (findings, errors) = Read($"[{nothing}]");
 
-        Assert.Contains("findings[0].facts must hold at least one fact", string.Join(";", errors));
+        Assert.Empty(errors);
+        Assert.Empty(Assert.Single(findings).Facts);
     }
 
     [Fact]
@@ -101,5 +102,155 @@ public class DraftFindingReaderTests
         Assert.Equal(2, errors.Count);
         Assert.Contains("findings[0].id is required.", errors);
         Assert.Contains("findings[1].extract is required.", errors);
+    }
+
+    const string WithRelations = """
+        { "id": "F-2", "extract": "text",
+          "source": { "name": "Census", "locator": "p. 1", "class": "original", "information": "primary" },
+          "target": { "xref": "@I1@" },
+          "people": [ { "xref": "@NewI1@", "name": "Mary /Test/", "sex": "f" } ],
+          "relations": [ { "kind": "spouse", "person": "@I1@", "spouse": "@NewI1@", "family": "@NewF1@", "quay": 2 } ] }
+        """;
+
+    [Fact]
+    public void PeopleAndRelations_AreRead()
+    {
+        var (findings, errors) = Read($"[{WithRelations}]");
+
+        Assert.Empty(errors);
+        Assert.Equal(new DraftPerson("@NewI1@", "Mary /Test/", "F"), Assert.Single(findings[0].People));
+        var relation = Assert.Single(findings[0].Relations);
+        Assert.Equal(("spouse", "@I1@", "@NewI1@", "@NewF1@", 2), (relation.Kind, relation.Person, relation.Other, relation.Family, relation.Quay));
+        Assert.Empty(relation.NotDuplicateOf);
+    }
+
+    [Fact]
+    public void ARelationWithoutAQuay_NamesTheFieldByPath()
+    {
+        var (_, errors) = Read($"[{WithRelations.Replace(", \"quay\": 2", "")}]");
+
+        Assert.Contains("findings[0].relations[0].quay is required", Assert.Single(errors));
+    }
+
+    [Fact]
+    public void AFieldThatDoesNotApplyToTheKind_IsRejected()
+    {
+        var (_, errors) = Read($"[{WithRelations.Replace("\"family\": \"@NewF1@\"", "\"family\": \"@NewF1@\", \"husb\": \"@I1@\"")}]");
+
+        Assert.Contains("findings[0].relations[0].husb does not apply to a spouse relation", Assert.Single(errors));
+    }
+
+    [Fact]
+    public void AChildRelation_NeedsAFamilyAndNoPerson()
+    {
+        var (findings, errors) = Read($"[{WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\"", "\"kind\": \"child\", \"child\": \"@NewI1@\"")}]");
+
+        Assert.Empty(errors);
+        Assert.Equal("child", findings[0].Relations[0].Kind);
+    }
+
+    [Fact]
+    public void AParentRelation_NeedsARole()
+    {
+        var (_, errors) = Read($"[{WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\", \"family\": \"@NewF1@\"", "\"kind\": \"parent\", \"person\": \"@I1@\", \"parent\": \"@NewI1@\"")}]");
+
+        Assert.Contains("findings[0].relations[0].role is required.", errors);
+    }
+
+    [Fact]
+    public void ARelationOnlyFinding_NeedsNoFacts()
+    {
+        var (findings, errors) = Read($"[{WithRelations}]");
+
+        Assert.Empty(errors);
+        Assert.Empty(findings[0].Facts);
+    }
+
+    [Fact]
+    public void ATextFactValue_IsReadAndCannotBeCombinedWithADate()
+    {
+        var valued = Valid.Replace("\"date\": \"1 Jan 1900\"", "\"value\": \"Ralph /Morrill/\"");
+        var (findings, errors) = Read($"[{valued}]");
+        Assert.Empty(errors);
+        Assert.Equal("Ralph /Morrill/", findings[0].Facts[0].Value);
+
+        var (_, both) = Read($"[{Valid.Replace("\"date\": \"1 Jan 1900\"", "\"date\": \"1900\", \"value\": \"x\"")}]");
+        Assert.Contains("findings[0].facts[0].value is a text fact's payload", Assert.Single(both));
+    }
+
+    [Fact]
+    public void NotDuplicateOf_IsReadOnASpouseAndRejectedOnAParent()
+    {
+        var (findings, errors) = Read($"[{WithRelations.Replace("\"quay\": 2 }", "\"quay\": 2, \"notDuplicateOf\": [\"@I5@\"] }")}]");
+        Assert.Empty(errors);
+        Assert.Equal(["@I5@"], findings[0].Relations[0].NotDuplicateOf);
+
+        var parent = WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\", \"family\": \"@NewF1@\"",
+            "\"kind\": \"parent\", \"person\": \"@I1@\", \"parent\": \"@NewI1@\", \"role\": \"father\", \"notDuplicateOf\": [\"@I5@\"]");
+        Assert.Contains("notDuplicateOf does not apply to a parent relation", Assert.Single(Read($"[{parent}]").Errors));
+    }
+
+    [Fact]
+    public void FactSubstructuresReplacedCitationsAndCiteOnly_AreRead()
+    {
+        var fact = Valid.Replace("\"date\": \"1 Jan 1900\", \"quay\": 2",
+            "\"date\": \"1 Jan 1900\", \"quay\": 2, \"substructures\": [ { \"tag\": \"type\", \"value\": \"Pension\" } ], \"replacedCitations\": \"moveToNote\"");
+        var (findings, errors) = Read($"[{fact}]");
+        Assert.Empty(errors);
+        var read = findings[0].Facts[0];
+        Assert.Equal(new DraftSubstructure("TYPE", "Pension"), Assert.Single(read.Substructures));
+        Assert.Equal("moveToNote", read.ReplacedCitations);
+
+        var citeOnly = Valid.Replace("\"date\": \"1 Jan 1900\", \"quay\": 2", "\"quay\": 2, \"citeOnly\": true");
+        var (cited, citeErrors) = Read($"[{citeOnly}]");
+        Assert.Empty(citeErrors);
+        Assert.True(cited[0].Facts[0].CiteOnly);
+    }
+
+    [Fact]
+    public void CiteOnlyBesideAValue_IsRejected()
+    {
+        var (_, errors) = Read($"[{Valid.Replace("\"quay\": 2", "\"quay\": 2, \"citeOnly\": true, \"value\": \"x\"")}]");
+
+        Assert.Contains("citeOnly adds a citation to an existing fact", Assert.Single(errors));
+    }
+
+    [Fact]
+    public void ANoteMatchAndCites_AreRead()
+    {
+        var note = Valid.Replace("\"text\": \"A note.\"", "\"text\": \"A note.\", \"match\": \"Old.\", \"cites\": [ { \"finding\": \"F-9\", \"quay\": 1, \"excerpt\": \"x\" }, { \"quay\": 2 } ]");
+        var (findings, errors) = Read($"[{note}]");
+
+        Assert.Empty(errors);
+        var read = findings[0].Notes[0];
+        Assert.Equal("Old.", read.Match);
+        Assert.Equal([new DraftNoteCitation("F-9", 1, "x"), new DraftNoteCitation(null, 2, null)], read.Cites);
+    }
+
+    [Fact]
+    public void ANoteCitationWithoutAQuay_NamesTheFieldByPath()
+    {
+        var note = Valid.Replace("\"text\": \"A note.\"", "\"text\": \"A note.\", \"cites\": [ { \"finding\": \"F-9\" } ]");
+
+        Assert.Contains("findings[0].notes[0].cites[0].quay is required", Assert.Single(Read($"[{note}]").Errors));
+    }
+
+    [Fact]
+    public void ARelationExcerpt_IsRead()
+    {
+        var (findings, errors) = Read($"[{WithRelations.Replace("\"quay\": 2 }", "\"quay\": 2, \"excerpt\": \"Mary 35\" }")}]");
+
+        Assert.Empty(errors);
+        Assert.Equal("Mary 35", findings[0].Relations[0].Excerpt);
+    }
+
+    [Fact]
+    public void ANotDuplicateOfThatIsNotAnArrayOfStrings_IsRejectedByPath()
+    {
+        var (_, notArray) = Read($"[{WithRelations.Replace("\"quay\": 2 }", "\"quay\": 2, \"notDuplicateOf\": \"@I5@\" }")}]");
+        var (_, badItem) = Read($"[{WithRelations.Replace("\"quay\": 2 }", "\"quay\": 2, \"notDuplicateOf\": [ 5 ] }")}]");
+
+        Assert.Contains("findings[0].relations[0].notDuplicateOf must be an array of strings", Assert.Single(notArray));
+        Assert.Contains("findings[0].relations[0].notDuplicateOf[0] must be a non-blank string", Assert.Single(badItem));
     }
 }
