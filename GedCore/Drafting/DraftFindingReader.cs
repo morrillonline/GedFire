@@ -36,7 +36,7 @@ public sealed class DraftFindingReader
 
     DraftFinding? ReadFinding(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "id", "extract", "source", "target", "facts", "notes")) return null;
+        if (!IsObject(el, path, "id", "extract", "source", "target", "facts", "notes", "people", "relations")) return null;
         int before = _errors.Count;
 
         string? id = Text(el, "id", path, required: true);
@@ -45,10 +45,11 @@ public sealed class DraftFindingReader
         var target = ReadTarget(Child(el, "target", path), $"{path}.target");
         var facts = ReadList(el, "facts", path, ReadFact);
         var notes = ReadList(el, "notes", path, ReadNote);
+        var people = ReadList(el, "people", path, ReadPerson);
+        var relations = ReadList(el, "relations", path, ReadRelation);
 
-        if (facts.Count == 0 && notes.Count == 0) _errors.Add($"{path}.facts must hold at least one fact (or {path}.notes at least one note).");
         if (_errors.Count > before || id is null || extract is null || source is null || target is null) return null;
-        return new DraftFinding(id, source, extract, target, facts, notes);
+        return new DraftFinding(id, source, extract, target, facts, notes) { People = people, Relations = relations };
     }
 
     DraftSource? ReadSource(JsonElement? el, string path)
@@ -74,30 +75,128 @@ public sealed class DraftFindingReader
 
     DraftFact? ReadFact(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "fact", "date", "place", "quay", "class", "information", "excerpt")) return null;
+        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly")) return null;
         int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
         string? tag = Text(el, "fact", path, required: true);
         string? date = Text(el, "date", path);
         string? place = Text(el, "place", path);
+        string? value = Text(el, "value", path);
         string? cls = Choice(el, "class", path, SourceClasses, required: false);
         string? info = Choice(el, "information", path, InformationClasses, required: false);
+        string? replaced = Choice(el, "replacedCitations", path, ["keep", "drop", "movetonote"], required: false);
+        var substructures = ReadList(el, "substructures", path, ReadSubstructure);
+        bool citeOnly = ReadFlag(el, "citeOnly", path);
+        int quay = ReadQuay(el, path, "this fact (not inherited from the finding)");
 
-        int quay = 0;
-        if (!el.TryGetProperty("quay", out var q) || q.ValueKind != JsonValueKind.Number || !q.TryGetInt32(out quay) || quay is < 0 or > 3)
-            _errors.Add($"{path}.quay is required: an integer 0-3, graded for this fact (not inherited from the finding).");
-        if (date is null && place is null) _errors.Add($"{path} needs a date or a place.");
+        if (citeOnly)
+        {
+            if (value is not null || substructures.Count > 0 || replaced is not null)
+                _errors.Add($"{path}.citeOnly adds a citation to an existing fact; value, substructures and replacedCitations do not apply.");
+        }
+        else if (value is not null && (date is not null || place is not null))
+            _errors.Add($"{path}.value is a text fact's payload and cannot be combined with a date or place.");
+        else if (value is null && date is null && place is null)
+            _errors.Add($"{path} needs a date, a place or a value.");
 
         if (_errors.Count > before || record is null || tag is null) return null;
-        return new DraftFact(record, tag.ToUpperInvariant(), date, place, quay, cls, info, Text(el, "excerpt", path));
+        return new DraftFact(record, tag.ToUpperInvariant(), date, place, quay, cls, info, Text(el, "excerpt", path), value)
+        {
+            Substructures = substructures,
+            ReplacedCitations = replaced is null ? null : replaced == "movetonote" ? "moveToNote" : replaced,
+            CiteOnly = citeOnly,
+        };
+    }
+
+    DraftSubstructure? ReadSubstructure(JsonElement el, string path)
+    {
+        if (!IsObject(el, path, "tag", "value")) return null;
+        string? tag = Text(el, "tag", path, required: true);
+        string? value = Text(el, "value", path, required: true);
+        return tag is null || value is null ? null : new DraftSubstructure(tag.ToUpperInvariant(), value);
+    }
+
+    bool ReadFlag(JsonElement el, string name, string path)
+    {
+        if (!el.TryGetProperty(name, out var flag) || flag.ValueKind == JsonValueKind.Null) return false;
+        if (flag.ValueKind is JsonValueKind.True or JsonValueKind.False) return flag.GetBoolean();
+        _errors.Add($"{path}.{name} must be true or false.");
+        return false;
+    }
+
+    int ReadQuay(JsonElement el, string path, string graded)
+    {
+        int quay = 0;
+        if (!el.TryGetProperty("quay", out var q) || q.ValueKind != JsonValueKind.Number || !q.TryGetInt32(out quay) || quay is < 0 or > 3)
+            _errors.Add($"{path}.quay is required: an integer 0-3, graded for {graded}.");
+        return quay;
+    }
+
+    DraftPerson? ReadPerson(JsonElement el, string path)
+    {
+        if (!IsObject(el, path, "xref", "name", "sex")) return null;
+        string? xref = Text(el, "xref", path, required: true);
+        string? name = Text(el, "name", path, required: true);
+        string? sex = Choice(el, "sex", path, ["m", "f"], required: false)?.ToUpperInvariant();
+        return xref is null || name is null ? null : new DraftPerson(xref, name, sex);
+    }
+
+    DraftRelation? ReadRelation(JsonElement el, string path)
+    {
+        if (!IsObject(el, path, "kind", "person", "spouse", "child", "parent", "role", "family", "husb", "wife", "notDuplicateOf", "excerpt", "quay")) return null;
+        int before = _errors.Count;
+        string? kind = Choice(el, "kind", path, [DraftRelation.Spouse, DraftRelation.Child, DraftRelation.Parent], required: true);
+        if (kind is null) return null;
+
+        string? person = Text(el, "person", path, required: kind != DraftRelation.Child);
+        string? other = Text(el, kind, path, required: true);
+        string? family = Text(el, "family", path, required: kind != DraftRelation.Parent);
+        string? role = Choice(el, "role", path, ["father", "mother"], required: kind == DraftRelation.Parent);
+        string? husb = Text(el, "husb", path);
+        string? wife = Text(el, "wife", path);
+        var notDuplicateOf = ReadStrings(el, "notDuplicateOf", path);
+        RejectForeignFields(el, path, kind);
+
+        int quay = ReadQuay(el, path, "this relationship");
+
+        if (_errors.Count > before || other is null) return null;
+        return new DraftRelation(kind, person ?? "", other, family, role, husb, wife, quay) { NotDuplicateOf = notDuplicateOf, Excerpt = Text(el, "excerpt", path) };
+    }
+
+    // Each kind names its own partner field and takes only the fields its op reads.
+    void RejectForeignFields(JsonElement el, string path, string kind)
+    {
+        string[] allowed = kind switch
+        {
+            DraftRelation.Spouse => ["person", "spouse", "family", "notDuplicateOf"],
+            DraftRelation.Child => ["child", "family", "husb", "wife", "notDuplicateOf"],
+            _ => ["person", "parent", "role", "family"],
+        };
+        foreach (string name in new[] { "person", "spouse", "child", "parent", "role", "family", "husb", "wife", "notDuplicateOf" })
+            if (!allowed.Contains(name) && el.TryGetProperty(name, out _))
+                _errors.Add($"{path}.{name} does not apply to a {kind} relation; its fields are kind, quay, {string.Join(", ", allowed)}.");
     }
 
     DraftNote? ReadNote(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "text")) return null;
+        if (!IsObject(el, path, "record", "text", "match", "cites")) return null;
+        int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
         string? text = Text(el, "text", path, required: true);
-        return record is null || text is null ? null : new DraftNote(record, text);
+        string? match = Text(el, "match", path);
+        var cites = ReadList(el, "cites", path, ReadNoteCitation);
+        if (_errors.Count > before || record is null || text is null) return null;
+        return new DraftNote(record, text) { Match = match, Cites = cites };
+    }
+
+    DraftNoteCitation? ReadNoteCitation(JsonElement el, string path)
+    {
+        if (!IsObject(el, path, "finding", "quay", "excerpt")) return null;
+        int before = _errors.Count;
+        string? finding = Text(el, "finding", path);
+        string? excerpt = Text(el, "excerpt", path);
+        int quay = ReadQuay(el, path, "this note citation");
+        return _errors.Count > before ? null : new DraftNoteCitation(finding, quay, excerpt);
     }
 
     List<T> ReadList<T>(JsonElement el, string name, string path, Func<JsonElement, string, T?> read) where T : class
@@ -113,6 +212,26 @@ public sealed class DraftFindingReader
         int index = 0;
         foreach (var item in list.EnumerateArray())
             if (read(item, $"{path}.{name}[{index++}]") is { } value) result.Add(value);
+        return result;
+    }
+
+    List<string> ReadStrings(JsonElement el, string name, string path)
+    {
+        var result = new List<string>();
+        if (!el.TryGetProperty(name, out var list) || list.ValueKind == JsonValueKind.Null) return result;
+        if (list.ValueKind != JsonValueKind.Array)
+        {
+            _errors.Add($"{path}.{name} must be an array of strings.");
+            return result;
+        }
+
+        int index = 0;
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString())) result.Add(item.GetString()!.Trim());
+            else _errors.Add($"{path}.{name}[{index}] must be a non-blank string.");
+            index++;
+        }
         return result;
     }
 

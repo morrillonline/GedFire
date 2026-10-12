@@ -136,7 +136,7 @@ a change `apply_changeset` itself just wrote — no restart needed:
 | `select_targets` | The `gedfire select-targets` command as a tool: detect research gaps for the given surnames and draw `count` targets, returned as the `wanted.json` document without the GEDCOM path. An Enrich person target is one card per person: `enrichments` lists every birth, marriage and death whose date or place is not exact, `nominalPoints` is one per missing date or place across all of them, and the difficulty bonus is added once (`score` is `nominalPoints` plus the bonus). To price a changeset against it, pass `validate_changeset` a card with `gap` `enrich-fact`, `points` 1 and `bonus` equal to `score` minus `nominalPoints`. Each target lists `possibleDuplicateOf`: the people the `check_plausibility` GEN301 duplicate test pairs with it (`[]` when none); at most three are listed, best first, and `possibleDuplicateCount` gives the full number; such a target is still drawn. A person with an Unknown name part is paired only through an agreeing parent or spouse name. Seeded from the clock, like the command. |
 | `describe_changeset_ops` | Return the changeset envelope shape and the full v2 op dialect (every `createOrUpdate`/`delete`/`merge` op, its required and optional fields, and one worked example) — so an agent can compose a valid changeset without external documentation or trial-and-error against `validate_changeset`'s error text. Takes no arguments. |
 | `check_plausibility` | Preview a proposal changeset and return only the chronological and biological plausibility findings it would introduce, structured for routing by severity. Name characters are checked too: digits and symbols (other than apostrophe, hyphen and period) are errors that block a changeset, an ordinal suffix such as `3rd` is allowed, and punctuation standing in for a name (`----`) is a warning to use `Unknown`. Always available, even under `--read-only`. |
-| `draft_changeset` | Compile findings into a changeset in the op dialect (see [Drafting a changeset](#drafting-a-changeset)). Reuses an existing source or mints one per collection, merges each (source, page, grade) group's extracts into one `dataText`, copies the locator verbatim into the citation page, adds a verification note for every fact graded at or below the policy ceiling, and refuses a QUAY the source and information class cannot support, a target name that differs from the recorded one, and prose the policy bans. Returns the changeset, a `decisions` list, and `errors`; `outPath` writes it to a new file, never overwriting one. |
+| `draft_changeset` | Compile findings into a changeset in the op dialect (see [Drafting a changeset](#drafting-a-changeset)). Reuses an existing source or mints one per collection, merges each (source, page, grade) group's extracts into one `dataText`, copies the locator verbatim into the citation page, adds a verification note for every fact graded at or below the policy ceiling, and refuses a QUAY the source and information class cannot support, a target name that differs from the recorded one, and prose the policy bans. Returns the changeset, a `decisions` list, and `errors`; `outPath` writes it to a new file, replacing an existing one only with `overwrite`. New people and families come from `people` and `relations`. |
 | `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but nothing is written. Policy violations are reported as errors. Pass `cards` to get a `pointsPreview` (see [Points preview](#points-preview)). Always available, even under `--read-only`. |
 | `validate_document` | Run the same GEDCOM 7 conformance checks as `gedfire validate` against the whole bound document — independent of any changeset — and return the findings structured instead of as plain-text lines. Optional `warningsAsErrors` mirrors the CLI flag. Always available, even under `--read-only`. |
 | `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. Refuses to run under `--read-only`. |
@@ -184,14 +184,44 @@ optionally ending in `-date` or `-place`. A card with no `gap`, or the queue gap
 `draft_changeset` takes `findings`, each with an `id`, `extract`, `source`
 (`name`, `locator`, `class`, `information`, optional `author`, `url`,
 `accessed`), `target` (`xref`, optional `card`, `name`), `facts`
-(`record`, `fact`, optional `date` and `place`, a per-fact `quay`, optional
-`excerpt`, `class`, `information`) and optional `notes`. The values and grades
-are yours; the compiler does the rest the same way every time. Findings with
-the same target become one item, and one source record is made per collection
-and author. The QUAY ceiling follows the source class and information class:
-original or image copy 3 for primary information and 2 otherwise, derivative 2
-for primary and 1 otherwise, authored 1, user-contributed 0. Unrecognized
-fields are rejected by path.
+(`record`, `fact`, optional `date` and `place`, or a text `value` such as a
+NAME change, a per-fact `quay`, optional `excerpt`, `class`, `information`)
+and optional `notes`. The values and grades are yours; the compiler does the
+rest the same way every time. Findings with the same target become one item,
+and one source record is made per collection and author. The QUAY ceiling
+follows the source class and information class: original or image copy 3 for
+primary information and 2 otherwise, derivative 2 for primary and 1 otherwise,
+authored 1, user-contributed 0. Unrecognized fields are rejected by path.
+
+A repeatable tag such as CENS or RESI never overwrites by accident: several
+values for one record are each added, a value whose date the record already
+holds updates that instance, and any other value is added beside the existing
+ones. A single-valued tag (BIRT, DEAT, NAME, ...) given two different values is
+left as an `open` decision.
+
+A finding can also create people and families. List each new person under
+`people` (`xref` as a placeholder such as `@NewI1@`, `name`, `sex`, which a
+partner needs) and link them under `relations`: `{"kind": "spouse", "person",
+"spouse", "family", "quay"}`, `{"kind": "child", "family", "child", "husb",
+"wife", "quay"}` or `{"kind": "parent", "person", "role", "parent", "quay"}`.
+Each relation is cited with the finding's source at its own `quay`. Facts about
+a new person or a new family (a MARR) use the placeholder as their `record`.
+`husb` and `wife` seed a family only where a relation creates it; later
+relations on that family leave them off and a `dropped-seed` decision says so.
+
+A fact can carry `substructures` (`[{"tag": "TYPE", "value": "Pension Application"}]`
+on an EVEN, which is then added rather than matched by date), a
+`replacedCitations` disposition (`keep`, `drop` or `moveToNote`) for the
+citations of a value it replaces, or `citeOnly: true` to attach this finding's
+citation to a fact the record already holds (`date` and `place` pick the
+instance). A `spouse` or `child` relation takes `notDuplicateOf`, a list of
+existing people confirmed not to be the new person. A note takes `match`, the
+exact text of an existing note to rewrite, and `cites`, a list of
+`{"finding", "quay", "excerpt"}` citations of findings in the same item (the
+note's own finding when `finding` is omitted).
+
+With `outPath` the changeset is written to a new file; an existing file is
+replaced only when `overwrite` is `true`.
 
 For example, an MCP client can call `find_person` with:
 

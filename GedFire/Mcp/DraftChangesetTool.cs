@@ -27,11 +27,16 @@ public sealed class DraftChangesetTool
         "citation page, a verification note on every record holding a fact graded at or below the policy ceiling " +
         "(QUAY 1 without a policy file), and a refusal, naming the field, for a QUAY the source and information " +
         "class cannot support, a target name that differs from the person's recorded name, or prose the server's " +
-        "policy bans. You supply the judgement: each fact's record, tag, date, place and QUAY, and any note text. " +
-        "Findings aimed at the same target become one item. Returns the changeset, a decisions list (what was reused, " +
-        "minted, merged, or left open for you), and errors; with outPath it also writes the changeset to a new file, " +
-        "never overwriting one. Reads the document for existing sources and names, writes nothing to it; run " +
-        "validate_changeset on the result.";
+        "policy bans. You supply the judgement: each fact's record, tag, date, place (or a text value such as a NAME " +
+        "change) and QUAY, and any note text. A repeatable tag (CENS, RESI, ...) is added beside the instances the " +
+        "record already holds, or updates the one with the same date. New people and families come from people " +
+        "(placeholder xrefs) and relations (spouse, child, parent), compiled to the dialect's relationship ops with " +
+        "the finding's citation. A note may rewrite an existing note (match) and cite findings of its item (cites); " +
+        "a fact may carry substructures, a replacedCitations disposition, or citeOnly to cite a fact already held. " +
+        "Findings aimed at the same target become one item. Returns the changeset, a " +
+        "decisions list (what was reused, minted, merged, or left open for you), and errors; with outPath it also " +
+        "writes the changeset to a new file, replacing an existing one only when overwrite is true. Reads the " +
+        "document for existing sources and names, writes nothing to it; run validate_changeset on the result.";
 
     public const string InputSchemaJson = """
         {
@@ -84,12 +89,62 @@ public sealed class DraftChangesetTool
                         "fact": { "type": "string", "description": "The GEDCOM tag, e.g. BIRT, DEAT, BURI, MARR." },
                         "date": { "type": "string" },
                         "place": { "type": "string" },
+                        "value": { "type": "string", "description": "A text fact's payload, e.g. a NAME change (\"Ralph /Morrill/\"); not combined with date or place." },
                         "quay": { "type": "integer", "minimum": 0, "maximum": 3 },
                         "class": { "type": "string", "enum": ["original", "image copy", "derivative", "authored", "user-contributed"], "description": "Overrides the source's class for this fact." },
                         "information": { "type": "string", "enum": ["primary", "secondary", "undetermined"], "description": "Overrides the source's information class for this fact." },
-                        "excerpt": { "type": "string", "description": "A narrower extract for this fact's citation." }
+                        "excerpt": { "type": "string", "description": "A narrower extract for this fact's citation." },
+                        "substructures": {
+                          "type": "array",
+                          "description": "Extra lines under the fact, e.g. [{\"tag\": \"TYPE\", \"value\": \"Pension Application\"}] on an EVEN. A fact with substructures is added, never matched by date.",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": { "tag": { "type": "string" }, "value": { "type": "string" } },
+                            "required": ["tag", "value"]
+                          }
+                        },
+                        "replacedCitations": { "type": "string", "enum": ["keep", "drop", "moveToNote"], "description": "What becomes of the citations on a fact whose value this replaces; default keep." },
+                        "citeOnly": { "type": "boolean", "description": "Only add this finding's citation to a fact the record already holds. date and place then select the instance when the record has several." }
                       },
                       "required": ["record", "fact", "quay"]
+                    }
+                  },
+                  "people": {
+                    "type": "array",
+                    "description": "New people this finding adds, each named by a placeholder xref. A person is created by the relation that links them; give their facts under facts with the placeholder as record.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "xref": { "type": "string", "pattern": "^@New[A-Za-z0-9_]+@$", "description": "A placeholder such as @NewI1@; apply mints the real xref." },
+                        "name": { "type": "string", "description": "GEDCOM form, e.g. \"Sarah /Blake/\"." },
+                        "sex": { "type": "string", "enum": ["M", "F"], "description": "Required for a partner, so HUSB and WIFE can be assigned." }
+                      },
+                      "required": ["xref", "name"]
+                    }
+                  },
+                  "relations": {
+                    "type": "array",
+                    "description": "Links this finding establishes, in the changeset dialect's terms. Each is cited with the finding's source at its own quay. Family xrefs for new families are placeholders such as @NewF1@; facts about the family (MARR) use that xref as record.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": { "type": "string", "enum": ["spouse", "child", "parent"] },
+                        "person": { "type": "string", "description": "spouse and parent: the known person (the child, for parent). An existing xref, or a person an earlier relation created." },
+                        "spouse": { "type": "string", "description": "spouse: the partner, existing or declared in people." },
+                        "child": { "type": "string", "description": "child: the child, existing or declared in people." },
+                        "parent": { "type": "string", "description": "parent: the parent, existing or declared in people." },
+                        "role": { "type": "string", "enum": ["father", "mother"], "description": "parent: which parent." },
+                        "family": { "type": "string", "description": "The family: required for spouse and child, optional for parent. A placeholder creates it." },
+                        "husb": { "type": "string", "description": "child: father, used only when this relation creates the family." },
+                        "wife": { "type": "string", "description": "child: mother, used only when this relation creates the family." },
+                        "notDuplicateOf": { "type": "array", "items": { "type": "string" }, "description": "spouse and child: existing people already confirmed not to be the new person." },
+                        "excerpt": { "type": "string", "description": "A narrower extract than the finding's for this relation's citation." },
+                        "quay": { "type": "integer", "minimum": 0, "maximum": 3 }
+                      },
+                      "required": ["kind", "quay"]
                     }
                   },
                   "notes": {
@@ -100,7 +155,22 @@ public sealed class DraftChangesetTool
                       "additionalProperties": false,
                       "properties": {
                         "record": { "type": "string", "pattern": "^@[^@]+@$" },
-                        "text": { "type": "string" }
+                        "text": { "type": "string" },
+                        "match": { "type": "string", "description": "The exact text of an existing note on the record, to rewrite instead of adding a new note." },
+                        "cites": {
+                          "type": "array",
+                          "description": "Citations on the note. Each cites a finding of this draft aimed at the same target (the note's own finding when finding is omitted), graded on its own.",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "finding": { "type": "string", "description": "The id of the finding cited; default the note's own." },
+                              "quay": { "type": "integer", "minimum": 0, "maximum": 3 },
+                              "excerpt": { "type": "string", "description": "A narrower extract than the finding's." }
+                            },
+                            "required": ["quay"]
+                          }
+                        }
                       },
                       "required": ["record", "text"]
                     }
@@ -113,7 +183,11 @@ public sealed class DraftChangesetTool
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "Where to write the changeset. Refused when the file already exists or the draft has errors."
+              "description": "Where to write the changeset. Refused when the file already exists, unless overwrite is true, or when the draft has errors."
+            },
+            "overwrite": {
+              "type": "boolean",
+              "description": "Replace an existing file at outPath. Default false."
             }
           },
           "required": ["findings"]
@@ -134,7 +208,7 @@ public sealed class DraftChangesetTool
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "kind": { "type": "string", "enum": ["reused-source", "minted-source", "merged-citation", "verification-note", "open"] },
+                  "kind": { "type": "string", "enum": ["reused-source", "minted-source", "minted-person", "merged-citation", "kept-citation", "verification-note", "dropped-seed", "open"] },
                   "detail": { "type": "string" },
                   "findings": { "type": "array", "items": { "type": "string" } }
                 },
@@ -166,15 +240,17 @@ public sealed class DraftChangesetTool
     // Arguments arrive as raw JsonElements so a wrong shape is reported by
     // field name rather than failing inside the SDK binder.
     Task<CallToolResult> InvokeAsync(
-        JsonElement? findings = null, JsonElement? outPath = null, CancellationToken cancellationToken = default)
-        => HandleAsync(findings ?? default, outPath ?? default, cancellationToken);
+        JsonElement? findings = null, JsonElement? outPath = null, JsonElement? overwrite = null, CancellationToken cancellationToken = default)
+        => HandleAsync(findings ?? default, outPath ?? default, overwrite ?? default, cancellationToken);
 
-    public Task<CallToolResult> HandleAsync(JsonElement findings, JsonElement outPath, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(findings, outPath, ct), cancellationToken);
+    public Task<CallToolResult> HandleAsync(JsonElement findings, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(findings, outPath, overwrite, ct), cancellationToken);
 
-    async Task<CallToolResult> ExecuteAsync(JsonElement findings, JsonElement outPath, CancellationToken cancellationToken)
+    async Task<CallToolResult> ExecuteAsync(JsonElement findings, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken)
     {
         if (!ToolArguments.TryReadOptionalString(outPath, "outPath", out string? path, out string? error))
+            return CallToolResults.Error(error!);
+        if (!ToolArguments.TryReadOptionalBool(overwrite, "overwrite", out bool replace, out error))
             return CallToolResults.Error(error!);
         if (path is not null && string.IsNullOrWhiteSpace(path))
             return CallToolResults.Error("outPath must not be blank.");
@@ -189,26 +265,26 @@ public sealed class DraftChangesetTool
         string? writtenTo = null;
         if (path is not null && draft.Success)
         {
-            var written = TryWrite(Path.GetFullPath(path.Trim()), draft.Changeset!, out string? writeError);
+            var written = TryWrite(Path.GetFullPath(path.Trim()), draft.Changeset!, replace, out string? writeError);
             if (writeError is not null) return Respond(draft with { Errors = [writeError] }, null);
             writtenTo = written;
         }
         return Respond(draft, writtenTo);
     }
 
-    static string? TryWrite(string fullPath, JsonObject changeset, out string? error)
+    static string? TryWrite(string fullPath, JsonObject changeset, bool replace, out string? error)
     {
         error = null;
         try
         {
-            using var stream = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write);
+            using var stream = new FileStream(fullPath, replace ? FileMode.Create : FileMode.CreateNew, FileAccess.Write);
             using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
             changeset.WriteTo(writer);
             return fullPath;
         }
         catch (IOException) when (File.Exists(fullPath))
         {
-            error = $"outPath {fullPath} already exists; draft_changeset never overwrites a file.";
+            error = $"outPath {fullPath} already exists; pass overwrite: true to replace it.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {

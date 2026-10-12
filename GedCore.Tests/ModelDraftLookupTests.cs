@@ -43,13 +43,29 @@ public class ModelDraftLookupTests
     }
 
     [Fact]
-    public void CitationsOn_ReturnsTheFactsCitationsWithEmptyFieldsAsNull()
+    public void FactsOn_ReturnsEachInstanceWithItsDatePlaceAndCitations()
     {
-        var citation = Assert.Single(Lookup().CitationsOn("@I1@", "DEAT"));
+        var lookup = Lookup();
 
+        var death = Assert.Single(lookup.FactsOn("@I1@", "DEAT"));
+        Assert.Null(death.Date);
+        var citation = Assert.Single(death.Citations);
         Assert.Equal(new GedCore.Drafting.ExistingCitation("@S1@", "Memorial #0", null, 2), citation);
-        Assert.Empty(Lookup().CitationsOn("@I1@", "BIRT"));
-        Assert.Empty(Lookup().CitationsOn("@I9@", "DEAT"));
+        Assert.Empty(lookup.FactsOn("@I1@", "BIRT"));
+        Assert.Empty(lookup.FactsOn("@I9@", "DEAT"));
+    }
+
+    [Fact]
+    public void FactsOn_ListsEveryInstanceOfARepeatableTag()
+    {
+        var model = new GedModel();
+        model.Individuals["@I1@"] = new GedIndividual { Xref = "@I1@" };
+        model.Individuals["@I1@"].Census.Add(new GedEvent { Tag = "CENS", Date = "1900", Place = "Salem" });
+        model.Individuals["@I1@"].Census.Add(new GedEvent { Tag = "CENS", Date = "1910", Place = "" });
+
+        var facts = new ModelDraftLookup(model).FactsOn("@I1@", "CENS");
+
+        Assert.Equal([("1900", "Salem"), ("1910", null)], facts.Select(f => (f.Date, f.Place)));
     }
 
     [Fact]

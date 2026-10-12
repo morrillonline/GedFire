@@ -45,6 +45,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
     private static readonly HashSet<string> SingleValuedFacts = new(StringComparer.OrdinalIgnoreCase)
     { "BIRT", "DEAT", "CHR", "BAPM", "BURI", "CREM", "SEX", "NAME", "MARR", "DIV" };
 
+    internal static bool IsSingleValued(string tag) => SingleValuedFacts.Contains(tag);
+
     internal static CreateOrUpdateVitalOp Read(JsonElement el) => new()
     {
         Record = JsonRead.Req(el, "record", "createOrUpdateVital"),
