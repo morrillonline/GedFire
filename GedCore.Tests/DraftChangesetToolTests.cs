@@ -205,6 +205,89 @@ public class DraftChangesetToolTests : IDisposable
         Assert.Contains("is not a child of @F3@", refused.GetProperty("errors")[0].GetString());
     }
 
+    static string FindingFile(string id, string note) => $$"""
+        { "id": "{{id}}", "correlation": { "kind": "enrich", "target": "@I1@" },
+          "draft": { "id": "{{id}}", "extract": "DEATH 26 Mar 2013",
+            "source": { "name": "Find a Grave", "locator": "Memorial #{{id}}", "class": "derivative", "information": "primary" },
+            "target": { "xref": "@I1@", "card": "enrich-death" },
+            "facts": [ { "record": "@I1@", "fact": "DEAT", "date": "26 Mar 2013", "place": "Rugby", "quay": 2 } ],
+            "people": [], "relations": [],
+            "notes": [ { "record": "@I1@", "text": "{{note}}", "cites": [ { "quay": 2 } ] } ] },
+          "draftGaps": [] }
+        """;
+
+    string WriteFinding(string name, string content)
+    {
+        string path = Path.Combine(_dir, name);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    static DraftChangesetArguments Paths(params string[] paths) =>
+        new(default, default, Arg(JsonSerializer.Serialize(paths)), default, default);
+
+    [Fact]
+    public async Task FindingPaths_CompileTheFindingFilesAsOneSetAndJoinTheirNotes()
+    {
+        string one = WriteFinding("one.json", FindingFile("F-1", "Died in Rugby."));
+        string two = WriteFinding("two.json", FindingFile("F-2", "Buried in Rugby."));
+
+        var result = await Tool().HandleAsync(Paths(one, two), CancellationToken.None);
+
+        var structured = Structured(result);
+        Assert.True(structured.GetProperty("success").GetBoolean(), structured.GetRawText());
+        var ops = structured.GetProperty("changeset").GetProperty("items")[0].GetProperty("ops").EnumerateArray().ToList();
+        var note = Assert.Single(ops, o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+        Assert.Equal("Died in Rugby. Buried in Rugby.", note.GetProperty("text").GetString());
+        Assert.Equal(2, note.GetProperty("citations").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task FindingPaths_ADraftGapsFileIsReportedAndNothingIsDrafted()
+    {
+        string ready = WriteFinding("ready.json", FindingFile("F-1", "Died."));
+        string gap = WriteFinding("gap.json", FindingFile("F-2", "Buried.").Replace("\"draftGaps\": []", "\"draftGaps\": [\"needsSex: Mary\"]"));
+
+        var result = await Tool().HandleAsync(Paths(ready, gap), CancellationToken.None);
+
+        var structured = Structured(result);
+        Assert.False(structured.GetProperty("success").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, structured.GetProperty("changeset").ValueKind);
+        Assert.Contains("gap.json has draftGaps: needsSex: Mary", structured.GetProperty("errors")[0].GetString());
+    }
+
+    [Fact]
+    public async Task FindingPaths_EveryUnreadyFileIsReported()
+    {
+        string noDraft = WriteFinding("a.json", """{ "id": "F-1" }""");
+        string missing = Path.Combine(_dir, "missing.json");
+
+        var result = await Tool().HandleAsync(Paths(noDraft, missing), CancellationToken.None);
+
+        var errors = Structured(result).GetProperty("errors").EnumerateArray().Select(e => e.GetString()!).ToList();
+        Assert.Equal(2, errors.Count);
+        Assert.Contains("a.json has no draft", errors[0]);
+        Assert.Contains("missing.json could not be read", errors[1]);
+    }
+
+    [Fact]
+    public async Task FindingPathsWithFindings_IsRefused()
+    {
+        var result = await Tool().HandleAsync(
+            new DraftChangesetArguments(Arg(Findings), default, Arg("[\"x.json\"]"), default, default), CancellationToken.None);
+
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public async Task AnEmptyFindingPaths_IsRefused()
+    {
+        var result = await Tool().HandleAsync(
+            new DraftChangesetArguments(default, default, Arg("[]"), default, default), CancellationToken.None);
+
+        Assert.False(Structured(result).GetProperty("success").GetBoolean());
+    }
+
     [Fact]
     public async Task ABlankOutPath_IsRefused()
     {

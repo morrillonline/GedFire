@@ -22,6 +22,7 @@ public static class McpToolCollectionFactory
         new DateCalcTool(gate).ToMcpServerTool(),
         new DescribeChangesetOpsTool(gate).ToMcpServerTool(),
         new DraftChangesetTool(session, gate, policy).ToMcpServerTool(),
+        new DraftPackageTool(session, documentPath, gate, policy).ToMcpServerTool(),
         new FindFamilyTool(session, gate, nicknames).ToMcpServerTool(),
         new FindPersonTool(session, gate, nicknames).ToMcpServerTool(),
         new FindSourceTool(session, gate).ToMcpServerTool(),

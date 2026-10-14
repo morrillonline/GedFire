@@ -10,9 +10,11 @@ internal sealed class TempDocumentSessions : IDisposable
 {
     readonly string _dir = Directory.CreateTempSubdirectory("gedfire-session-tests-").FullName;
 
-    public DocumentSession Open(string gedText)
+    public DocumentSession Open(string gedText) => Open(gedText, out _);
+
+    public DocumentSession Open(string gedText, out string path)
     {
-        string path = Path.Combine(_dir, Guid.NewGuid() + ".ged");
+        path = Path.Combine(_dir, Guid.NewGuid() + ".ged");
         File.WriteAllText(path, gedText);
         var doc = GedReader.ReadFile(path);
         var model = GedFire.Gen.ModelBuilder.Build(doc);

@@ -103,7 +103,7 @@ Restart or reload the client after changing its configuration, approve the
 local server if prompted, and confirm that it discovers `find_person`,
 `date_calc`, `get_document_stats`, `get_record`, `get_records`, `list_people`,
 `list_unanchored_people`, `find_family`, `select_targets`,
-`find_source`, `describe_changeset_ops`, `draft_changeset`, `validate_changeset`,
+`find_source`, `describe_changeset_ops`, `draft_changeset`, `draft_package`, `validate_changeset`,
 `check_plausibility`, `validate_document`, and `apply_changeset`.
 
 A call with a missing required parameter or an unrecognized one is refused for
@@ -114,11 +114,12 @@ parameter "nme". Accepted parameters: query (required), hints, maxResults.`
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
-The server binds to one document over stdio and exposes sixteen tools. Fourteen
+The server binds to one document over stdio and exposes seventeen tools. Fourteen
 are read-only; `apply_changeset` is the only one that writes to the file,
 and only after validation and in-memory verification both pass (or not at
-all, if the server was started with `--read-only`); `draft_changeset` never
-touches the file either, but with `outPath` it creates a new changeset file. The server also watches
+all, if the server was started with `--read-only`); `draft_changeset` and
+`draft_package` never touch the file either, but with `outPath` (or, for
+`draft_package`, always) they create new changeset files. The server also watches
 the bound file and reloads automatically if it changes on disk — including
 a change `apply_changeset` itself just wrote — no restart needed:
 
@@ -136,7 +137,8 @@ a change `apply_changeset` itself just wrote — no restart needed:
 | `select_targets` | The `gedfire select-targets` command as a tool: detect research gaps for the given surnames and draw `count` targets, returned as the `wanted.json` document without the GEDCOM path. An Enrich person target is one card per person: `enrichments` lists every birth, marriage and death whose date or place is not exact, `nominalPoints` is one per missing date or place across all of them, and the difficulty bonus is added once (`score` is `nominalPoints` plus the bonus). To price a changeset against it, pass `validate_changeset` a card with `gap` `enrich-fact`, `points` 1 and `bonus` equal to `score` minus `nominalPoints`. Each target lists `possibleDuplicateOf`: the people the `check_plausibility` GEN301 duplicate test pairs with it (`[]` when none); at most three are listed, best first, and `possibleDuplicateCount` gives the full number; such a target is still drawn. A New child card is offered only when the husband bears a study surname, since other children will not carry it. A person with an Unknown name part is paired only through an agreeing parent or spouse name. An exact burial (date and place) closes the death gap when there is no exact death, and `died` falls back to the burial. Seeded from the clock, like the command. |
 | `describe_changeset_ops` | Return the changeset envelope shape and the full v2 op dialect (every `createOrUpdate`/`delete`/`merge` op, its required and optional fields, and one worked example) — so an agent can compose a valid changeset without external documentation or trial-and-error against `validate_changeset`'s error text. Takes no arguments. |
 | `check_plausibility` | Preview a proposal changeset and return only the chronological and biological plausibility findings it would introduce, structured for routing by severity. Name characters are checked too: digits and symbols (other than apostrophe, hyphen and period) are errors that block a changeset, an ordinal suffix such as `3rd` is allowed, and punctuation standing in for a name (`----`) is a warning to use `Unknown`. Always available, even under `--read-only`. |
-| `draft_changeset` | Compile findings into a changeset in the op dialect (see [Drafting a changeset](#drafting-a-changeset)). Reuses an existing source or mints one per collection, merges each (source, page, grade) group's extracts into one `dataText`, copies the locator verbatim into the citation page, adds a verification note for every fact graded at or below the policy ceiling, and refuses a QUAY the source and information class cannot support, a target name that differs from the recorded one, and prose the policy bans. Returns the changeset, a `decisions` list, and `errors`; `outPath` writes it to a new file, replacing an existing one only with `overwrite`; `inputPath` reads the findings from a file. New people and families come from `people` and `relations`, which can also move a child between families or remove a link. |
+| `draft_changeset` | Compile findings into a changeset in the op dialect (see [Drafting a changeset](#drafting-a-changeset)). Reuses an existing source or mints one per collection, merges each (source, page, grade) group's extracts into one `dataText`, copies the locator verbatim into the citation page, adds a verification note for every fact graded at or below the policy ceiling, and refuses a QUAY the source and information class cannot support, a target name that differs from the recorded one, and prose the policy bans. Returns the changeset, a `decisions` list, and `errors`; `outPath` writes it to a new file, replacing an existing one only with `overwrite`; `inputPath` reads the findings from a file, and `findingPaths` reads them from correlated finding files. New people and families come from `people` and `relations`, which can also move a child between families or remove a link. |
+| `draft_package` | Draft a whole proposal package from correlated finding files in one call (see [Drafting a package](#drafting-a-package)). Groups `findingPaths` by anchor, compiles each anchor's findings as `draft_changeset` does, dry-runs the result, and writes `<folder>/<proposal>.item<N>.changes.json` only for the anchors that pass. Returns per item its files, finding ids, errors, `decisions`, `pointsPreview` (priced from `cardsPath`), plausibility findings, and the file's path and sha256. |
 | `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but nothing is written. Policy violations are reported as errors. Pass `cards` to get a `pointsPreview` (see [Points preview](#points-preview)), or `cardsPath`, a file holding `{"cards": [...]}`, to read the same list from disk. Always available, even under `--read-only`. |
 | `validate_document` | Run the same GEDCOM 7 conformance checks as `gedfire validate` against the whole bound document — independent of any changeset — and return the findings structured instead of as plain-text lines. Optional `warningsAsErrors` mirrors the CLI flag. Always available, even under `--read-only`. |
 | `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. Refuses to run under `--read-only`. |
@@ -223,7 +225,14 @@ note's own finding when `finding` is omitted).
 With `outPath` the changeset is written to a new file; an existing file is
 replaced only when `overwrite` is `true`. Instead of `findings`, pass
 `inputPath`, a file holding `{"findings": [...]}`, to re-draft a saved input
-without sending it back through the model (give one or the other).
+without sending it back through the model, or `findingPaths`, a list of
+correlated finding files, each holding its complete entry under `draft` (the
+same shape as one `findings` item). The entries are compiled as one set, and
+notes that several findings of one item wrote on the same record are joined
+into one note that still cites each finding. A file with no `draft`, a parked
+finding, or a non-empty `draftGaps` is reported by file name and nothing is
+drafted. Give only one of the three. A check that names a finding, such as
+one that compiles to nothing, is reported with its file name.
 
 A relation can also take a link away. A `child` relation with `from` (an
 existing family that lists the child) moves the child out of that family and
@@ -233,6 +242,30 @@ leaves the old one. `{"kind": "unlink-child", "family", "child"}` and
 outright. A removal op carries no citation, so it takes no `quay` or `excerpt`
 and the draft returns an `open` decision asking for a note that cites the
 finding. A removal from a family that does not list the child is refused.
+
+### Drafting a package
+
+`draft_package` drafts every anchor of a proposal in one call. Its arguments
+are `findingPaths` (the correlated finding files), `folder` (an existing
+folder), `proposal` (the file-name prefix), and optionally `cardsPath` and
+`overwrite`. Each finding file is grouped by the anchor it was correlated to
+(`correlation.target`); items are numbered by the first appearance of each
+anchor in `findingPaths`. For each anchor the findings are compiled exactly as
+`draft_changeset` compiles `findingPaths`, then dry-run against the document
+once, which supplies both the `pointsPreview` and the plausibility findings.
+The changeset is written to `<folder>/<proposal>.item<N>.changes.json` only
+when the draft, the policy and the dry run all pass, so a failing anchor never
+stops the others and leaves no file behind. A file that already exists is kept
+unless `overwrite` is `true`.
+
+`cardsPath` is a JSON file mapping each anchor xref to the array of cards its
+item serves, each in the `cards` shape `validate_changeset` takes; an anchor
+with no entry gets a null `pointsPreview`. The result lists, per item, the
+finding files and ids, `success`, `errors`, `decisions`, `pointsPreview`,
+`plausibility`, and for a written file its `writtenTo` path and the lowercase
+hex `sha256` of exactly the bytes written. A finding file whose anchor cannot
+be read (not JSON, or no `correlation.target`) is reported under the top-level
+`errors` and belongs to no item.
 
 For example, an MCP client can call `find_person` with:
 

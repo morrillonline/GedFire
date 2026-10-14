@@ -105,7 +105,7 @@ public class McpServerIntegrationTests : IDisposable
 
         var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Equal(16, tools.GetArrayLength());
+        Assert.Equal(17, tools.GetArrayLength());
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
@@ -114,22 +114,22 @@ public class McpServerIntegrationTests : IDisposable
         // membership is asserted.
         Assert.Equal(
             new HashSet<string> {
-                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "draft_changeset", "find_family", "find_person", "find_source",
+                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "draft_changeset", "draft_package", "find_family", "find_person", "find_source",
                 "get_document_stats", "get_record", "get_records", "list_people", "list_unanchored_people", "select_targets",
                 "validate_changeset", "validate_document",
             },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
 
         // apply_changeset is the one tool on this server that writes to the
-        // file, so it alone is destructive. draft_changeset can create a new
-        // changeset file (never overwriting one), so it is neither read-only
+        // file, so it alone is destructive. draft_changeset and draft_package can create new
+        // changeset files (draft_package replaces one only with overwrite), so they are neither read-only
         // nor destructive. Every other tool — including validate_changeset,
         // its dry-run twin — is read-only, non-destructive, and idempotent.
         foreach (var tool in tools.EnumerateArray())
         {
             string name = tool.GetProperty("name").GetString()!;
             bool isApply = name == "apply_changeset";
-            bool isDraft = name == "draft_changeset";
+            bool isDraft = name is "draft_changeset" or "draft_package";
             var annotations = tool.GetProperty("annotations");
             Assert.Equal(!isApply && !isDraft, annotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.Equal(isApply, annotations.GetProperty("destructiveHint").GetBoolean());

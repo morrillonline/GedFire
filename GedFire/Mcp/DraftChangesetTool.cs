@@ -37,7 +37,8 @@ public sealed class DraftChangesetTool
         "decisions list (what was reused, minted, merged, or left open for you), and errors; with outPath it also " +
         "writes the changeset to a new file, replacing an existing one only when overwrite is true. Findings may be " +
         "given inline or by inputPath, a file holding {\"findings\": [...]}, to re-draft a saved input without " +
-        "passing it back. Reads the " +
+        "passing it back, or by findingPaths, the lake's correlated finding files, whose \"draft\" entries are compiled " +
+        "as one set. Reads the " +
         "document for existing sources and names, writes nothing to it; run validate_changeset on the result.";
 
     public const string InputSchemaJson = """
@@ -48,7 +49,7 @@ public sealed class DraftChangesetTool
             "findings": {
               "type": "array",
               "minItems": 1,
-              "description": "The findings to compile; required unless inputPath is given. Unrecognized fields are rejected.",
+              "description": "The findings to compile; required unless inputPath or findingPaths is given. Unrecognized fields are rejected.",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
@@ -188,6 +189,12 @@ public sealed class DraftChangesetTool
               "pattern": "\\S",
               "description": "Path to a JSON file holding {\"findings\": [...]}, the same array as findings, so a saved input can be re-drafted without passing it back inline. Give findings or inputPath, not both."
             },
+            "findingPaths": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
+              "description": "Paths to correlated finding files from the lake. Each holds the finding's complete entry under \"draft\" (the same shape as one findings item); the entries are compiled as one set and the notes several findings of one item wrote on the same record are joined. A file with no draft, a parked finding, or a non-empty draftGaps is reported by name instead of being compiled. Give findingPaths, or findings or inputPath, not both."
+            },
             "outPath": {
               "type": "string",
               "minLength": 1,
@@ -248,35 +255,40 @@ public sealed class DraftChangesetTool
     // Arguments arrive as raw JsonElements so a wrong shape is reported by
     // field name rather than failing inside the SDK binder.
     Task<CallToolResult> InvokeAsync(
-        JsonElement? findings = null, JsonElement? inputPath = null, JsonElement? outPath = null, JsonElement? overwrite = null,
-        CancellationToken cancellationToken = default)
-        => HandleAsync(findings ?? default, inputPath ?? default, outPath ?? default, overwrite ?? default, cancellationToken);
+        JsonElement? findings = null, JsonElement? inputPath = null, JsonElement? findingPaths = null,
+        JsonElement? outPath = null, JsonElement? overwrite = null, CancellationToken cancellationToken = default)
+        => HandleAsync(
+            new DraftChangesetArguments(
+                findings ?? default, inputPath ?? default, findingPaths ?? default, outPath ?? default, overwrite ?? default),
+            cancellationToken);
 
     public Task<CallToolResult> HandleAsync(JsonElement findings, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken) =>
-        HandleAsync(findings, default, outPath, overwrite, cancellationToken);
+        HandleAsync(new DraftChangesetArguments(findings, default, default, outPath, overwrite), cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         JsonElement findings, JsonElement inputPath, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(findings, inputPath, outPath, overwrite, ct), cancellationToken);
+        HandleAsync(new DraftChangesetArguments(findings, inputPath, default, outPath, overwrite), cancellationToken);
 
-    async Task<CallToolResult> ExecuteAsync(
-        JsonElement findingsArgument, JsonElement inputPath, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken)
+    public Task<CallToolResult> HandleAsync(DraftChangesetArguments arguments, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(arguments, ct), cancellationToken);
+
+    async Task<CallToolResult> ExecuteAsync(DraftChangesetArguments arguments, CancellationToken cancellationToken)
     {
-        if (!ToolArguments.TryReadOptionalString(outPath, "outPath", out string? path, out string? error))
+        if (!ToolArguments.TryReadOptionalString(arguments.OutPath, "outPath", out string? path, out string? error))
             return CallToolResults.Error(error!);
-        if (!ToolArguments.TryReadOptionalBool(overwrite, "overwrite", out bool replace, out error))
+        if (!ToolArguments.TryReadOptionalBool(arguments.Overwrite, "overwrite", out bool replace, out error))
             return CallToolResults.Error(error!);
         if (path is not null && string.IsNullOrWhiteSpace(path))
             return CallToolResults.Error("outPath must not be blank.");
-        if (!ArgumentFile.TryResolve(findingsArgument, "findings", inputPath, "inputPath", out var findings, out error))
-            return CallToolResults.Error(error!);
 
-        var (parsed, readErrors) = DraftFindingReader.Read(findings);
-        if (readErrors.Count > 0)
-            return Respond(new DraftResult(null, [], readErrors), null);
+        var input = ReadFindings(arguments, out error);
+        if (error is not null) return CallToolResults.Error(error);
+        if (input.Errors.Count > 0)
+            return Respond(new DraftResult(null, [], input.Errors), null);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        var draft = new ChangesetDrafter(new ModelDraftLookup(snapshot.Model), _policy).Draft(parsed);
+        var draft = new ChangesetDrafter(new ModelDraftLookup(snapshot.Model), _policy).Draft(input.Findings);
+        if (input.Files.Count > 0) draft = draft with { Errors = FindingFileLoader.NameFiles(draft.Errors, input.Files) };
 
         string? writtenTo = null;
         if (path is not null && draft.Success)
@@ -288,32 +300,45 @@ public sealed class DraftChangesetTool
         return Respond(draft, writtenTo);
     }
 
-    static string? TryWrite(string fullPath, JsonObject changeset, bool replace, out string? error)
+    // Files names the file each finding came from when they came from findingPaths, so a check can name it.
+    sealed record FindingInput(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Errors, IReadOnlyList<string> Files);
+
+    // The findings come from exactly one of: the findings argument, the inputPath file, or the lake's finding files.
+    static FindingInput ReadFindings(DraftChangesetArguments arguments, out string? error)
     {
         error = null;
-        try
+        bool hasPaths = arguments.FindingPaths.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
+        if (hasPaths)
         {
-            using var stream = new FileStream(fullPath, replace ? FileMode.Create : FileMode.CreateNew, FileAccess.Write);
-            using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
-            changeset.WriteTo(writer);
-            return fullPath;
+            bool hasOther = arguments.Findings.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null)
+                || arguments.InputPath.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
+            if (hasOther)
+            {
+                error = "give findingPaths, or findings or inputPath, not both.";
+                return new FindingInput([], [], []);
+            }
+
+            FindingFileLoader.TryLoad(arguments.FindingPaths, out var loaded, out var files, out var loadErrors);
+            return new FindingInput(loaded, loadErrors, files);
         }
-        catch (IOException) when (File.Exists(fullPath))
-        {
-            error = $"outPath {fullPath} already exists; pass overwrite: true to replace it.";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            error = $"Could not write {fullPath}: {ex.Message}";
-        }
-        return null;
+
+        if (!ArgumentFile.TryResolve(arguments.Findings, "findings", arguments.InputPath, "inputPath", out var findings, out error))
+            return new FindingInput([], [], []);
+        var (read, readErrors) = DraftFindingReader.Read(findings);
+        return new FindingInput(read, readErrors, []);
     }
+
+    static string? TryWrite(string fullPath, JsonObject changeset, bool replace, out string? error) =>
+        ChangesetFileWriter.TryWrite(fullPath, ChangesetFileWriter.Serialize(changeset), replace, out error);
 
     static CallToolResult Respond(DraftResult draft, string? writtenTo) =>
         CallToolResults.Success(
             new DraftChangesetResult(draft.Success, draft.Changeset, draft.Decisions, draft.Errors, writtenTo),
             CallToolResults.JsonOptions);
 }
+
+public sealed record DraftChangesetArguments(
+    JsonElement Findings, JsonElement InputPath, JsonElement FindingPaths, JsonElement OutPath, JsonElement Overwrite);
 
 public sealed record DraftChangesetResult(
     bool Success, JsonObject? Changeset, IReadOnlyList<DraftDecision> Decisions, IReadOnlyList<string> Errors, string? WrittenTo);

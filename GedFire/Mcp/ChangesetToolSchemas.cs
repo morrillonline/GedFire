@@ -103,9 +103,8 @@ static class ChangesetToolSchemas
             """);
     });
 
-    /// <summary>The output schema with the optional <c>pointsPreview</c> validate_changeset returns when cards are given.</summary>
-    public static readonly string OutputSchemaWithPreviewJson = Compose(OutputSchemaJson, schema =>
-        schema["properties"]!["pointsPreview"] = JsonNode.Parse("""
+    /// <summary>The <c>pointsPreview</c> schema, shared by every tool that prices a changeset against cards.</summary>
+    public const string PointsPreviewJson = """
             {
               "type": "object",
               "additionalProperties": false,
@@ -124,7 +123,11 @@ static class ChangesetToolSchemas
               },
               "required": ["closed", "notClosed", "subjectMismatch", "total"]
             }
-            """));
+            """;
+
+    /// <summary>The output schema with the optional <c>pointsPreview</c> validate_changeset returns when cards are given.</summary>
+    public static readonly string OutputSchemaWithPreviewJson = Compose(OutputSchemaJson, schema =>
+        schema["properties"]!["pointsPreview"] = JsonNode.Parse(PointsPreviewJson));
 
     static string Compose(string baseSchema, Action<JsonNode> addTo)
     {
