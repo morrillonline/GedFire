@@ -17,7 +17,7 @@ public static class McpServerInstructions
         "meaningless to any other document or provider. date_calc, find_family, find_person, find_source, " +
         "get_document_stats, get_record, get_records, list_people, " +
         "list_unanchored_people, select_targets, " +
-        "describe_changeset_ops, draft_changeset, validate_changeset, validate_document, and check_plausibility never modify " +
+        "describe_changeset_ops, draft_changeset, draft_package, validate_changeset, validate_document, and check_plausibility never modify " +
         "that file. apply_changeset is the only tool that writes to it, and only after validation and " +
         "in-memory verification both pass; call validate_changeset first with the same arguments to preview a " +
         "changeset without writing. check_plausibility runs that same preview and returns just the " +

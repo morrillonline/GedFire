@@ -52,7 +52,7 @@ public class McpServerInstructionsTests
         {
             "date_calc", "find_family", "find_person", "find_source", "get_document_stats", "get_record",
             "get_records", "list_people", "list_unanchored_people", "select_targets",
-            "describe_changeset_ops", "draft_changeset", "validate_changeset", "validate_document", "check_plausibility",
+            "describe_changeset_ops", "draft_changeset", "draft_package", "validate_changeset", "validate_document", "check_plausibility",
         })
             Assert.Contains(tool, text);
     }
