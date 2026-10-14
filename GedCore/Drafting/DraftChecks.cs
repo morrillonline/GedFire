@@ -5,18 +5,20 @@ namespace GedCore.Drafting;
 /// <summary>The refusals a draft makes before compiling: a QUAY the evidence cannot support, a target name that is not the person's, and new people or families that are not declared consistently.</summary>
 internal static class DraftChecks
 {
-    public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IPersonNames names)
+    public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)
     {
         for (int f = 0; f < findings.Count; f++)
         {
             var finding = findings[f];
-            foreach (var error in TargetNameErrors(finding, $"findings[{f}]", names)) yield return error;
+            foreach (var error in TargetNameErrors(finding, $"findings[{f}]", lookup)) yield return error;
             for (int i = 0; i < finding.Facts.Count; i++)
                 if (QuayError(finding, finding.Facts[i].Quay, finding.Facts[i].Class, finding.Facts[i].Information, $"findings[{f}].facts[{i}].quay") is { } error)
                     yield return error;
         }
 
-        foreach (var error in NewRecordErrors(findings).Concat(NoteCitationErrors(findings)).Concat(EmptyFindingErrors(findings))) yield return error;
+        foreach (var error in NewRecordErrors(findings).Concat(RemovalErrors(findings, lookup))
+                     .Concat(NoteCitationErrors(findings)).Concat(EmptyFindingErrors(findings)))
+            yield return error;
     }
 
     /// <summary>The highest QUAY the source class and information class can support.</summary>
@@ -110,7 +112,7 @@ internal static class DraftChecks
                 }
                 if (relation.Kind == DraftRelation.Spouse && relation.Family is null && PeopleOf(relation).Any(declared.ContainsKey))
                     yield return $"{path}.family is required when a partner is new: give a new family xref such as \"@NewF1@\".";
-                if (QuayError(finding, relation.Quay, null, null, $"{path}.quay") is { } error) yield return error;
+                if (!relation.IsRemoval && QuayError(finding, relation.Quay, null, null, $"{path}.quay") is { } error) yield return error;
             }
 
             for (int i = 0; i < finding.Facts.Count; i++)
@@ -123,6 +125,34 @@ internal static class DraftChecks
 
         foreach (string xref in declared.Keys.Where(x => !referenced.Contains(x)))
             yield return $"{xref} is declared in people but no relation links it to the tree.";
+    }
+
+    // A link can only be removed from a family that already exists and lists the child; otherwise the removal would silently do nothing.
+    static IEnumerable<string> RemovalErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)
+    {
+        for (int f = 0; f < findings.Count; f++)
+            for (int r = 0; r < findings[f].Relations.Count; r++)
+            {
+                var relation = findings[f].Relations[r];
+                string path = $"findings[{f}].relations[{r}]";
+                if (relation.Kind == DraftRelation.UnlinkChild)
+                    foreach (var error in LeavesFamilyErrors(relation, relation.Family!, $"{path}.family", lookup)) yield return error;
+                if (relation.Kind == DraftRelation.Child && relation.From is { } from)
+                {
+                    if (from == relation.Family) yield return $"{path}.from is the family the child joins; a move needs two different families.";
+                    else foreach (var error in LeavesFamilyErrors(relation, from, $"{path}.from", lookup)) yield return error;
+                }
+            }
+    }
+
+    static IEnumerable<string> LeavesFamilyErrors(DraftRelation relation, string family, string path, IDraftLookup lookup)
+    {
+        if (Placeholder.IsPlaceholder(family))
+            yield return $"{path} {family} is a family this draft creates, so there is no existing link to remove.";
+        else if (Placeholder.IsPlaceholder(relation.Other))
+            yield return $"{path}: {relation.Other} is a new person, so there is no existing link to remove.";
+        else if (lookup.IsChildOf(relation.Other, family) == false)
+            yield return $"{path}: {relation.Other} is not a child of {family}, so nothing would be removed.";
     }
 
     static IEnumerable<string> PeopleOf(DraftRelation relation) =>

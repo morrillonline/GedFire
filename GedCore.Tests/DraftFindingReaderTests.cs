@@ -150,6 +150,55 @@ public class DraftFindingReaderTests
     }
 
     [Fact]
+    public void AChildRelationWithFrom_ReadsTheFamilyTheChildLeaves()
+    {
+        var (findings, errors) = Read($"[{WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\"", "\"kind\": \"child\", \"child\": \"@I5@\", \"from\": \"@F1@\"")}]");
+
+        Assert.Empty(errors);
+        Assert.Equal("@F1@", findings[0].Relations[0].From);
+    }
+
+    [Fact]
+    public void FromOnASpouseRelation_IsRejected()
+    {
+        var (_, errors) = Read($"[{WithRelations.Replace("\"family\": \"@NewF1@\"", "\"family\": \"@NewF1@\", \"from\": \"@F1@\"")}]");
+
+        Assert.Contains("findings[0].relations[0].from does not apply to a spouse relation", Assert.Single(errors));
+    }
+
+    [Fact]
+    public void AnUnlinkChild_NeedsNoQuayAndNamesTheFamily()
+    {
+        var (findings, errors) = Read($"[{WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\", \"family\": \"@NewF1@\", \"quay\": 2", "\"kind\": \"Unlink-Child\", \"child\": \"@I5@\", \"family\": \"@F1@\"")}]");
+
+        Assert.Empty(errors);
+        var relation = Assert.Single(findings[0].Relations);
+        Assert.Equal((DraftRelation.UnlinkChild, "@I5@", "@F1@"), (relation.Kind, relation.Other, relation.Family));
+        Assert.True(relation.IsRemoval);
+    }
+
+    [Fact]
+    public void AnUnlinkParent_NeedsAPersonAndARoleButNoFamily()
+    {
+        var (findings, errors) = Read($"[{WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\", \"family\": \"@NewF1@\", \"quay\": 2", "\"kind\": \"unlink-parent\", \"person\": \"@I1@\", \"role\": \"mother\"")}]");
+
+        Assert.Empty(errors);
+        var relation = Assert.Single(findings[0].Relations);
+        Assert.Equal((DraftRelation.UnlinkParent, "@I1@", "mother", null), (relation.Kind, relation.Person, relation.Role, relation.Family));
+    }
+
+    [Theory]
+    [InlineData("quay")]
+    [InlineData("excerpt")]
+    public void ARemovalTakesNoCitationFields(string field)
+    {
+        string value = field == "quay" ? "2" : "\"x\"";
+        var (_, errors) = Read($"[{WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\", \"family\": \"@NewF1@\", \"quay\": 2", $"\"kind\": \"unlink-child\", \"child\": \"@I5@\", \"family\": \"@F1@\", \"{field}\": {value}")}]");
+
+        Assert.Contains($"findings[0].relations[0].{field} does not apply to a unlink-child relation; its fields are kind, child, family.", errors);
+    }
+
+    [Fact]
     public void AParentRelation_NeedsARole()
     {
         var (_, errors) = Read($"[{WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\", \"family\": \"@NewF1@\"", "\"kind\": \"parent\", \"person\": \"@I1@\", \"parent\": \"@NewI1@\"")}]");

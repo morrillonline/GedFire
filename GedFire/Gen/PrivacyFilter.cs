@@ -64,7 +64,7 @@ public static class PrivacyFilter
 
     static bool IsPlausiblyLiving(GedIndividual indi, int cutoffYear)
     {
-        if (indi.Death != null || indi.Will != null || indi.Probate != null)
+        if (indi.Death != null || indi.Burial != null || indi.Will != null || indi.Probate != null)
             return false;
         return GedDate.ParseYear(indi.Birth?.Date) > cutoffYear;
     }

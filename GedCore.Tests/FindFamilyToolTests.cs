@@ -85,6 +85,18 @@ public class FindFamilyToolTests : IDisposable
     }
 
     [Fact]
+    public async Task FindFamily_PersonWithOnlyABurial_CarriesTheBurialYearAsTheDeathYear()
+    {
+        string buried = Ged.Replace("1 DEAT\n2 DATE 1840", "1 BURI\n2 DATE 1841").Replace("1 DEAT\r\n2 DATE 1840", "1 BURI\r\n2 DATE 1841");
+        var tool = new FindFamilyTool(_sessions.Open(buried), new ToolGate(), NicknameDirectory.LoadEmbedded());
+
+        var result = await Call(tool, "\"parent\"", "\"Cornelius Ashworth\"");
+
+        var person = result.StructuredContent!.Value.GetProperty("candidates")[0].GetProperty("person");
+        Assert.Equal(1841, person.GetProperty("deathYear").GetInt32());
+    }
+
+    [Fact]
     public async Task FindFamily_WithBirthAndDeathHints_IsAccepted()
     {
         var result = await Call(Tool(), "\"spouse\"", "\"Beatrice Fenwick\"",

@@ -78,6 +78,10 @@ public sealed record PersonRecord(
     /// <summary>Present only when get_record was asked to includeSources.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<SourceRecord>? Sources { get; init; }
+
+    /// <summary>Present only for a person with a burial and no death: the burial, which approximates the death.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EventDetail? ApproximateDeath { get; init; }
 }
 
 public sealed record FamilyRecord(

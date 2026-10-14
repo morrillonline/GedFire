@@ -37,7 +37,7 @@ public sealed class MatchIndex
         NormalizedGiven: PersonNameNormalizer.Normalize(indi.FirstMiddle()),
         IsMale: indi.SexRecorded ? indi.IsMale : null,
         Birth: EventOf(indi.Birth),
-        Death: EventOf(indi.Death),
+        Death: EventOf(indi.DeathOrBurial),
         Parents: ParentsOf(indi.FamChild),
         Marriages: MarriagesOf(indi));
 

@@ -152,6 +152,18 @@ public class FindPersonToolTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_SingleMatch_ReportsTheBurialAsTheDeathWhenThereIsNone()
+    {
+        string buried = RichFamilyGed.Replace("1 DEAT", "1 BURI").Replace("3 JUN 1919", "6 JUN 1919");
+        var tool = ToolOver(buried, out _, _dir);
+        var result = await tool.HandleAsync("Frederick Morrill", null, CancellationToken.None);
+
+        var death = StructuredContent(result).GetProperty("person").GetProperty("death");
+        Assert.Equal("6 JUN 1919", death.GetProperty("date").GetString());
+        Assert.Equal("Portland, Maine", death.GetProperty("place").GetString());
+    }
+
+    [Fact]
     public async Task HandleAsync_SingleMatch_MapsFamiliesIncludingChildlessAndSpouselessMarriages()
     {
         var tool = ToolOver(RichFamilyGed, out _, _dir);

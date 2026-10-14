@@ -130,6 +130,22 @@ public class PrivacyFilterTests
     }
 
     [Fact]
+    public void Burial_CountsAsDead()
+    {
+        string ged = """
+            0 @I1@ INDI
+            1 NAME Silas /Hearth/
+            1 SEX M
+            1 BIRT
+            2 DATE 1 JAN 1950
+            1 BURI
+            2 DATE 2 FEB 2000
+            """;
+        var model = BuildFiltered(ged);
+        Assert.Equal("Silas", model.Individuals["@I1@"].FirstName);
+    }
+
+    [Fact]
     public void UndatedPerson_IsTreatedAsHistoric()
     {
         string ged = """
@@ -361,8 +377,8 @@ public class PrivacyFilterTests
             1 NAME Pat /Hearth/
             1 BIRT
             2 DATE 1 JAN 1950
-            1 BURI
-            2 DATE 1 JAN 2020
+            1 CHR
+            2 DATE 1 FEB 1950
             2 PLAC Somewhere
             0 @I2@ INDI
             1 NAME Old /Hearth/

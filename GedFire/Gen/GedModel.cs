@@ -112,7 +112,7 @@ public sealed class GedIndividual
     public GedEvent? Probate { get; set; }
     public List<GedEvent>     Census     { get; } = [];
     // Dated events outside the fields above (burial, baptism, ...), in document
-    // order; GedEvent.Tag says which. Not rendered on the generated site.
+    // order; GedEvent.Tag says which.
     public List<GedEvent>     OtherEvents { get; } = [];
     public List<GedSourceRef> NameSources { get; } = [];
 
@@ -168,8 +168,13 @@ public sealed class GedIndividual
 
     public bool IsChildless() => FamSpouse.All(f => f.Children.Count == 0);
 
+    public GedEvent? Burial => OtherEvents.FirstOrDefault(e => e.Tag == "BURI");
+
+    /// <summary>The death, or when none is recorded the burial, which proves one.</summary>
+    public GedEvent? DeathOrBurial => Death ?? Burial;
+
     public bool HasNoEvents() =>
-        Birth == null && Death == null && Will == null && Probate == null
+        Birth == null && Death == null && Burial == null && Will == null && Probate == null
         && FamSpouse.Count < 2;
 
     public IEnumerable<GedEvent> GetEvents()
@@ -178,6 +183,7 @@ public sealed class GedIndividual
         foreach (var c in Census.OrderBy(e => GedDate.ParseYear(e.Date)))
             yield return c;
         if (Death != null) yield return Death;
+        if (Burial != null) yield return Burial;
         if (Will != null) yield return Will;
         if (Probate != null) yield return Probate;
     }

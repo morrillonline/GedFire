@@ -7,6 +7,8 @@ public sealed class DraftFindingReader
 {
     static readonly string[] SourceClasses = ["original", "image copy", "derivative", "authored", "user-contributed"];
     static readonly string[] InformationClasses = ["primary", "secondary", "undetermined"];
+    static readonly string[] RelationKinds =
+        [DraftRelation.Spouse, DraftRelation.Child, DraftRelation.Parent, DraftRelation.UnlinkChild, DraftRelation.UnlinkParent];
 
     readonly List<string> _errors = [];
 
@@ -143,38 +145,52 @@ public sealed class DraftFindingReader
 
     DraftRelation? ReadRelation(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "kind", "person", "spouse", "child", "parent", "role", "family", "husb", "wife", "notDuplicateOf", "excerpt", "quay")) return null;
+        if (!IsObject(el, path, "kind", "person", "spouse", "child", "parent", "role", "family", "from", "husb", "wife", "notDuplicateOf", "excerpt", "quay")) return null;
         int before = _errors.Count;
-        string? kind = Choice(el, "kind", path, [DraftRelation.Spouse, DraftRelation.Child, DraftRelation.Parent], required: true);
+        string? kind = Choice(el, "kind", path, RelationKinds, required: true);
         if (kind is null) return null;
 
-        string? person = Text(el, "person", path, required: kind != DraftRelation.Child);
-        string? other = Text(el, kind, path, required: true);
-        string? family = Text(el, "family", path, required: kind != DraftRelation.Parent);
-        string? role = Choice(el, "role", path, ["father", "mother"], required: kind == DraftRelation.Parent);
+        bool removal = kind is DraftRelation.UnlinkChild or DraftRelation.UnlinkParent;
+        bool aboutAParent = kind is DraftRelation.Parent or DraftRelation.UnlinkParent;
+        string? person = Text(el, "person", path, required: kind is not (DraftRelation.Child or DraftRelation.UnlinkChild));
+        string? other = kind == DraftRelation.UnlinkParent ? "" : Text(el, kind == DraftRelation.UnlinkChild ? "child" : kind, path, required: true);
+        string? family = Text(el, "family", path, required: !aboutAParent);
+        string? role = Choice(el, "role", path, ["father", "mother"], required: aboutAParent);
         string? husb = Text(el, "husb", path);
         string? wife = Text(el, "wife", path);
+        string? from = Text(el, "from", path);
         var notDuplicateOf = ReadStrings(el, "notDuplicateOf", path);
         RejectForeignFields(el, path, kind);
 
-        int quay = ReadQuay(el, path, "this relationship");
+        int quay = removal ? 0 : ReadQuay(el, path, "this relationship");
 
         if (_errors.Count > before || other is null) return null;
-        return new DraftRelation(kind, person ?? "", other, family, role, husb, wife, quay) { NotDuplicateOf = notDuplicateOf, Excerpt = Text(el, "excerpt", path) };
+        return new DraftRelation(kind, person ?? "", other, family, role, husb, wife, quay)
+        {
+            NotDuplicateOf = notDuplicateOf, Excerpt = Text(el, "excerpt", path), From = from,
+        };
     }
 
     // Each kind names its own partner field and takes only the fields its op reads.
+    // A removal is not cited, so it takes no quay or excerpt.
     void RejectForeignFields(JsonElement el, string path, string kind)
     {
         string[] allowed = kind switch
         {
             DraftRelation.Spouse => ["person", "spouse", "family", "notDuplicateOf"],
-            DraftRelation.Child => ["child", "family", "husb", "wife", "notDuplicateOf"],
+            DraftRelation.Child => ["child", "family", "from", "husb", "wife", "notDuplicateOf"],
+            DraftRelation.UnlinkChild => ["child", "family"],
+            DraftRelation.UnlinkParent => ["person", "role", "family"],
             _ => ["person", "parent", "role", "family"],
         };
-        foreach (string name in new[] { "person", "spouse", "child", "parent", "role", "family", "husb", "wife", "notDuplicateOf" })
+        bool removal = kind is DraftRelation.UnlinkChild or DraftRelation.UnlinkParent;
+        string[] named = removal
+            ? ["person", "spouse", "child", "parent", "role", "family", "from", "husb", "wife", "notDuplicateOf", "quay", "excerpt"]
+            : ["person", "spouse", "child", "parent", "role", "family", "from", "husb", "wife", "notDuplicateOf"];
+        string fields = string.Join(", ", removal ? allowed : ["quay", .. allowed]);
+        foreach (string name in named)
             if (!allowed.Contains(name) && el.TryGetProperty(name, out _))
-                _errors.Add($"{path}.{name} does not apply to a {kind} relation; its fields are kind, quay, {string.Join(", ", allowed)}.");
+                _errors.Add($"{path}.{name} does not apply to a {kind} relation; its fields are kind, {fields}.");
     }
 
     DraftNote? ReadNote(JsonElement el, string path)

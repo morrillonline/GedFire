@@ -46,7 +46,10 @@ public sealed record DraftPerson(string Xref, string Name, string? Sex);
 
 /// <summary>
 /// A link the finding establishes, in the dialect's own terms: <see cref="Spouse"/> (Person and Other as partners),
-/// <see cref="Child"/> (Other is a child of Family, seeded by Husb and Wife) or <see cref="Parent"/> (Other is Person's parent in Role).
+/// <see cref="Child"/> (Other is a child of Family, seeded by Husb and Wife; with From the child leaves that family),
+/// <see cref="Parent"/> (Other is Person's parent in Role), or a link the finding removes:
+/// <see cref="UnlinkChild"/> (Other leaves Family) and <see cref="UnlinkParent"/> (Person loses the parent in Role).
+/// A removal carries no citation: the evidence belongs in a note that cites the finding.
 /// </summary>
 public sealed record DraftRelation(
     string Kind, string Person, string Other, string? Family, string? Role, string? Husb, string? Wife, int Quay)
@@ -54,11 +57,18 @@ public sealed record DraftRelation(
     public const string Spouse = "spouse";
     public const string Child = "child";
     public const string Parent = "parent";
+    public const string UnlinkChild = "unlink-child";
+    public const string UnlinkParent = "unlink-parent";
 
     public IReadOnlyList<string> NotDuplicateOf { get; init; } = [];
 
     /// <summary>A narrower extract than the finding's for this link's citation.</summary>
     public string? Excerpt { get; init; }
+
+    /// <summary>For a <see cref="Child"/> relation, the existing family the child is moved out of.</summary>
+    public string? From { get; init; }
+
+    public bool IsRemoval => Kind is UnlinkChild or UnlinkParent;
 }
 
 public sealed record DraftFinding(

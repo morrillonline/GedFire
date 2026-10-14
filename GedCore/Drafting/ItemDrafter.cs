@@ -33,7 +33,7 @@ internal sealed class ItemDrafter(
     {
         var asserted = group.SelectMany(f => f.Facts.Select(x => new Asserted(f, x, new CiteKey(sources.RefFor(f), f.Source.Locator, x.Quay)))).ToList();
         var noteCites = group.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => NoteClaim(group, f, c)))).ToList();
-        var relations = group.SelectMany(f => f.Relations.Select(r => new AssertedRelation(f, r, new CiteKey(sources.RefFor(f), f.Source.Locator, r.Quay)))).ToList();
+        var relations = group.SelectMany(f => f.Relations.Where(r => !r.IsRemoval).Select(r => new AssertedRelation(f, r, new CiteKey(sources.RefFor(f), f.Source.Locator, r.Quay)))).ToList();
         var claims = asserted.Select(a => new Claim(a.Finding, a.Cite, a.Fact.Excerpt ?? a.Finding.Extract))
             .Concat(relations.Select(r => new Claim(r.Finding, r.Cite, r.Relation.Excerpt ?? r.Finding.Extract)))
             .Concat(noteCites)
@@ -43,6 +43,7 @@ internal sealed class ItemDrafter(
         var ops = new JsonArray();
         foreach (var link in relations.GroupBy(r => (r.Relation.Kind, r.Relation.Person, r.Relation.Other, r.Relation.Family, r.Relation.Role)))
             ops.Add(RelationOp([.. link], citations, decisions));
+        foreach (var removal in RemovalOps(group, decisions)) ops.Add(removal);
         foreach (var vital in VitalOps([.. asserted.Where(a => !a.Fact.CiteOnly)], citations, decisions)) ops.Add(vital);
         foreach (var citation in CitationOps([.. asserted.Where(a => a.Fact.CiteOnly)], citations)) ops.Add(citation);
         foreach (var finding in group)
@@ -100,6 +101,38 @@ internal sealed class ItemDrafter(
             errors.Add($"the citations of {clash.Key.Source} on page \"{clash.Key.Locator}\" carry the same extract at different grades; give each differently graded fact its own excerpt or locator.");
         return result;
     }
+
+    // Links come out after the ones the item adds, so a moved child is in its new family before it leaves the old one.
+    // A removal op carries no citation; a plain unlink is flagged so the author records the evidence in a cited note.
+    static IEnumerable<JsonObject> RemovalOps(IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions)
+    {
+        var seen = new HashSet<string>();
+        foreach (var finding in group)
+            foreach (var relation in finding.Relations.Where(r => r.IsRemoval || r.From is not null))
+            {
+                var op = RemovalOp(relation);
+                if (!seen.Add(op.ToJsonString())) continue;
+
+                if (relation.IsRemoval)
+                    decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
+                        $"{DescribeRemoval(relation)} is not cited; record the evidence in a note that cites the finding", [finding.Id]));
+                yield return op;
+            }
+    }
+
+    static JsonObject RemovalOp(DraftRelation relation)
+    {
+        if (relation.Kind != DraftRelation.UnlinkParent)
+            return new JsonObject { ["op"] = "deleteChild", ["family"] = relation.Kind == DraftRelation.UnlinkChild ? relation.Family : relation.From, ["child"] = relation.Other };
+
+        var op = new JsonObject { ["op"] = "deleteParent", ["person"] = relation.Person, ["role"] = relation.Role };
+        if (relation.Family is not null) op["family"] = relation.Family;
+        return op;
+    }
+
+    static string DescribeRemoval(DraftRelation relation) => relation.Kind == DraftRelation.UnlinkParent
+        ? $"removing the {relation.Role} of {relation.Person}"
+        : $"removing {relation.Other} from {relation.Family}";
 
     // Findings that state the same link share one op, citing each of them.
     JsonObject RelationOp(List<AssertedRelation> link, Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)

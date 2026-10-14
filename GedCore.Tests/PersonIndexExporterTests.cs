@@ -73,6 +73,30 @@ public class PersonIndexExporterTests
            .Single(p => p.GetProperty("xref").GetString() == xref);
 
     [Fact]
+    public void ABurialStandsInForTheDeath()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Ezekiel /Hearth/
+            1 BURI
+            2 DATE 8 FEB 1937
+            2 PLAC Concord, Merrimack, New Hampshire
+            0 @I2@ INDI
+            1 NAME Sarah /Clough/
+            1 DEAT
+            2 DATE 6 FEB 1937
+            1 BURI
+            2 DATE 8 FEB 1937
+            """;
+        using var doc = Export(ged);
+
+        var buriedOnly = Person(doc, "@I1@").GetProperty("death");
+        Assert.Equal(1937, buriedOnly.GetProperty("year").GetInt32());
+        Assert.Equal("Concord, Merrimack, New Hampshire", buriedOnly.GetProperty("place").GetString());
+        Assert.Equal("6 FEB 1937", Person(doc, "@I2@").GetProperty("death").GetProperty("date").GetString());
+    }
+
+    [Fact]
     public void Envelope_CountMatchesPersonsArray()
     {
         using var doc = Export(FamilyGed);

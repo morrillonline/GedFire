@@ -117,7 +117,10 @@ public sealed class RecordMapper
         indi.Restriction,
         MapMediaList(indi.Media),
         MapFamilyAsChild(indi.FamChild),
-        [.. indi.FamSpouse.Select(f => MapSpouseFamily(f, indi))]);
+        [.. indi.FamSpouse.Select(f => MapSpouseFamily(f, indi))])
+    {
+        ApproximateDeath = indi.Death is null && indi.Burial is { } burial ? MapEvent(burial) : null,
+    };
 
     static ParentFamilyReference? MapFamilyAsChild(GedFamily? famChild)
     {

@@ -113,6 +113,29 @@ public class ValidateChangesetPointsTests : IDisposable
     }
 
     [Fact]
+    public async Task CardsPath_ReadsTheCardsFromAFile()
+    {
+        var tool = new ValidateChangesetTool(WriteGed(), new ToolGate());
+        string cardsFile = Path.Combine(_dir, "cards.json");
+        File.WriteAllText(cardsFile, """{ "cards": [ { "xref": "@I00001@", "class": "enrich-person", "gap": "enrich-death", "points": 7 } ] }""");
+
+        var result = await tool.HandleAsync(WriteChangeset(DeathChangeset), "all", default, Cards(JsonSerializer.Serialize(cardsFile)), CancellationToken.None);
+
+        Assert.Equal(7, Structured(result).GetProperty("pointsPreview").GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task CardsAndCardsPathTogether_AreRefused()
+    {
+        var tool = new ValidateChangesetTool(WriteGed(), new ToolGate());
+
+        var result = await tool.HandleAsync(WriteChangeset(DeathChangeset), "all", Cards("[]"), Cards("\"cards.json\""), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("give cards or cardsPath, not both.", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
     public async Task AMalformedCard_IsRefusedNamingTheField()
     {
         var tool = new ValidateChangesetTool(WriteGed(), new ToolGate());
