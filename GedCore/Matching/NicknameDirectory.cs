@@ -16,8 +16,8 @@ public sealed class NicknameDirectory
 {
     const string EmbeddedResourceName = "GedCore.Resources.nicknames.json";
 
-    readonly List<HashSet<string>> _maleGroups;
-    readonly List<HashSet<string>> _femaleGroups;
+    readonly List<NicknameGroup> _maleGroups;
+    readonly List<NicknameGroup> _femaleGroups;
 
     /// <summary>
     /// Load groups from a JSON document shaped like nicknames.json: an
@@ -64,17 +64,32 @@ public sealed class NicknameDirectory
         return false;
     }
 
-    static bool GroupsContainBoth(List<HashSet<string>> groups, string a, string b)
+    static bool GroupsContainBoth(List<NicknameGroup> groups, string a, string b)
     {
         foreach (var group in groups)
-            if (group.Contains(a) && group.Contains(b))
+            if (group.Names.Contains(a) && group.Names.Contains(b))
                 return true;
         return false;
     }
 
-    static List<HashSet<string>> LoadGroups(JsonElement root, string mapName)
+    /// <summary>
+    /// Is <paramref name="nickname"/> a documented nickname of <paramref name="formal"/>: a different name listed
+    /// in the group labelled with the formal name? "Bill" is a nickname of "William"; "Bob" is not, and "William"
+    /// is not a nickname of "Bill". <paramref name="isMale"/> selects the map as in <see cref="AreEquivalent"/>.
+    /// </summary>
+    public bool IsNicknameOf(string? nickname, string? formal, bool? isMale)
     {
-        var groups = new List<HashSet<string>>();
+        string nick = PersonNameNormalizer.Normalize(nickname);
+        string full = PersonNameNormalizer.Normalize(formal);
+        if (nick.Length == 0 || full.Length == 0 || nick == full) return false;
+
+        bool Listed(List<NicknameGroup> groups) => groups.Any(g => g.Label == full && g.Names.Contains(nick));
+        return (isMale != false && Listed(_maleGroups)) || (isMale != true && Listed(_femaleGroups));
+    }
+
+    static List<NicknameGroup> LoadGroups(JsonElement root, string mapName)
+    {
+        var groups = new List<NicknameGroup>();
         if (!root.TryGetProperty(mapName, out var map) || map.ValueKind != JsonValueKind.Object)
             return groups;
 
@@ -89,8 +104,10 @@ public sealed class NicknameDirectory
                     if (normalized.Length > 0) names.Add(normalized);
                 }
             }
-            if (names.Count > 0) groups.Add(names);
+            if (names.Count > 0) groups.Add(new NicknameGroup(PersonNameNormalizer.Normalize(group.Name), names));
         }
         return groups;
     }
+
+    sealed record NicknameGroup(string Label, HashSet<string> Names);
 }

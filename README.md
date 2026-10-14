@@ -198,8 +198,37 @@ authored 1, user-contributed 0. Unrecognized fields are rejected by path.
 A repeatable tag such as CENS or RESI never overwrites by accident: several
 values for one record are each added, a value whose date the record already
 holds updates that instance, and any other value is added beside the existing
-ones. A single-valued tag (BIRT, DEAT, NAME, ...) given two different values is
-left as an `open` decision.
+ones. A single-valued tag (BIRT, DEAT, BURI, MARR, ...) is written once, and
+findings that give different amounts of it are reconciled rather than left
+open. Date and place are settled separately, so the date may come from one
+finding and the place from another, and every agreeing finding is cited on the
+one fact. The most specific value wins: a date that adds a month or day to a
+year, and a place that names more jurisdictions in the same order (`Oakland,
+Kennebec, Maine` over `Oakland, Maine` over `Maine`). An approximate date
+(`ABT`, `BEF`, `AFT`, `BET`, `EST`, `CAL`, `FROM`, `TO`) is always superseded by
+a specific one, and its citation is attached only when its year fits the chosen
+date, otherwise an `open` decision says it was left off. The same comparison
+runs against the value the record already holds: a finding that says less is not
+written, only cited, and a `resolved` decision reports it (`no improvement`).
+Values that disagree (`15 OCT 1987` and `24 OCT 1987`, `Salem, Essex` and
+`Lynn, Essex`, or two different approximate dates) stay an `open` decision that
+lists every value with its findings and recommends the highest QUAY, then the
+better source, and nothing is drafted for that fact. A NAME is reconciled only
+by nickname: a formal given name replaces its documented nickname (`William
+/Morrill/` over `Bill /Morrill/`, per the nickname dictionary, so `Bob` does
+not qualify), provided the surname, suffix and number of given names match.
+Any other two names are left `open`.
+
+A verification note the compiler wrote earlier (the `Needs independent
+verification: the birth and death of … rest on … alone` form) is kept current.
+When the draft, or the record's own citations, grade a fact it names above
+`maxQuay`, the note is rewritten without that fact (`createOrUpdateNote` with
+`match`, keeping the same sources) or, when none of its facts remain low,
+removed with `deleteNote`; a `verification-note` decision says which. A note
+whose facts are all still low is kept and the new note stands beside it with no
+warning. Any other verification note is only the author's to judge: it still
+raises an `open` decision, and a note the author rewrites with `match` is never
+touched.
 
 A finding can also create people and families. List each new person under
 `people` (`xref` as a placeholder such as `@NewI1@`, `name`, `sex`, which a

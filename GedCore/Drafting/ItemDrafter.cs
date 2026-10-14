@@ -29,6 +29,9 @@ internal sealed class ItemDrafter(
 
     readonly HashSet<string> _plannedFamilies = new(StringComparer.Ordinal);
 
+    // Facts whose citation was not attached because their approximate date does not fit the one chosen.
+    readonly HashSet<Asserted> _excluded = [];
+
     public JsonObject Draft(int number, IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions, List<string> errors)
     {
         var asserted = group.SelectMany(f => f.Facts.Select(x => new Asserted(f, x, new CiteKey(sources.RefFor(f), f.Source.Locator, x.Quay)))).ToList();
@@ -48,7 +51,7 @@ internal sealed class ItemDrafter(
         foreach (var citation in CitationOps([.. asserted.Where(a => a.Fact.CiteOnly)], citations)) ops.Add(citation);
         foreach (var finding in group)
             foreach (var note in finding.Notes) ops.Add(NoteOp(note, group, finding, citations));
-        foreach (var note in VerificationNotes(asserted, group.SelectMany(f => f.Notes).ToList(), decisions)) ops.Add(note);
+        foreach (var note in VerificationNotes([.. asserted.Where(a => !_excluded.Contains(a))], group.SelectMany(f => f.Notes).ToList(), decisions)) ops.Add(note);
 
         return new JsonObject { ["item"] = number, ["target"] = Label(group[0].Target), ["ops"] = ops };
     }
@@ -196,17 +199,15 @@ internal sealed class ItemDrafter(
     {
         foreach (var byTag in asserted.GroupBy(a => (a.Fact.Record, a.Fact.Tag)))
         {
-            var values = byTag.GroupBy(a => FactKeyOf(a.Fact)).ToList();
             bool repeatable = !CreateOrUpdateVitalOp.IsSingleValued(byTag.Key.Tag);
-            if (values.Count > 1 && !repeatable)
+            var existing = history.FactsOn(byTag.Key.Record, byTag.Key.Tag);
+            if (!repeatable)
             {
-                decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
-                    $"{byTag.Key.Tag} on {byTag.Key.Record} is given {values.Count} different values; choose one, nothing was drafted for it",
-                    [.. byTag.Select(a => a.Finding.Id).Distinct()]));
+                if (SingleValuedOp(byTag.Key.Record, byTag.Key.Tag, [.. byTag], existing, citations, decisions) is { } single) yield return single;
                 continue;
             }
 
-            var existing = history.FactsOn(byTag.Key.Record, byTag.Key.Tag);
+            var values = byTag.GroupBy(a => FactKeyOf(a.Fact)).ToList();
             foreach (var value in values)
             {
                 var placement = Place(repeatable, values.Count, existing, value.Key);
@@ -214,6 +215,117 @@ internal sealed class ItemDrafter(
             }
         }
     }
+
+    // A single-valued fact is written once. Findings that differ only in how much they say are reconciled (see
+    // SingleValuedFactResolver); values that disagree, or text facts such as a NAME, are left open for the author.
+    JsonObject? SingleValuedOp(
+        string record, string tag, List<Asserted> facts, IReadOnlyList<ExistingFact> existing,
+        Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
+    {
+        var findingIds = facts.Select(a => a.Finding.Id).Distinct().ToList();
+        var keys = facts.Select(a => FactKeyOf(a.Fact)).Distinct().ToList();
+        bool reconcilable = (facts.All(a => a.Fact.Value is null) || facts.All(a => a.Fact.Value is not null))
+            && keys.Select(k => (k.Substructures, k.ReplacedCitations)).Distinct().Count() == 1;
+        if (!reconcilable)
+        {
+            if (keys.Count > 1)
+            {
+                decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
+                    $"{tag} on {record} is given {keys.Count} different values; choose one, nothing was drafted for it", findingIds));
+                return null;
+            }
+            return VitalOp(keys[0], facts, new Placement(null, false, existing.FirstOrDefault()), citations, decisions);
+        }
+
+        var claims = facts.Select(a => new FactClaim(
+            a.Finding.Id, a.Fact.Date, a.Fact.Place, a.Fact.Quay,
+            DraftChecks.Ceiling(a.Fact.Class ?? a.Finding.Source.Class, a.Fact.Information ?? a.Finding.Source.Information), a.Fact.Value)).ToList();
+        var resolution = SingleValuedFactResolver.Resolve(claims);
+        if (resolution.Conflict)
+        {
+            decisions.Add(new DraftDecision(DraftDecisionKinds.Open, ConflictDetail(record, tag, claims, resolution.Recommended), findingIds));
+            return null;
+        }
+
+        string? date = resolution.DateFrom is { } d ? claims[d].Date : null;
+        string? place = resolution.PlaceFrom is { } p ? claims[p].Place : null;
+        string? name = resolution.ValueFrom is { } v ? claims[v].Value : null;
+        var held = existing.FirstOrDefault();
+        bool writesDate = date is not null && !HeldIsMoreSpecific(held?.Date, date, Specificity.DateSupersedes, Specificity.SameDate);
+        bool writesPlace = place is not null && !HeldIsMoreSpecific(held?.Place, place, Specificity.PlaceSupersedes, Specificity.SamePlace);
+
+        var attached = facts.Where((_, i) => !resolution.Excluded.Contains(i)).ToList();
+        foreach (int i in resolution.Excluded)
+            decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
+                $"{claims[i].FindingId}'s {claims[i].Date} for {tag} on {record} does not fit the chosen date {date}, so its citation was not attached; check it",
+                [claims[i].FindingId]));
+        foreach (var dropped in facts.Where((_, i) => resolution.Excluded.Contains(i))) _excluded.Add(dropped);
+
+        if (claims.Select(c => (c.Date, c.Place, c.Value)).Distinct().Count() > 1 || !writesDate && date is not null || !writesPlace && place is not null)
+            decisions.Add(new DraftDecision(DraftDecisionKinds.Resolved,
+                ResolvedDetail(record, tag, claims, resolution, date, place, name, writesDate, writesPlace, attached), [.. attached.Select(a => a.Finding.Id).Distinct()]));
+
+        if (!writesDate && !writesPlace && name is null) return CitationOnlyOp(record, tag, held, attached, citations, decisions);
+
+        var key = keys[0] with { Date = writesDate ? date!.ToUpperInvariant() : null, Place = writesPlace ? place : null, Value = name };
+        return VitalOp(key, attached, new Placement(null, false, held), citations, decisions);
+    }
+
+    // The record's own value is kept only when it says more than the finding does; an equal value is rewritten as is.
+    static bool HeldIsMoreSpecific(string? held, string given, Func<string, string, bool> supersedes, Func<string, string, bool> same) =>
+        held is not null && supersedes(held, given) && !same(held, given);
+
+    JsonObject CitationOnlyOp(
+        string record, string tag, ExistingFact? held, List<Asserted> attached,
+        Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
+    {
+        var op = new JsonObject { ["op"] = "createOrUpdateCitation", ["record"] = record, ["fact"] = tag };
+        if (held is not null && (held.Date is not null || held.Place is not null))
+        {
+            var match = new JsonObject();
+            if (held.Date is not null) match["date"] = held.Date;
+            if (held.Place is not null) match["place"] = held.Place;
+            op["match"] = match;
+        }
+
+        var cites = attached.Select(a => a.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!).ToList();
+        if (held is not null)
+            cites.AddRange(RestatedCitations(
+                new FactKey(record, tag, null, null, null, "", null), held, cites, [.. attached.Select(a => a.Finding.Id).Distinct()], decisions));
+        AttachCitations(op, cites);
+        return op;
+    }
+
+    static string ConflictDetail(string record, string tag, List<FactClaim> claims, int recommended)
+    {
+        var values = claims.GroupBy(c => (c.Date, c.Place, c.Value)).Select(g => $"{Describe(g.Key.Date, g.Key.Place, g.Key.Value)} ({string.Join(", ", g.Select(c => c.FindingId))}; QUAY {g.Max(c => c.Quay)})");
+        var best = claims[recommended];
+        return $"{tag} on {record} is given {claims.Select(c => (c.Date, c.Place, c.Value)).Distinct().Count()} different values: {string.Join("; ", values)}; " +
+               $"recommended {best.FindingId} ({Describe(best.Date, best.Place, best.Value)}, QUAY {best.Quay}); nothing was drafted for it, choose one";
+    }
+
+    static string ResolvedDetail(
+        string record, string tag, List<FactClaim> claims, FactResolution resolution, string? date, string? place, string? name,
+        bool writesDate, bool writesPlace, List<Asserted> attached)
+    {
+        string kept = string.Join(", ", new[]
+        {
+            Source("date", resolution.DateFrom, claims), Source("place", resolution.PlaceFrom, claims), Source("name", resolution.ValueFrom, claims),
+        }.OfType<string>());
+        string cited = string.Join(", ", attached.Select(a => a.Finding.Id).Distinct());
+        string improvement = !writesDate && !writesPlace && name is null
+            ? "; no improvement, the record already holds as much, so only the citations are added"
+            : date is not null && !writesDate || place is not null && !writesPlace
+                ? "; the record already holds a more specific " + (date is not null && !writesDate ? "date" : "place") + ", which is kept"
+                : "";
+        return $"resolved: {tag} on {record}, kept {kept} ({Describe(date, place, name)}), cited {cited}{improvement}";
+    }
+
+    static string? Source(string what, int? index, List<FactClaim> claims) =>
+        index is { } i ? $"{claims[i].FindingId} for the {what} (QUAY {claims[i].Quay})" : null;
+
+    static string Describe(string? date, string? place, string? value) =>
+        value ?? (date is not null && place is not null ? $"{date} at {place}" : date ?? place ?? "no value");
 
     static FactKey FactKeyOf(DraftFact fact) =>
         new(fact.Record, fact.Tag, fact.Date?.ToUpperInvariant(), fact.Place, fact.Value,
@@ -296,32 +408,89 @@ internal sealed class ItemDrafter(
 
     IEnumerable<JsonObject> VerificationNotes(List<Asserted> asserted, List<DraftNote> authorNotes, List<DraftDecision> decisions)
     {
-        var low = asserted.Where(a => a.Fact.Quay <= verification.MaxQuay).GroupBy(a => a.Fact.Record);
-        foreach (var record in low)
+        foreach (var record in asserted.GroupBy(a => a.Fact.Record))
         {
             var findings = record.Select(a => a.Finding.Id).Distinct().ToList();
+            var low = record.Where(a => a.Fact.Quay <= verification.MaxQuay).ToList();
+            var target = record.First().Finding.Target;
+            string? name = names.PersonName(record.Key)
+                ?? (newPeople.TryGetValue(record.Key, out var created) ? PlainName(created.Name) : null)
+                ?? (record.Key == target.Xref ? target.Name : null);
+
+            var unjudged = new List<string>();
+            foreach (var op in BringNotesUpToDate(record.Key, name, [.. record], authorNotes, low.Count > 0, findings, decisions, unjudged))
+                yield return op;
+            if (low.Count == 0) continue;
+
             if (authorNotes.Any(n => n.Record == record.Key && n.Text.Contains(verification.NotePrefix, StringComparison.OrdinalIgnoreCase)))
             {
                 decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote, $"the author's own note on {record.Key} already names the low-graded facts", findings));
                 continue;
             }
 
-            var target = record.First().Finding.Target;
-            string? name = names.PersonName(record.Key)
-                ?? (newPeople.TryGetValue(record.Key, out var created) ? PlainName(created.Name) : null)
-                ?? (record.Key == target.Xref ? target.Name : null);
-            foreach (string existing in history.NotesOn(record.Key).Where(n => n.Contains(verification.NotePrefix, StringComparison.OrdinalIgnoreCase)))
+            foreach (string existing in unjudged)
                 decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
                     $"{record.Key} already has a verification note (\"{existing}\"); a new one beside it may contradict it, so rewrite it with createOrUpdateNote and match if it is stale",
                     findings));
 
             string text = VerificationNote.Text(
-                verification.NotePrefix, record.Select(a => a.Fact.Tag), name,
-                record.Select(a => a.Finding.Source.Name), record.Select(a => a.Fact.Information ?? a.Finding.Source.Information));
-            decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote, $"{record.Key}: {string.Join(", ", record.Select(a => a.Fact.Tag).Distinct())} graded {verification.MaxQuay} or lower", findings));
+                verification.NotePrefix, low.Select(a => a.Fact.Tag), name,
+                low.Select(a => a.Finding.Source.Name), low.Select(a => a.Fact.Information ?? a.Finding.Source.Information));
+            decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote, $"{record.Key}: {string.Join(", ", low.Select(a => a.Fact.Tag).Distinct())} graded {verification.MaxQuay} or lower", findings));
             yield return new JsonObject { ["op"] = "createOrUpdateNote", ["record"] = record.Key, ["text"] = text };
         }
     }
+
+    // A verification note the compiler wrote earlier says which facts rest on one source. Once this draft (or the record) grades
+    // one of them higher the claim is stale: the note is rewritten without it, or removed when none is left. Any other
+    // verification note is only the author's to judge, so it is handed back in unjudged.
+    IEnumerable<JsonObject> BringNotesUpToDate(
+        string record, string? name, List<Asserted> facts, List<DraftNote> authorNotes, bool newNoteFollows,
+        List<string> findings, List<DraftDecision> decisions, List<string> unjudged)
+    {
+        foreach (string text in history.NotesOn(record).Where(n => n.Contains(verification.NotePrefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (authorNotes.Any(n => n.Record == record && n.Match == text)) continue;
+            if (VerificationNote.TryParse(text, verification.NotePrefix, name) is not { } parsed)
+            {
+                unjudged.Add(text);
+                continue;
+            }
+
+            var remaining = parsed.Tags.Where(t => !IsGradedAboveCeiling(record, t, facts)).ToList();
+            var improved = parsed.Tags.Except(remaining).ToList();
+            if (improved.Count == 0)
+            {
+                if (newNoteFollows)
+                    decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
+                        $"{record} keeps its verification note (\"{text}\"): {string.Join(", ", parsed.Tags)} are still graded {verification.MaxQuay} or lower, so a new note beside it does not contradict it",
+                        findings));
+                continue;
+            }
+
+            if (remaining.Count == 0)
+            {
+                decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
+                    $"{record}: its verification note (\"{text}\") no longer applies, since {string.Join(", ", improved)} are now graded above {verification.MaxQuay}; removed", findings));
+                yield return new JsonObject { ["op"] = "deleteNote", ["record"] = record, ["text"] = text };
+                continue;
+            }
+
+            decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
+                $"{record}: {string.Join(", ", improved)} are now graded above {verification.MaxQuay}, so its verification note (\"{text}\") now names only {string.Join(", ", remaining)}", findings));
+            yield return new JsonObject
+            {
+                ["op"] = "createOrUpdateNote", ["record"] = record, ["match"] = text,
+                ["text"] = VerificationNote.Rewrite(verification.NotePrefix, parsed, remaining, name),
+            };
+        }
+    }
+
+    // The best grade the draft or the record gives the fact; unknown when nothing says.
+    bool IsGradedAboveCeiling(string record, string tag, List<Asserted> facts) =>
+        facts.Where(a => a.Fact.Tag == tag).Select(a => a.Fact.Quay)
+            .Concat(history.FactsOn(record, tag).SelectMany(f => f.Citations).Select(c => c.Quay).OfType<int>())
+            .DefaultIfEmpty(-1).Max() > verification.MaxQuay;
 
     // GEDCOM marks the surname with slashes; prose does not.
     static string PlainName(string name) => string.Join(' ', name.Replace("/", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries));
