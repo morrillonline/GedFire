@@ -118,7 +118,7 @@ public sealed class FamilyUrlResolver
 
         string by = GedDate.ParseYear(indi.Birth?.Date) is var byr && byr > 0
             ? byr.ToString() : "x";
-        string dy = GedDate.ParseYear(indi.Death?.Date) is var dyr && dyr > 0
+        string dy = GedDate.ParseYear(indi.DeathOrBurial?.Date) is var dyr && dyr > 0
             ? dyr.ToString() : "x";
         return name + "-" + by + "-" + dy;
     }

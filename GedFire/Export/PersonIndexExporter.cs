@@ -65,7 +65,7 @@ public static class PersonIndexExporter
         Surname = Normalize(indi.LastName),
         Given   = Normalize(indi.FirstMiddle()),
         Birth   = ToEventEntry(indi.Birth),
-        Death   = ToEventEntry(indi.Death),
+        Death   = ToEventEntry(indi.DeathOrBurial),
         Parents = ToParents(indi.FamChild),
         Families = indi.FamSpouse.Select(f => ToFamily(indi, f)).ToList(),
     };

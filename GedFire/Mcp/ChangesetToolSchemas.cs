@@ -73,6 +73,15 @@ static class ChangesetToolSchemas
 
     /// <summary>The input schema with the optional <c>cards</c> argument validate_changeset adds.</summary>
     public static readonly string InputSchemaWithCardsJson = Compose(InputSchemaJson, schema =>
+    {
+        schema["properties"]!["cardsPath"] = JsonNode.Parse("""
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "description": "Path to a JSON file holding {\"cards\": [...]}, the same array as cards, so a saved list need not be passed back inline. Give cards or cardsPath, not both."
+            }
+            """);
         schema["properties"]!["cards"] = JsonNode.Parse("""
             {
               "type": "array",
@@ -91,7 +100,8 @@ static class ChangesetToolSchemas
                 "required": ["xref", "class", "points"]
               }
             }
-            """));
+            """);
+    });
 
     /// <summary>The output schema with the optional <c>pointsPreview</c> validate_changeset returns when cards are given.</summary>
     public static readonly string OutputSchemaWithPreviewJson = Compose(OutputSchemaJson, schema =>

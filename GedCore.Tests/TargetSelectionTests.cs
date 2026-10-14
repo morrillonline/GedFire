@@ -232,6 +232,58 @@ public class GapDetectorTests
     }
 
     [Fact]
+    public void NewChild_NotOfferedWhenTheHusbandDoesNotBearTheSurname()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME John /Smith/
+            1 SEX M
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Mary /Morrill/
+            1 SEX F
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            """;
+        Assert.DoesNotContain(Detect(ged, "Morrill"), t => t.CardType == "New child");
+    }
+
+    [Fact]
+    public void NewChild_NotOfferedWhenTheFamilyHasNoHusband()
+    {
+        const string ged = """
+            0 @I2@ INDI
+            1 NAME Mary /Morrill/
+            1 SEX F
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 WIFE @I2@
+            """;
+        Assert.DoesNotContain(Detect(ged, "Morrill"), t => t.CardType == "New child");
+    }
+
+    [Fact]
+    public void NewChild_StillOfferedForAMorrillHusbandWithAMarriedInWife()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME John /Morrill/
+            1 SEX M
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Mary /Smith/
+            1 SEX F
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            """;
+        Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "New child");
+    }
+
+    [Fact]
     public void NewChild_FamilyWithChildren_NotDetected()
     {
         const string ged = """
@@ -303,6 +355,107 @@ public class GapDetectorTests
         var death = Assert.Single(target.Enrichments!, e => e.Fact == "Death");
         Assert.False(death.MissingDate);
         Assert.True(death.MissingPlace);
+    }
+
+    [Fact]
+    public void EnrichPerson_ExactBurialWithNoDeath_ClosesTheDeathGap()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 1 JAN 1850
+            2 PLAC Boston, Massachusetts
+            1 BURI
+            2 DATE 8 FEB 1937
+            2 PLAC Boston, Massachusetts
+            """;
+        var targets = Detect(ged, "Morrill");
+        Assert.DoesNotContain(targets, t => t.CardType == "Enrich person");
+    }
+
+    [Fact]
+    public void EnrichPerson_ExactBurialBesideAnInexactDeath_ClosesTheDeathGap()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 1 JAN 1850
+            2 PLAC Boston, Massachusetts
+            1 DEAT
+            2 DATE 1937
+            1 BURI
+            2 DATE 8 FEB 1937
+            2 PLAC Boston, Massachusetts
+            """;
+        var targets = Detect(ged, "Morrill");
+        Assert.DoesNotContain(targets, t => t.CardType == "Enrich person");
+    }
+
+    [Fact]
+    public void EnrichPerson_InexactBurial_LeavesTheDeathGapOpen()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 1 JAN 1850
+            2 PLAC Boston, Massachusetts
+            1 BURI
+            2 DATE 1937
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
+        Assert.Single(target.Enrichments!, e => e.Fact == "Death");
+    }
+
+    [Fact]
+    public void Died_FallsBackToTheBurialWhenThereIsNoDeath()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BURI
+            2 DATE 8 FEB 1937
+            2 PLAC Boston, Massachusetts
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "New parent");
+        Assert.Equal("8 FEB 1937, Boston, Massachusetts", target.Died);
+    }
+
+    [Fact]
+    public void Died_PrefersTheDeathOverTheBurial()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 DEAT
+            2 DATE 6 FEB 1937
+            1 BURI
+            2 DATE 8 FEB 1937
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "New parent");
+        Assert.Equal("6 FEB 1937", target.Died);
+    }
+
+    [Fact]
+    public void NewSpouse_NotOfferedWhenTheBurialShowsAnEarlyDeath()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Ann /Morrill/
+            1 SEX F
+            1 BIRT
+            2 DATE 1 JAN 1850
+            1 BURI
+            2 DATE 8 FEB 1855
+            """;
+        Assert.DoesNotContain(Detect(ged, "Morrill"), t => t.CardType == "New spouse");
     }
 
     [Fact]

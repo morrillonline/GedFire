@@ -51,7 +51,7 @@ public static class PersonLister
         var indi = entry.Individual;
         return new PersonListEntry(
             indi.Xref, PersonDisplay.FullName(indi), indi.LastName,
-            YearOrNull(indi.Birth), YearOrNull(indi.Death));
+            YearOrNull(indi.Birth), YearOrNull(indi.DeathOrBurial));
     }
 
     static int? YearOrNull(GedEvent? ev)

@@ -28,7 +28,8 @@ public sealed class ValidateChangesetTool
         "available, even on a server started with --read-only. When the server was started with a policy file, " +
         "every violation of it (banned phrases, a low-graded fact with no verification note, a death place " +
         "with no death evidence) is reported as an error here, so it surfaces at the dry run. Pass \"cards\" to " +
-        "get pointsPreview: which research cards the changeset closes by what it writes to the tree.";
+        "get pointsPreview: which research cards the changeset closes by what it writes to the tree (cards may be " +
+        "given inline or by cardsPath, a file holding {\"cards\": [...]}).";
 
     public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithCardsJson;
     public static readonly string OutputSchemaJson = ChangesetToolSchemas.OutputSchemaWithPreviewJson;
@@ -51,8 +52,9 @@ public sealed class ValidateChangesetTool
 
     // The delegate McpServerTool.Create binds arguments to and invokes.
     Task<CallToolResult> InvokeAsync(
-        string changesetPath, string items, JsonElement? cards = null, CancellationToken cancellationToken = default)
-        => HandleAsync(changesetPath, items, cards ?? default, cancellationToken);
+        string changesetPath, string items, JsonElement? cards = null, JsonElement? cardsPath = null,
+        CancellationToken cancellationToken = default)
+        => HandleAsync(changesetPath, items, cards ?? default, cardsPath ?? default, cancellationToken);
 
     /// <summary>
     /// The tool's actual behavior, reachable directly without any MCP
@@ -61,15 +63,22 @@ public sealed class ValidateChangesetTool
     /// same last-chance-handler pattern as the other document tools.
     /// </summary>
     public Task<CallToolResult> HandleAsync(string changesetPath, string items, CancellationToken cancellationToken) =>
-        HandleAsync(changesetPath, items, default, cancellationToken);
+        HandleAsync(changesetPath, items, default, default, cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         string changesetPath, string items, JsonElement cards, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => Task.FromResult(Execute(changesetPath, items, cards, ct)), cancellationToken);
+        HandleAsync(changesetPath, items, cards, default, cancellationToken);
 
-    CallToolResult Execute(string changesetPath, string items, JsonElement cards, CancellationToken cancellationToken)
+    public Task<CallToolResult> HandleAsync(
+        string changesetPath, string items, JsonElement cards, JsonElement cardsPath, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => Task.FromResult(Execute(changesetPath, items, cards, cardsPath, ct)), cancellationToken);
+
+    CallToolResult Execute(
+        string changesetPath, string items, JsonElement cardsArgument, JsonElement cardsPath, CancellationToken cancellationToken)
     {
-        if (!PointsCardReader.TryRead(cards, out var cardList, out string? error))
+        if (!ArgumentFile.TryResolve(cardsArgument, "cards", cardsPath, "cardsPath", out var cards, out string? error))
+            return CallToolResults.Error(error!);
+        if (!PointsCardReader.TryRead(cards, out var cardList, out error))
             return CallToolResults.Error(error!);
 
         return ChangesetToolSupport.Execute(

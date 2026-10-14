@@ -188,6 +188,7 @@ public sealed class GetRecordTool
                 "sex": { "type": ["string", "null"], "enum": ["M", "F", null] },
                 "birth": { "$ref": "#/$defs/EventDetail" },
                 "death": { "$ref": "#/$defs/EventDetail" },
+                "approximateDeath": { "$ref": "#/$defs/EventDetail", "description": "Only for a person with a burial and no death: the burial, which dates the death to within days. death stays null." },
                 "will": { "$ref": "#/$defs/EventDetail" },
                 "probate": { "$ref": "#/$defs/EventDetail" },
                 "census": { "type": "array", "items": { "$ref": "#/$defs/EventDetail" } },

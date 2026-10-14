@@ -27,6 +27,11 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
     public IReadOnlyList<string> NotesOn(string record) =>
         model.Individuals.TryGetValue(record, out var person) ? [.. person.NarrativeNotes.Select(n => n.Text)] : [];
 
+    public bool? IsChildOf(string child, string family) =>
+        model.Families.TryGetValue(family, out var fam) && model.Individuals.ContainsKey(child)
+            ? fam.Children.Any(c => c.Xref == child)
+            : null;
+
     IEnumerable<GedEvent> EventsOf(string record, string tag)
     {
         if (model.Families.TryGetValue(record, out var family))

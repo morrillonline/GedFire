@@ -59,7 +59,7 @@ public static class GapDetector
             if (BearsSurname(person, surnameSet))
                 DetectNewParent(person, targets);
             DetectNewSpouse(person, targets);
-            DetectNewChild(person, newChildFamiliesSeen, targets);
+            DetectNewChild(person, surnameSet, newChildFamiliesSeen, targets);
             DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets);
         }
 
@@ -133,22 +133,25 @@ public static class GapDetector
     // Unknown birth or death year never counts as "young".
     static bool DiedYoung(GedIndividual person)
     {
-        if (person.Death is null) return false;
+        if (person.DeathOrBurial is not { } death) return false;
         int birthYear = GedDate.ParseYear(person.Birth?.Date);
-        int deathYear = GedDate.ParseYear(person.Death.Date);
+        int deathYear = GedDate.ParseYear(death.Date);
         if (birthYear <= 0 || deathYear <= 0) return false;
         return deathYear - birthYear < 17;
     }
 
     // -------------------------------------------------------------------
-    // New child — a spouse family (FAMS) with no children recorded in it.
+    // New child — a spouse family (FAMS) with no children recorded in it,
+    // whose husband bears a study surname: children of any other father
+    // will not carry the surname.
     // -------------------------------------------------------------------
 
-    static void DetectNewChild(GedIndividual person, HashSet<string> familiesSeen, List<SelectionTarget> targets)
+    static void DetectNewChild(GedIndividual person, HashSet<string> surnames, HashSet<string> familiesSeen, List<SelectionTarget> targets)
     {
         foreach (var fam in person.FamSpouse)
         {
             if (fam.Children.Count > 0) continue;
+            if (fam.Husband is null || !BearsSurname(fam.Husband, surnames)) continue;
             if (!familiesSeen.Add(fam.Xref)) continue;
 
             // Era/geography key off the marriage when one is recorded (this
@@ -187,7 +190,8 @@ public static class GapDetector
     {
         var facts = new List<EnrichmentEntry>();
         AddIfInexact(facts, "Birth", person.Birth?.Date, person.Birth?.Place);
-        AddIfInexact(facts, "Death", person.Death?.Date, person.Death?.Place);
+        if (!BurialSatisfiesDeath(person))
+            AddIfInexact(facts, "Death", person.Death?.Date, person.Death?.Place);
         foreach (var fam in person.FamSpouse.Where(f => familiesSeen.Add(f.Xref)))
             // A missing MARR record (fam.Marriage null) still counts as "not
             // exact" because both date and place are absent.
@@ -202,6 +206,10 @@ public static class GapDetector
 
         targets.Add(BuildTarget(person, CardType.EnrichPerson, nominal, difficulty, enrichments: facts));
     }
+
+    // An exact burial closes the death gap: it dates the death closely enough for the study's purposes.
+    static bool BurialSatisfiesDeath(GedIndividual person) =>
+        person.Burial is { } burial && ExactnessRules.IsExactDate(burial.Date) && ExactnessRules.IsExactPlace(burial.Place);
 
     static void AddIfInexact(List<EnrichmentEntry> facts, string fact, string? date, string? place)
     {
@@ -245,7 +253,7 @@ public static class GapDetector
             Name = DisplayName(person),
             Surname = person.LastName,
             Born = FormatDisplay(person.Birth),
-            Died = FormatDisplay(person.Death),
+            Died = FormatDisplay(person.DeathOrBurial),
             CardType = cardType.Display(),
             NominalPoints = nominalPoints,
             Difficulty = new DifficultyEntry

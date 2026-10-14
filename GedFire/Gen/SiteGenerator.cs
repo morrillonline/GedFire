@@ -142,6 +142,9 @@ public sealed class SiteGenerator
                 case "DEAT":
                     WriteParentFact("Died", e, page, showSources: true);
                     break;
+                case "BURI":
+                    WriteParentFact(person.Death == null ? "Died" : "Buried", e, page, showSources: true);
+                    break;
                 case "WILL":
                     if (!isHusband) break;
                     if (probate == null)
@@ -421,7 +424,7 @@ public sealed class SiteGenerator
 
         // Year span
         int byr = GedDate.ParseYear(child.Birth?.Date);
-        int dyr = GedDate.ParseYear(child.Death?.Date);
+        int dyr = GedDate.ParseYear(child.DeathOrBurial?.Date);
         string yr = "";
         if (byr > 0) yr = byr.ToString();
         if (dyr > 0) yr += (yr.Length > 0 ? " – " : "– ") + dyr.ToString();
@@ -450,8 +453,10 @@ public sealed class SiteGenerator
         // Born / Died (compact: date · place)
         if (child.Birth != null)
             WriteChildFact("Born", child.Birth, page, showSources: true);
+        // A burial stands in for a missing death; beside a death it is shown as "Buried".
+        WriteChildFact("Died", child.DeathOrBurial, page, showSources: true);
         if (child.Death != null)
-            WriteChildFact("Died", child.Death, page, showSources: true);
+            WriteChildFact("Buried", child.Burial, page, showSources: true);
 
         // Will / Probate — only for childless children (full inline detail)
         if (!hasOwnPage)
@@ -605,12 +610,17 @@ public sealed class SiteGenerator
                 ExportSources(spouse.Birth.Sources, page);
                 wrote = true;
             }
-            if (spouse.Death != null)
+            if (spouse.DeathOrBurial is { } died)
             {
                 if (wrote) page.Write("; ");
-                page.Write("d. " + H(EventString(spouse.Death)));
-                ExportSources(spouse.Death.Sources, page);
+                page.Write("d. " + H(EventString(died)));
+                ExportSources(died.Sources, page);
                 wrote = true;
+            }
+            if (spouse.Death != null && spouse.Burial is { } buried)
+            {
+                page.Write("; bur. " + H(EventString(buried)));
+                ExportSources(buried.Sources, page);
             }
             if (spouse.Will != null)
             {
@@ -836,7 +846,7 @@ public sealed class SiteGenerator
         if (u.Length == 0) return "";
 
         string birth  = ind.Birth?.Date  != null ? GedDate.ParseYear(ind.Birth.Date).ToString()  : "";
-        string death  = ind.Death?.Date  != null ? GedDate.ParseYear(ind.Death.Date).ToString()  : "";
+        string death  = GedDate.ParseYear(ind.DeathOrBurial?.Date).ToString();
         if (birth == "0") birth = "";
         if (death == "0") death = "";
         string spouses = SpouseShortString(ind);
@@ -916,7 +926,7 @@ public sealed class SiteGenerator
     static int YearsOld(GedIndividual indi)
     {
         var d1 = GedDate.Parse(indi.Birth?.Date);
-        var d2 = GedDate.Parse(indi.Death?.Date);
+        var d2 = GedDate.Parse(indi.DeathOrBurial?.Date);
         if (d1 == null || d2 == null) return -1;
         return (int)((d2.Value - d1.Value).TotalDays / 365.0);
     }
@@ -933,7 +943,7 @@ public sealed class SiteGenerator
         }
         add(indi.Birth?.Place ?? "");
         foreach (var f in indi.FamSpouse) add(f.Marriage?.Place ?? "");
-        add(indi.Death?.Place ?? "");
+        add(indi.DeathOrBurial?.Place ?? "");
         return string.Join(", ", seen);
     }
 

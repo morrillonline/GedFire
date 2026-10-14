@@ -26,7 +26,11 @@ public interface IRecordHistory
 }
 
 /// <summary>Everything a draft needs to know about the document it will be applied to.</summary>
-public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory;
+public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory
+{
+    /// <summary>Whether the document lists the person as a child of the family; null when it cannot say (a record it does not hold, or a lookup that does not track families).</summary>
+    bool? IsChildOf(string child, string family) => null;
+}
 
 /// <summary>One fact instance the document already holds, with the citations on it.</summary>
 public sealed record ExistingFact(string? Date, string? Place, IReadOnlyList<ExistingCitation> Citations);

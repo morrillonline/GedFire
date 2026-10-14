@@ -135,6 +135,77 @@ public class DraftChangesetToolTests : IDisposable
     }
 
     [Fact]
+    public async Task InputPath_DraftsTheFindingsSavedInAFile()
+    {
+        string input = Path.Combine(_dir, "draft-input.json");
+        File.WriteAllText(input, "{ \"findings\": " + Findings + " }");
+
+        var result = await Tool().HandleAsync(default, Arg(JsonSerializer.Serialize(input)), default, default, CancellationToken.None);
+
+        var structured = Structured(result);
+        Assert.True(structured.GetProperty("success").GetBoolean());
+        Assert.Equal("@S1@", structured.GetProperty("changeset").GetProperty("items")[0].GetProperty("ops")[0]
+            .GetProperty("citation").GetProperty("source").GetString());
+    }
+
+    [Fact]
+    public async Task FindingsAndInputPathTogether_AreRefused()
+    {
+        var result = await Tool().HandleAsync(Arg(Findings), Arg("\"draft-input.json\""), default, default, CancellationToken.None);
+
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public async Task AnInputPathFileWithoutFindings_IsRefusedByName()
+    {
+        string input = Path.Combine(_dir, "bad-input.json");
+        File.WriteAllText(input, "{ \"cards\": [] }");
+
+        var result = await Tool().HandleAsync(default, Arg(JsonSerializer.Serialize(input)), default, default, CancellationToken.None);
+
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public async Task AMoveFromAFamilyThatDoesNotListTheChild_IsRefusedAgainstTheDocument()
+    {
+        const string family = """
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Gladys /Giedd/
+            1 FAMC @F1@
+            0 @I2@ INDI
+            1 NAME Hiram /Giedd/
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I2@
+            1 CHIL @I1@
+            0 @F2@ FAM
+            1 HUSB @I2@
+            0 @F3@ FAM
+            1 HUSB @I2@
+            0 TRLR
+            """;
+        string finding(string from) => $$"""
+            [ { "id": "F-1", "extract": "daughter of Hiram",
+                "source": { "name": "Find a Grave", "locator": "Memorial #1", "class": "derivative", "information": "primary" },
+                "target": { "xref": "@I1@" },
+                "relations": [ { "kind": "child", "family": "@F2@", "child": "@I1@", "from": "{{from}}", "quay": 2 } ] } ]
+            """;
+        var tool = new DraftChangesetTool(_sessions.Open(family), new ToolGate());
+
+        var moved = Structured(await tool.HandleAsync(Arg(finding("@F1@")), Arg(null), default, CancellationToken.None));
+        var refused = Structured(await tool.HandleAsync(Arg(finding("@F3@")), Arg(null), default, CancellationToken.None));
+
+        Assert.True(moved.GetProperty("success").GetBoolean());
+        Assert.False(refused.GetProperty("success").GetBoolean());
+        Assert.Contains("is not a child of @F3@", refused.GetProperty("errors")[0].GetString());
+    }
+
+    [Fact]
     public async Task ABlankOutPath_IsRefused()
     {
         var result = await Tool().HandleAsync(Arg(Findings), Arg("\"  \""), default, CancellationToken.None);

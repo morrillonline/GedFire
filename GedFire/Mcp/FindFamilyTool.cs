@@ -241,7 +241,7 @@ public sealed class FindFamilyTool
 
     static FindFamilyResult Map(FamilySearchOutcome outcome) => new(
         [.. outcome.Candidates.Select(c => new FamilyCandidateResult(
-            new FamilyPersonResult(c.Person.Xref, PersonDisplay.FullName(c.Person), YearOf(c.Person.Birth), YearOf(c.Person.Death)),
+            new FamilyPersonResult(c.Person.Xref, PersonDisplay.FullName(c.Person), YearOf(c.Person.Birth), YearOf(c.Person.DeathOrBurial)),
             c.Family.Xref,
             new FamilyRelativeResult(c.Relative.Person.Xref, PersonDisplay.FullName(c.Relative.Person), c.Relative.MatchScore),
             c.RankScore))],

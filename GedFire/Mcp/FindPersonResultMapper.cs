@@ -37,7 +37,7 @@ public static class FindPersonResultMapper
         indi.Xref,
         PersonDisplay.FullName(indi),
         MapEvent(indi.Birth),
-        MapEvent(indi.Death),
+        MapEvent(indi.DeathOrBurial),
         new FamiliesIdentity(MapAsChild(indi), MapAsParent(indi)),
         indi.SurnameUnknown);
 
@@ -48,7 +48,7 @@ public static class FindPersonResultMapper
             indi.Xref,
             PersonDisplay.FullName(indi),
             MapEvent(indi.Birth),
-            MapEvent(indi.Death),
+            MapEvent(indi.DeathOrBurial),
             MapParents(indi.FamChild),
             MapSpouseNames(indi),
             match.FinalScore,

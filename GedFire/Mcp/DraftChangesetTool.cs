@@ -35,7 +35,9 @@ public sealed class DraftChangesetTool
         "a fact may carry substructures, a replacedCitations disposition, or citeOnly to cite a fact already held. " +
         "Findings aimed at the same target become one item. Returns the changeset, a " +
         "decisions list (what was reused, minted, merged, or left open for you), and errors; with outPath it also " +
-        "writes the changeset to a new file, replacing an existing one only when overwrite is true. Reads the " +
+        "writes the changeset to a new file, replacing an existing one only when overwrite is true. Findings may be " +
+        "given inline or by inputPath, a file holding {\"findings\": [...]}, to re-draft a saved input without " +
+        "passing it back. Reads the " +
         "document for existing sources and names, writes nothing to it; run validate_changeset on the result.";
 
     public const string InputSchemaJson = """
@@ -46,7 +48,7 @@ public sealed class DraftChangesetTool
             "findings": {
               "type": "array",
               "minItems": 1,
-              "description": "The findings to compile. Unrecognized fields are rejected.",
+              "description": "The findings to compile; required unless inputPath is given. Unrecognized fields are rejected.",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
@@ -126,25 +128,26 @@ public sealed class DraftChangesetTool
                   },
                   "relations": {
                     "type": "array",
-                    "description": "Links this finding establishes, in the changeset dialect's terms. Each is cited with the finding's source at its own quay. Family xrefs for new families are placeholders such as @NewF1@; facts about the family (MARR) use that xref as record.",
+                    "description": "Links this finding establishes or, with the unlink kinds, removes, in the changeset dialect's terms. Each added link is cited with the finding's source at its own quay; a child relation with from moves an existing child between families. Family xrefs for new families are placeholders such as @NewF1@; facts about the family (MARR) use that xref as record.",
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
                       "properties": {
-                        "kind": { "type": "string", "enum": ["spouse", "child", "parent"] },
-                        "person": { "type": "string", "description": "spouse and parent: the known person (the child, for parent). An existing xref, or a person an earlier relation created." },
+                        "kind": { "type": "string", "enum": ["spouse", "child", "parent", "unlink-child", "unlink-parent"], "description": "unlink-child and unlink-parent remove an existing link; they take no quay or excerpt, because a removal op carries no citation: say why in a note that cites the finding." },
+                        "person": { "type": "string", "description": "spouse, parent and unlink-parent: the known person (the child, for parent and unlink-parent). An existing xref, or a person an earlier relation created." },
                         "spouse": { "type": "string", "description": "spouse: the partner, existing or declared in people." },
-                        "child": { "type": "string", "description": "child: the child, existing or declared in people." },
+                        "child": { "type": "string", "description": "child and unlink-child: the child, existing or declared in people (an existing person for unlink-child, or for a child with from)." },
                         "parent": { "type": "string", "description": "parent: the parent, existing or declared in people." },
-                        "role": { "type": "string", "enum": ["father", "mother"], "description": "parent: which parent." },
-                        "family": { "type": "string", "description": "The family: required for spouse and child, optional for parent. A placeholder creates it." },
+                        "role": { "type": "string", "enum": ["father", "mother"], "description": "parent and unlink-parent: which parent." },
+                        "family": { "type": "string", "description": "The family: required for spouse, child and unlink-child (the family the child leaves), optional for parent and unlink-parent. A placeholder creates it, except for the removals." },
+                        "from": { "type": "string", "description": "child: an existing family the child is moved out of, so the child ends up in family only. The child must be listed in it." },
                         "husb": { "type": "string", "description": "child: father, used only when this relation creates the family." },
                         "wife": { "type": "string", "description": "child: mother, used only when this relation creates the family." },
                         "notDuplicateOf": { "type": "array", "items": { "type": "string" }, "description": "spouse and child: existing people already confirmed not to be the new person." },
                         "excerpt": { "type": "string", "description": "A narrower extract than the finding's for this relation's citation." },
-                        "quay": { "type": "integer", "minimum": 0, "maximum": 3 }
+                        "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "Required except for unlink-child and unlink-parent." }
                       },
-                      "required": ["kind", "quay"]
+                      "required": ["kind"]
                     }
                   },
                   "notes": {
@@ -179,6 +182,12 @@ public sealed class DraftChangesetTool
                 "required": ["id", "extract", "source", "target"]
               }
             },
+            "inputPath": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "description": "Path to a JSON file holding {\"findings\": [...]}, the same array as findings, so a saved input can be re-drafted without passing it back inline. Give findings or inputPath, not both."
+            },
             "outPath": {
               "type": "string",
               "minLength": 1,
@@ -189,8 +198,7 @@ public sealed class DraftChangesetTool
               "type": "boolean",
               "description": "Replace an existing file at outPath. Default false."
             }
-          },
-          "required": ["findings"]
+          }
         }
         """;
 
@@ -240,13 +248,19 @@ public sealed class DraftChangesetTool
     // Arguments arrive as raw JsonElements so a wrong shape is reported by
     // field name rather than failing inside the SDK binder.
     Task<CallToolResult> InvokeAsync(
-        JsonElement? findings = null, JsonElement? outPath = null, JsonElement? overwrite = null, CancellationToken cancellationToken = default)
-        => HandleAsync(findings ?? default, outPath ?? default, overwrite ?? default, cancellationToken);
+        JsonElement? findings = null, JsonElement? inputPath = null, JsonElement? outPath = null, JsonElement? overwrite = null,
+        CancellationToken cancellationToken = default)
+        => HandleAsync(findings ?? default, inputPath ?? default, outPath ?? default, overwrite ?? default, cancellationToken);
 
     public Task<CallToolResult> HandleAsync(JsonElement findings, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(findings, outPath, overwrite, ct), cancellationToken);
+        HandleAsync(findings, default, outPath, overwrite, cancellationToken);
 
-    async Task<CallToolResult> ExecuteAsync(JsonElement findings, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken)
+    public Task<CallToolResult> HandleAsync(
+        JsonElement findings, JsonElement inputPath, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(findings, inputPath, outPath, overwrite, ct), cancellationToken);
+
+    async Task<CallToolResult> ExecuteAsync(
+        JsonElement findingsArgument, JsonElement inputPath, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken)
     {
         if (!ToolArguments.TryReadOptionalString(outPath, "outPath", out string? path, out string? error))
             return CallToolResults.Error(error!);
@@ -254,6 +268,8 @@ public sealed class DraftChangesetTool
             return CallToolResults.Error(error!);
         if (path is not null && string.IsNullOrWhiteSpace(path))
             return CallToolResults.Error("outPath must not be blank.");
+        if (!ArgumentFile.TryResolve(findingsArgument, "findings", inputPath, "inputPath", out var findings, out error))
+            return CallToolResults.Error(error!);
 
         var (parsed, readErrors) = DraftFindingReader.Read(findings);
         if (readErrors.Count > 0)

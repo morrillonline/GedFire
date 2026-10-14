@@ -270,6 +270,37 @@ public class GetRecordToolTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_Person_BurialWithNoDeath_IsOfferedAsTheApproximateDeath()
+    {
+        var tool = ToolOver("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Ada /Example/
+            1 BURI
+            2 DATE 3 JAN 1850
+            2 PLAC Concord, New Hampshire
+            0 @I2@ INDI
+            1 NAME Bea /Example/
+            1 DEAT
+            2 DATE 1 JAN 1850
+            1 BURI
+            2 DATE 3 JAN 1850
+            """);
+
+        var buriedOnly = StructuredContent(await tool.HandleAsync("@I1@", CancellationToken.None));
+        var both = StructuredContent(await tool.HandleAsync("@I2@", CancellationToken.None));
+
+        Assert.Equal(JsonValueKind.Null, buriedOnly.GetProperty("death").ValueKind);
+        var approximate = buriedOnly.GetProperty("approximateDeath");
+        Assert.Equal("3 JAN 1850", approximate.GetProperty("date").GetString());
+        Assert.Equal("Concord, New Hampshire", approximate.GetProperty("place").GetString());
+        Assert.False(both.TryGetProperty("approximateDeath", out _));
+        Assert.Equal("1 JAN 1850", both.GetProperty("death").GetProperty("date").GetString());
+    }
+
+    [Fact]
     public async Task HandleAsync_Family_CitationsCarrySourcePageAndText()
     {
         var tool = ToolOver("""

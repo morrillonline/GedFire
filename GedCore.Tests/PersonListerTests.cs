@@ -45,6 +45,31 @@ public class PersonListerTests
     }
 
     [Fact]
+    public void List_UsesTheBurialYearWhenThereIsNoDeath()
+    {
+        var index = new MatchIndex(MatchTestModels.Build("""
+            0 HEAD
+            1 GEDC
+            2 VERS 5.5.1
+            0 @I1@ INDI
+            1 NAME Alfred /Ashworth/
+            1 BURI
+            2 DATE 8 FEB 1837
+            0 @I2@ INDI
+            1 NAME Cornelius /Ashworth/
+            1 DEAT
+            2 DATE 1 JAN 1836
+            1 BURI
+            2 DATE 8 FEB 1837
+            """));
+
+        var page = List(index);
+
+        Assert.Equal(1837, page.People.Single(p => p.Xref == "@I1@").DeathYear);
+        Assert.Equal(1836, page.People.Single(p => p.Xref == "@I2@").DeathYear);
+    }
+
+    [Fact]
     public void List_ReturnsNameSurnameAndYears()
     {
         var page = List(Index());

@@ -61,6 +61,28 @@ public class MatchIndexTests
     }
 
     [Fact]
+    public void Death_FallsBackToTheBurialOnlyWhenThereIsNoDeathEvent()
+    {
+        var index = new MatchIndex(MatchTestModels.Build("""
+            0 @I1@ INDI
+            1 NAME Buried /Only/
+            1 BURI
+            2 DATE 8 FEB 1937
+            2 PLAC Concord, Merrimack, New Hampshire
+            0 @I2@ INDI
+            1 NAME Both /Events/
+            1 DEAT
+            2 DATE 6 FEB 1936
+            1 BURI
+            2 DATE 8 FEB 1937
+            """));
+
+        Assert.Equal(1937, Entry(index, "@I1@").Death!.Year);
+        Assert.Equal("CONCORD MERRIMACK NEW HAMPSHIRE", Entry(index, "@I1@").Death!.NormalizedPlace);
+        Assert.Equal(1936, Entry(index, "@I2@").Death!.Year);
+    }
+
+    [Fact]
     public void Birth_NullWhenNoBirthEvent()
     {
         var entry = Entry(Index(), "@I5@");
