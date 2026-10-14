@@ -223,7 +223,7 @@ public sealed class DraftChangesetTool
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "kind": { "type": "string", "enum": ["reused-source", "minted-source", "minted-person", "merged-citation", "kept-citation", "verification-note", "dropped-seed", "open"] },
+                  "kind": { "type": "string", "enum": ["reused-source", "minted-source", "minted-person", "merged-citation", "kept-citation", "verification-note", "dropped-seed", "resolved", "open"] },
                   "detail": { "type": "string" },
                   "findings": { "type": "array", "items": { "type": "string" } }
                 },

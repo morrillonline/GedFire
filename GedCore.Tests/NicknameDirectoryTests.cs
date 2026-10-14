@@ -95,6 +95,39 @@ public class NicknameDirectoryTests
     }
 
     [Fact]
+    public void IsNicknameOf_FollowsTheFormalNameOnly()
+    {
+        var dir = Synthetic();
+
+        Assert.True(dir.IsNicknameOf("Bob", "Robert", isMale: true));
+        Assert.False(dir.IsNicknameOf("Robert", "Bob", isMale: true));
+        Assert.False(dir.IsNicknameOf("Bob", "Bobby", isMale: true));
+        Assert.False(dir.IsNicknameOf("Robert", "Robert", isMale: true));
+    }
+
+    [Fact]
+    public void IsNicknameOf_RespectsSexAndInputNormalization()
+    {
+        var dir = Synthetic();
+
+        Assert.False(dir.IsNicknameOf("Bob", "Robert", isMale: false));
+        Assert.True(dir.IsNicknameOf("Peggy", "Margaret", isMale: null));
+        Assert.True(dir.IsNicknameOf("  bob!", " ROBERT ", isMale: null));
+        Assert.False(dir.IsNicknameOf(null, "Robert", isMale: true));
+        Assert.False(dir.IsNicknameOf("Bob", "", isMale: true));
+    }
+
+    [Fact]
+    public void LoadEmbedded_BillIsANicknameOfWilliamButBobIsNot()
+    {
+        var dir = NicknameDirectory.LoadEmbedded();
+
+        Assert.True(dir.IsNicknameOf("Bill", "William", isMale: true));
+        Assert.False(dir.IsNicknameOf("Bob", "William", isMale: true));
+        Assert.False(dir.IsNicknameOf("William", "Bill", isMale: true));
+    }
+
+    [Fact]
     public void MissingMaps_LoadAsEmptyRatherThanThrowing()
     {
         var dir = new NicknameDirectory(new MemoryStream(Encoding.UTF8.GetBytes("{}")));
