@@ -179,7 +179,7 @@ public static class ModelBuilder
                         break;
                     case "NOTE":
                     case "SNOTE":
-                        ParseIndiNote(indi, child);
+                        ParseNote(indi.NarrativeNotes, child);
                         break;
                 }
             }
@@ -190,12 +190,12 @@ public static class ModelBuilder
             return indi;
         }
 
-        // An INDI-level NOTE with SOUR citation(s) is GEDCOM 7's narrative
-        // form (produced by Ged70Upgrader from the legacy "Inline: TRUE|"
-        // citation text): the prose renders as a bio paragraph with the
-        // citation footnoted. Every note stays in the person's ordered
+        // An INDI- or FAM-level NOTE with SOUR citation(s) is GEDCOM 7's
+        // narrative form (produced by Ged70Upgrader from the legacy
+        // "Inline: TRUE|" citation text): the prose renders as a bio paragraph
+        // with the citation footnoted. Every note stays in the record's ordered
         // narrative collection, whether cited or not.
-        void ParseIndiNote(GedIndividual indi, GedRecord noteRec)
+        void ParseNote(List<GedNarrativeNote> notes, GedRecord noteRec)
         {
             var citations = SourceRefsOf(noteRec).ToList();
             if (citations.Count == 0)
@@ -214,11 +214,11 @@ public static class ModelBuilder
                     // Shared-note pointer (NOTE @X@ / SNOTE @X@) — resolved to
                     // the record's text in Pass 2.
                     var note = new GedNarrativeNote();
-                    indi.NarrativeNotes.Add(note);
+                    notes.Add(note);
                     _notePointers[note] = noteRec.Value;
                     return;
                 }
-                indi.NarrativeNotes.Add(new GedNarrativeNote
+                notes.Add(new GedNarrativeNote
                 {
                     Text = noteRec.FullValue(),
                     Mime = NoteMime(noteRec),
@@ -232,7 +232,7 @@ public static class ModelBuilder
                 Mime = NoteMime(noteRec),
             };
             narrative.Sources.AddRange(citations);
-            indi.NarrativeNotes.Add(narrative);
+            notes.Add(narrative);
         }
 
         static string? NoteMime(GedRecord note) =>
@@ -392,6 +392,10 @@ public static class ModelBuilder
                         break;
                     case "SOUR":
                         fam.Sources.Add(BuildSourceRef(child));
+                        break;
+                    case "NOTE":
+                    case "SNOTE":
+                        ParseNote(fam.NarrativeNotes, child);
                         break;
                     case "OBJE":
                         AddMediaLink(child, _famMediaLinks, fam);

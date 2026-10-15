@@ -114,6 +114,24 @@ public class PrivacyFilterTests
     }
 
     [Fact]
+    public void FamilyWithLivingSpouse_LosesItsNarrativeNotes()
+    {
+        string ged = """
+            0 @I1@ INDI
+            1 NAME Barbara /Hearth/
+            1 SEX F
+            1 BIRT
+            2 DATE 1950
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 WIFE @I1@
+            1 NOTE Research remark naming the living spouse.
+            """;
+        var model = BuildFiltered(ged);
+        Assert.Empty(model.Families["@F1@"].NarrativeNotes);
+    }
+
+    [Fact]
     public void WillOrProbate_CountsAsDead()
     {
         string ged = """

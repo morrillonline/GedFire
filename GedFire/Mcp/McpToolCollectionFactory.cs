@@ -31,6 +31,8 @@ public static class McpToolCollectionFactory
         new GetRecordsTool(session, gate, mediaDirectory).ToMcpServerTool(),
         new ListPeopleTool(session, gate).ToMcpServerTool(),
         new ListUnanchoredPeopleTool(session, gate).ToMcpServerTool(),
+        new MatchRecordTool(session, gate, nicknames).ToMcpServerTool(),
+        new ResearchBriefTool(session, gate, documentPath, mediaDirectory).ToMcpServerTool(),
         new SelectTargetsTool(session, gate).ToMcpServerTool(),
         new ValidateChangesetTool(documentPath, gate, policy).ToMcpServerTool(),
         new ValidateDocumentTool(documentPath, gate).ToMcpServerTool(),
