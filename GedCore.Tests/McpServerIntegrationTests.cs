@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace GedCore.Tests;
 
@@ -105,7 +106,7 @@ public class McpServerIntegrationTests : IDisposable
 
         var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Equal(17, tools.GetArrayLength());
+        Assert.Equal(19, tools.GetArrayLength());
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
@@ -115,7 +116,7 @@ public class McpServerIntegrationTests : IDisposable
         Assert.Equal(
             new HashSet<string> {
                 "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "draft_changeset", "draft_package", "find_family", "find_person", "find_source",
-                "get_document_stats", "get_record", "get_records", "list_people", "list_unanchored_people", "select_targets",
+                "get_document_stats", "get_record", "get_records", "list_people", "list_unanchored_people", "match_record", "research_brief", "select_targets",
                 "validate_changeset", "validate_document",
             },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
@@ -905,6 +906,103 @@ public class McpServerIntegrationTests : IDisposable
         Assert.True(result.GetProperty("isError").GetBoolean());
         Assert.Contains("--read-only", result.GetProperty("content")[0].GetProperty("text").GetString());
         Assert.Equal(before, File.ReadAllBytes(gedPath));
+    }
+
+    [Fact]
+    public async Task ToolsCall_ValidateChangeset_WithReportPath_WritesTheResultItReturned()
+    {
+        string gedPath = WriteGed();
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        string reportPath = Path.Combine(_dir, "validate-report.json");
+        await using var client = McpStdioTestClient.Start(gedPath);
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "validate_changeset",
+            arguments = new { changesetPath, items = "all", reportPath },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.True(structured.GetProperty("success").GetBoolean());
+        Assert.Equal(reportPath, structured.GetProperty("reportWrittenTo").GetString());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(File.ReadAllText(reportPath)), JsonNode.Parse(structured.GetRawText())));
+    }
+
+    [Fact]
+    public async Task ToolsCall_ApplyChangeset_WithReportPath_WritesTheReportAndTheBoundFile()
+    {
+        string gedPath = WriteGed();
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        string reportPath = Path.Combine(_dir, "apply-report.json");
+        await using var client = McpStdioTestClient.Start(gedPath);
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "apply_changeset",
+            arguments = new { changesetPath, items = "all", reportPath },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.True(structured.GetProperty("success").GetBoolean());
+        Assert.Contains("A note.", File.ReadAllText(gedPath));
+        Assert.Equal(reportPath, structured.GetProperty("reportWrittenTo").GetString());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(File.ReadAllText(reportPath)), JsonNode.Parse(structured.GetRawText())));
+    }
+
+    [Fact]
+    public async Task ToolsCall_ApplyChangeset_WithAnExistingReport_RefusesAndLeavesTheFileUntouched()
+    {
+        string gedPath = WriteGed();
+        byte[] before = File.ReadAllBytes(gedPath);
+        string changesetPath = WriteChangeset(AddNoteToI1Changeset);
+        string reportPath = Path.Combine(_dir, "stale-report.json");
+        File.WriteAllText(reportPath, "stale");
+        await using var client = McpStdioTestClient.Start(gedPath);
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "apply_changeset",
+            arguments = new { changesetPath, items = "all", reportPath },
+        }, ShortTimeout);
+
+        var result = response.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Contains("already exists", result.GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Equal(before, File.ReadAllBytes(gedPath));
+        Assert.Equal("stale", File.ReadAllText(reportPath));
+    }
+
+    [Fact]
+    public async Task ToolsCall_DraftChangeset_WithReportPath_WritesTheResultItReturned()
+    {
+        string gedPath = WriteGed();
+        string reportPath = Path.Combine(_dir, "draft-report.json");
+        var findings = new[]
+        {
+            new
+            {
+                id = "F-1", extract = "DEATH 26 Mar 2013",
+                source = new { name = "Find a Grave", locator = "Memorial #1", @class = "derivative", information = "primary" },
+                target = new { xref = "@I1@" },
+                facts = new[] { new { record = "@I1@", fact = "DEAT", date = "26 Mar 2013", place = "Rugby", quay = 2 } },
+            },
+        };
+        await using var client = McpStdioTestClient.Start(gedPath);
+        await client.InitializeAsync(ShortTimeout);
+
+        var response = await client.SendRequestAsync("tools/call", new
+        {
+            name = "draft_changeset",
+            arguments = new { findings, reportPath },
+        }, ShortTimeout);
+
+        var structured = response.GetProperty("result").GetProperty("structuredContent");
+        Assert.True(structured.GetProperty("success").GetBoolean(), structured.GetRawText());
+        Assert.Equal(reportPath, structured.GetProperty("reportWrittenTo").GetString());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(File.ReadAllText(reportPath)), JsonNode.Parse(structured.GetRawText())));
     }
 
     [Fact]

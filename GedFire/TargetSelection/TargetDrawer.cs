@@ -8,11 +8,11 @@ public sealed record DiscardedTarget
     public required string CardType { get; init; }
 }
 
-/// <summary>The outcome of one draw: the pack, the seed that produced it, and any Legendary-cap discards.</summary>
+/// <summary>The outcome of one draw: the pack, the seed that produced it (null when nothing was drawn — the targets were requested explicitly), and any Legendary-cap discards.</summary>
 public sealed record DrawResult
 {
     public required IReadOnlyList<SelectionTarget> Targets { get; init; }
-    public required long Seed { get; init; }
+    public required long? Seed { get; init; }
     public required IReadOnlyList<DiscardedTarget> LegendaryDiscards { get; init; }
 }
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore.Matching;
 using GedFire.Mcp;
 
 namespace GedCore.Tests;
@@ -22,6 +23,7 @@ public class ToolArgumentGuardTests : IDisposable
         new SelectTargetsTool(_sessions.Open(Ged), new ToolGate()).ToMcpServerTool(),
         new DateCalcTool(new ToolGate()).ToMcpServerTool(),
         new GetDocumentStatsTool(_sessions.Open(Ged), new ToolGate()).ToMcpServerTool(),
+        new FindFamilyTool(_sessions.Open(Ged), new ToolGate(), NicknameDirectory.LoadEmbedded()).ToMcpServerTool(),
     ]);
 
     static Dictionary<string, JsonElement> Args(string json) =>
@@ -36,27 +38,27 @@ public class ToolArgumentGuardTests : IDisposable
     [Fact]
     public void Check_MissingRequiredParameter_NamesItAndListsAcceptedParameters()
     {
-        string? error = Guard().Check("select_targets", Args("""{"count": 5}"""));
+        string? error = Guard().Check("date_calc", Args("""{"date": "1 JAN 1800"}"""));
 
         Assert.Equal(
-            "select_targets: missing required parameter \"surnames\". Accepted parameters: count (required), surnames (required).",
+            "date_calc: missing required parameter \"operation\". Accepted parameters: operation (required), date, age, from, to.",
             error);
     }
 
     [Fact]
     public void Check_EveryMissingRequiredParameter_IsNamed()
     {
-        string? error = Guard().Check("select_targets", Args("{}"));
+        string? error = Guard().Check("find_family", Args("{}"));
 
-        Assert.Contains("missing required parameters \"count\", \"surnames\"", error);
+        Assert.Contains("missing required parameters \"relation\", \"name\"", error);
     }
 
     [Fact]
     public void Check_NullForARequiredParameter_CountsAsMissing()
     {
-        string? error = Guard().Check("select_targets", Args("""{"count": null, "surnames": ["Ashworth"]}"""));
+        string? error = Guard().Check("date_calc", Args("""{"operation": null, "date": "1 JAN 1800"}"""));
 
-        Assert.Contains("missing required parameter \"count\"", error);
+        Assert.Contains("missing required parameter \"operation\"", error);
     }
 
     [Fact]
@@ -65,16 +67,16 @@ public class ToolArgumentGuardTests : IDisposable
         string? error = Guard().Check("select_targets", Args("""{"count": 5, "surnames": ["A"], "surname": "B"}"""));
 
         Assert.Equal(
-            "select_targets: unrecognized parameter \"surname\". Accepted parameters: count (required), surnames (required).",
+            "select_targets: unrecognized parameter \"surname\". Accepted parameters: count, surnames, xrefs.",
             error);
     }
 
     [Fact]
     public void Check_MissingAndUnrecognized_AreBothReported()
     {
-        string? error = Guard().Check("select_targets", Args("""{"count": 5, "surname": "B"}"""));
+        string? error = Guard().Check("date_calc", Args("""{"bogus": 1}"""));
 
-        Assert.Contains("missing required parameter \"surnames\"; unrecognized parameter \"surname\"", error);
+        Assert.Contains("missing required parameter \"operation\"; unrecognized parameter \"bogus\"", error);
     }
 
     [Fact]
@@ -112,7 +114,7 @@ public class ToolArgumentGuardTests : IDisposable
     [Fact]
     public void Check_NullArgumentsOnAToolWithRequiredParameters_ReportsThemMissing()
     {
-        Assert.Contains("missing required parameters \"count\", \"surnames\"", Guard().Check("select_targets", null));
+        Assert.Contains("missing required parameters \"relation\", \"name\"", Guard().Check("find_family", null));
     }
 
     [Fact]

@@ -59,7 +59,36 @@ public static class GapDetector
             if (BearsSurname(person, surnameSet))
                 DetectNewParent(person, targets);
             DetectNewSpouse(person, targets);
-            DetectNewChild(person, surnameSet, newChildFamiliesSeen, targets);
+            DetectNewChild(person, fam => fam.Husband != null && BearsSurname(fam.Husband, surnameSet), newChildFamiliesSeen, targets);
+            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets);
+        }
+
+        return targets;
+    }
+
+    /// <summary>
+    /// Score exactly <paramref name="people"/>, in order, with no surname
+    /// filter: the caller has already nominated each person, so every gap
+    /// rule runs for each of them. The privacy floor still applies.
+    /// </summary>
+    public static List<SelectionTarget> DetectForPeople(IEnumerable<GedIndividual> people) =>
+        DetectForPeople(people, DateTime.UtcNow.Year);
+
+    /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
+    public static List<SelectionTarget> DetectForPeople(IEnumerable<GedIndividual> people, int currentYear)
+    {
+        int privacyFloorYear = currentYear - PrivacyFloorYears;
+        var targets = new List<SelectionTarget>();
+        var newChildFamiliesSeen = new HashSet<string>();
+        var marriageEnrichFamiliesSeen = new HashSet<string>();
+
+        foreach (var person in people)
+        {
+            if (IsWithinPrivacyFloor(person, privacyFloorYear)) continue;
+
+            DetectNewParent(person, targets);
+            DetectNewSpouse(person, targets);
+            DetectNewChild(person, _ => true, newChildFamiliesSeen, targets);
             DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets);
         }
 
@@ -141,17 +170,18 @@ public static class GapDetector
     }
 
     // -------------------------------------------------------------------
-    // New child — a spouse family (FAMS) with no children recorded in it,
-    // whose husband bears a study surname: children of any other father
-    // will not carry the surname.
+    // New child — a spouse family (FAMS) with no children recorded in it.
+    // In a surname study the family only qualifies when its husband bears
+    // a study surname (children of any other father will not carry it);
+    // for explicitly nominated people every childless family qualifies.
     // -------------------------------------------------------------------
 
-    static void DetectNewChild(GedIndividual person, HashSet<string> surnames, HashSet<string> familiesSeen, List<SelectionTarget> targets)
+    static void DetectNewChild(GedIndividual person, Func<GedFamily, bool> familyQualifies, HashSet<string> familiesSeen, List<SelectionTarget> targets)
     {
         foreach (var fam in person.FamSpouse)
         {
             if (fam.Children.Count > 0) continue;
-            if (fam.Husband is null || !BearsSurname(fam.Husband, surnames)) continue;
+            if (!familyQualifies(fam)) continue;
             if (!familiesSeen.Add(fam.Xref)) continue;
 
             // Era/geography key off the marriage when one is recorded (this

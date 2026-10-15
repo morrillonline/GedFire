@@ -201,6 +201,9 @@ public sealed class GedFamily
     public List<GedSourceRef> Sources { get; } = [];
     public List<GedMediaLink> Media { get; } = [];
 
+    // FAM-level NOTE/SNOTE structures in document order; research remarks often live here.
+    public List<GedNarrativeNote> NarrativeNotes { get; } = [];
+
     public GedIndividual? SpouseOf(GedIndividual x)
     {
         if (x == Husband) return Wife;

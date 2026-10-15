@@ -97,8 +97,9 @@ public sealed class PersonMatchCore
     const double SuggestionHigh = 69.0;
     const double CloseSpellingThreshold = 0.85;
     const double RelationalHintThreshold = 0.85;
-    const double SingleMatchMinScore = 90.0;
-    const double SingleMatchMargin = 10.0;
+    // Public because match_record applies the same single-verdict floors to its own composite score.
+    public const double SingleMatchMinScore = 90.0;
+    public const double SingleMatchMargin = 10.0;
     const int DefaultCandidateCap = 8;
     const int SuggestionCap = 3;
 

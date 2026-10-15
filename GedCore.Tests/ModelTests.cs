@@ -94,6 +94,32 @@ public class SharedNoteTests
         Assert.Single(notes[1].Sources);
         Assert.Empty(notes[2].Sources);
     }
+
+    [Fact]
+    public void FamilyNotes_AreParsedInGedcomOrder()
+    {
+        var model = ModelBuilder.Build(Ged55Parser.Parse("""
+            0 @F1@ FAM
+            1 NOTE Research remark on the family.
+            1 NOTE Second remark.
+            """));
+
+        Assert.Equal(["Research remark on the family.", "Second remark."],
+            model.Families["@F1@"].NarrativeNotes.Select(note => note.Text));
+    }
+
+    [Fact]
+    public void FamilyNotePointer_ResolvesToSharedRecordText()
+    {
+        var model = ModelBuilder.Build(Ged55Parser.Parse("""
+            0 @F1@ FAM
+            1 SNOTE @N1@
+            0 @N1@ SNOTE Shared family note.
+            """));
+
+        Assert.Equal("Shared family note.",
+            Assert.Single(model.Families["@F1@"].NarrativeNotes).Text);
+    }
 }
 
 // ---------------------------------------------------------------------------

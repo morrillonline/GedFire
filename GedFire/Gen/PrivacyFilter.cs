@@ -55,6 +55,7 @@ public static class PrivacyFilter
                 fam.Marriage = null;
                 fam.Sources.Clear();
                 fam.Media.Clear();
+                fam.NarrativeNotes.Clear();
             }
 
         // Placeholder given names change index sort order.

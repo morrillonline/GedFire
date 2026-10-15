@@ -38,7 +38,10 @@ public class SelectTargetsToolTests : IDisposable
     static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
 
     static async Task<CallToolResult> Call(SelectTargetsTool tool, string count, string surnames) =>
-        await tool.HandleAsync(Json(count), Json(surnames), CancellationToken.None);
+        await tool.HandleAsync(Json(count), Json(surnames), default, CancellationToken.None);
+
+    static async Task<CallToolResult> CallXrefs(SelectTargetsTool tool, string xrefs) =>
+        await tool.HandleAsync(default, default, Json(xrefs), CancellationToken.None);
 
     static string ErrorText(CallToolResult result) => ((TextContentBlock)result.Content[0]).Text;
 
@@ -156,6 +159,158 @@ public class SelectTargetsToolTests : IDisposable
         Assert.Equal("select_targets", tool.ProtocolTool.Name);
         Assert.True(tool.ProtocolTool.Annotations!.ReadOnlyHint);
         Assert.False(tool.ProtocolTool.Annotations.IdempotentHint);
+    }
+
+    // -------------------------------------------------------------------
+    // Explicit xrefs: no draw, deterministic scoring of exactly the given people
+    // -------------------------------------------------------------------
+
+    const string XrefGed = """
+        0 HEAD
+        1 GEDC
+        2 VERS 5.5.1
+        0 @I10@ INDI
+        1 NAME Robert /Ashworth/
+        1 SEX M
+        1 BIRT
+        2 DATE 15 MAR 1820
+        2 PLAC Boston, Massachusetts
+        1 DEAT
+        2 DATE 2 FEB 1890
+        2 PLAC Boston, Massachusetts
+        1 FAMC @F1@
+        1 FAMS @F2@
+        0 @I11@ INDI
+        1 NAME Henry /Ashworth/
+        1 SEX M
+        1 FAMS @F1@
+        0 @I12@ INDI
+        1 NAME Sarah /Price/
+        1 SEX F
+        1 FAMS @F1@
+        0 @I13@ INDI
+        1 NAME Jane /Smith/
+        1 SEX F
+        1 FAMS @F2@
+        0 @I14@ INDI
+        1 NAME Thomas /Ashworth/
+        1 SEX M
+        1 BIRT
+        2 DATE 1850
+        1 FAMC @F2@
+        0 @F1@ FAM
+        1 HUSB @I11@
+        1 WIFE @I12@
+        1 CHIL @I10@
+        0 @F2@ FAM
+        1 HUSB @I10@
+        1 WIFE @I13@
+        1 CHIL @I14@
+        1 MARR
+        2 DATE 20 JUN 1845
+        2 PLAC Boston, Massachusetts
+        """;
+
+    SelectTargetsTool XrefTool() => new(_sessions.Open(XrefGed), new ToolGate());
+
+    [Fact]
+    public async Task Xrefs_CalledTwiceWithTheSameList_ReturnsIdenticalResults()
+    {
+        var tool = XrefTool();
+
+        var first = await CallXrefs(tool, "[\"@I14@\", \"@I13@\"]");
+        var second = await CallXrefs(tool, "[\"@I14@\", \"@I13@\"]");
+
+        Assert.NotEqual(true, first.IsError);
+        Assert.Equal(first.StructuredContent!.Value.GetRawText(), second.StructuredContent!.Value.GetRawText());
+    }
+
+    [Fact]
+    public async Task Xrefs_EnvelopeKeepsGeneratedCountAndTargets_AndSeedIsNull()
+    {
+        var result = await CallXrefs(XrefTool(), "[\"@I14@\"]");
+
+        Assert.NotEqual(true, result.IsError);
+        var root = result.StructuredContent!.Value;
+        Assert.True(root.TryGetProperty("generated", out _));
+        Assert.Equal(root.GetProperty("count").GetInt32(), root.GetProperty("targets").GetArrayLength());
+        Assert.Equal(0, root.GetProperty("surnames").GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("draw").GetProperty("seed").ValueKind);
+    }
+
+    [Fact]
+    public async Task Xrefs_PersonWithEveryFactExactAndFullFamily_ProducesNoCardAndIsNamed()
+    {
+        var result = await CallXrefs(XrefTool(), "[\"@I10@\"]");
+
+        var root = result.StructuredContent!.Value;
+        Assert.Equal(0, root.GetProperty("count").GetInt32());
+        Assert.Equal(0, root.GetProperty("targets").GetArrayLength());
+        var withoutGaps = root.GetProperty("xrefsWithoutGaps").EnumerateArray().Select(x => x.GetString()!);
+        Assert.Equal(["@I10@"], withoutGaps);
+    }
+
+    [Fact]
+    public async Task Xrefs_PersonWithSeveralGaps_YieldsOneTargetPerGap()
+    {
+        // @I14@ has both parents recorded, an inexact birth, and no spouse family.
+        var result = await CallXrefs(XrefTool(), "[\"@I14@\"]");
+
+        var root = result.StructuredContent!.Value;
+        var cardTypes = root.GetProperty("targets").EnumerateArray()
+            .Select(t => t.GetProperty("cardType").GetString()!).ToList();
+        Assert.Contains("New spouse", cardTypes);
+        Assert.Contains("Enrich person", cardTypes);
+        Assert.All(root.GetProperty("targets").EnumerateArray(),
+            t => Assert.Equal("@I14@", t.GetProperty("xref").GetString()));
+        Assert.Equal(0, root.GetProperty("xrefsWithoutGaps").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Xrefs_TargetRecords_CarryTheSameShapeAsTheRandomDraw()
+    {
+        var result = await CallXrefs(XrefTool(), "[\"@I14@\"]");
+
+        foreach (var target in result.StructuredContent!.Value.GetProperty("targets").EnumerateArray())
+        {
+            Assert.True(target.TryGetProperty("name", out _));
+            Assert.True(target.TryGetProperty("surname", out _));
+            Assert.True(target.TryGetProperty("nominalPoints", out _));
+            Assert.True(target.TryGetProperty("score", out _));
+            Assert.True(target.GetProperty("difficulty").TryGetProperty("band", out _));
+            Assert.Equal(JsonValueKind.Array, target.GetProperty("possibleDuplicateOf").ValueKind);
+            Assert.True(target.TryGetProperty("possibleDuplicateCount", out _));
+        }
+    }
+
+    [Fact]
+    public async Task Xrefs_UnknownXref_IsAnErrorNamingIt()
+    {
+        var result = await CallXrefs(XrefTool(), "[\"@I10@\", \"@I99@\"]");
+
+        Assert.True(result.IsError);
+        Assert.Contains("@I99@ is not a person in this document", ErrorText(result));
+    }
+
+    [Fact]
+    public async Task Xrefs_CombinedWithCountOrSurnames_IsRejected()
+    {
+        var result = await XrefTool().HandleAsync(Json("5"), default, Json("[\"@I10@\"]"), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("xrefs cannot be combined with count or surnames", ErrorText(result));
+    }
+
+    [Theory]
+    [InlineData("[]", "xrefs must contain 1 to")]
+    [InlineData("\"@I10@\"", "xrefs must be an array")]
+    [InlineData("[\"I10\"]", "xrefs[0] must be an xref")]
+    public async Task Xrefs_BadShape_IsRejectedByFieldName(string xrefs, string expected)
+    {
+        var result = await CallXrefs(XrefTool(), xrefs);
+
+        Assert.True(result.IsError);
+        Assert.Contains(expected, ErrorText(result));
     }
 
     [Fact]

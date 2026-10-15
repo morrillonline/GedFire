@@ -44,8 +44,13 @@ public static class WantedFileWriter
     public static string ToJson(IReadOnlyCollection<string> surnames, int totalCandidates, DrawResult draw) =>
         Serialize(null, surnames, totalCandidates, draw);
 
+    /// <summary>The document for an explicit-xrefs scoring: no surnames, a null seed, and the input xrefs that produced no target.</summary>
+    public static string ToJsonForXrefs(IReadOnlyList<string> xrefsWithoutGaps, DrawResult draw) =>
+        Serialize(null, [], draw.Targets.Count, draw, xrefsWithoutGaps);
+
     static string Serialize(
-        string? source, IReadOnlyCollection<string> surnames, int totalCandidates, DrawResult draw)
+        string? source, IReadOnlyCollection<string> surnames, int totalCandidates, DrawResult draw,
+        IReadOnlyList<string>? xrefsWithoutGaps = null)
     {
         var envelope = new WantedFile
         {
@@ -55,6 +60,7 @@ public static class WantedFileWriter
             TotalCandidates = totalCandidates,
             Count = draw.Targets.Count,
             Targets = [.. draw.Targets],
+            XrefsWithoutGaps = xrefsWithoutGaps,
             Draw = new DrawLogEntry { Seed = draw.Seed, LegendaryDiscards = [.. draw.LegendaryDiscards] },
         };
         return JsonSerializer.Serialize(envelope, Options);
@@ -68,12 +74,15 @@ public static class WantedFileWriter
         public required int TotalCandidates { get; init; }
         public required int Count { get; init; }
         public required List<SelectionTarget> Targets { get; init; }
+        public IReadOnlyList<string>? XrefsWithoutGaps { get; init; }
         public required DrawLogEntry Draw { get; init; }
     }
 
     sealed record DrawLogEntry
     {
-        public required long Seed { get; init; }
+        // A null seed is part of the contract (explicit xrefs, nothing drawn), so it must not be omitted.
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+        public required long? Seed { get; init; }
         public required List<DiscardedTarget> LegendaryDiscards { get; init; }
     }
 }
