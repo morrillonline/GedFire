@@ -137,11 +137,11 @@ a change `apply_changeset` itself just wrote — no restart needed:
 | `select_targets` | The `gedfire select-targets` command as a tool: detect research gaps for the given surnames and draw `count` targets, returned as the `wanted.json` document without the GEDCOM path. An Enrich person target is one card per person: `enrichments` lists every birth, marriage and death whose date or place is not exact, `nominalPoints` is one per missing date or place across all of them, and the difficulty bonus is added once (`score` is `nominalPoints` plus the bonus). To price a changeset against it, pass `validate_changeset` a card with `gap` `enrich-fact`, `points` 1 and `bonus` equal to `score` minus `nominalPoints`. Each target lists `possibleDuplicateOf`: the people the `check_plausibility` GEN301 duplicate test pairs with it (`[]` when none); at most three are listed, best first, and `possibleDuplicateCount` gives the full number; such a target is still drawn. A New child card is offered only when the husband bears a study surname, since other children will not carry it. A person with an Unknown name part is paired only through an agreeing parent or spouse name. An exact burial (date and place) closes the death gap when there is no exact death, and `died` falls back to the burial. Seeded from the clock, like the command. |
 | `describe_changeset_ops` | Return the changeset envelope shape and the full v2 op dialect (every `createOrUpdate`/`delete`/`merge` op, its required and optional fields, and one worked example) — so an agent can compose a valid changeset without external documentation or trial-and-error against `validate_changeset`'s error text. Takes no arguments. |
 | `check_plausibility` | Preview a proposal changeset and return only the chronological and biological plausibility findings it would introduce, structured for routing by severity. Name characters are checked too: digits and symbols (other than apostrophe, hyphen and period) are errors that block a changeset, an ordinal suffix such as `3rd` is allowed, and punctuation standing in for a name (`----`) is a warning to use `Unknown`. Always available, even under `--read-only`. |
-| `draft_changeset` | Compile findings into a changeset in the op dialect (see [Drafting a changeset](#drafting-a-changeset)). Reuses an existing source or mints one per collection, merges each (source, page, grade) group's extracts into one `dataText`, copies the locator verbatim into the citation page, adds a verification note for every fact graded at or below the policy ceiling, and refuses a QUAY the source and information class cannot support, a target name that differs from the recorded one, and prose the policy bans. Returns the changeset, a `decisions` list, and `errors`; `outPath` writes it to a new file, replacing an existing one only with `overwrite`; `inputPath` reads the findings from a file, and `findingPaths` reads them from correlated finding files. New people and families come from `people` and `relations`, which can also move a child between families or remove a link. |
+| `draft_changeset` | Compile findings into a changeset in the op dialect (see [Drafting a changeset](#drafting-a-changeset)). Reuses an existing source or mints one per collection, merges each (source, page, grade) group's extracts into one `dataText`, copies the locator verbatim into the citation page, adds a verification note for every fact graded at or below the policy ceiling, and refuses a QUAY the source and information class cannot support, a target name that differs from the recorded one, and prose the policy bans. Returns the changeset, a `decisions` list, and `errors`; `outPath` writes it to a new file, replacing an existing one only with `overwrite`; `reportPath` also writes the result JSON to a file (see [Result reports](#result-reports)); `inputPath` reads the findings from a file, and `findingPaths` reads them from correlated finding files. New people and families come from `people` and `relations`, which can also move a child between families or remove a link. |
 | `draft_package` | Draft a whole proposal package from correlated finding files in one call (see [Drafting a package](#drafting-a-package)). Groups `findingPaths` by anchor, compiles each anchor's findings as `draft_changeset` does, dry-runs the result, and writes `<folder>/<proposal>.item<N>.changes.json` only for the anchors that pass. Returns per item its files, finding ids, errors, `decisions`, `pointsPreview` (priced from `cardsPath`), plausibility findings, and the file's path and sha256. |
-| `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but nothing is written. Policy violations are reported as errors. Pass `cards` to get a `pointsPreview` (see [Points preview](#points-preview)), or `cardsPath`, a file holding `{"cards": [...]}`, to read the same list from disk. Always available, even under `--read-only`. |
+| `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but the document is never touched. Policy violations are reported as errors. Pass `cards` to get a `pointsPreview` (see [Points preview](#points-preview)), or `cardsPath`, a file holding `{"cards": [...]}`, to read the same list from disk. `reportPath` also writes the result JSON to a file (see [Result reports](#result-reports)). Always available, even under `--read-only`. |
 | `validate_document` | Run the same GEDCOM 7 conformance checks as `gedfire validate` against the whole bound document — independent of any changeset — and return the findings structured instead of as plain-text lines. Optional `warningsAsErrors` mirrors the CLI flag. Always available, even under `--read-only`. |
-| `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. Refuses to run under `--read-only`. |
+| `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. `reportPath` also writes the result JSON to a file (see [Result reports](#result-reports)). Refuses to run under `--read-only`. |
 
 `date_calc`, `find_person`, `get_document_stats`, and `get_record` also have
 a one-shot CLI mirror — `find-person`, `get-record`, `get-document-stats`,
@@ -295,6 +295,26 @@ finding files and ids, `success`, `errors`, `decisions`, `pointsPreview`,
 hex `sha256` of exactly the bytes written. A finding file whose anchor cannot
 be read (not JSON, or no `correlation.target`) is reported under the top-level
 `errors` and belongs to no item.
+
+### Result reports
+
+`apply_changeset`, `validate_changeset` and `draft_changeset` take an optional
+`reportPath`. The structured result the tool returns is also written there, as
+indented JSON, exactly as returned, so a script can read it (for example the
+`mintedXrefs` of an apply) instead of having it retyped. The result names the
+file in `reportWrittenTo` (null when no report was asked for), and the report
+carries the same field.
+
+The path is checked before any work is done: its folder must exist, and a file
+that already exists is refused unless `overwrite` is `true` (the same flag
+`draft_changeset` uses for `outPath`; the two cannot name the same file). A
+refusal therefore happens before an apply touches the document. A result is
+reported whether it succeeded or not, including an apply refused by the policy.
+The report never changes the outcome: if the write fails after the work is
+done, the failure is added to the result's `log` (to an `open` decision for
+`draft_changeset`) and `reportWrittenTo` is null. An apply refused because the
+server is read-only, or any call refused for a bad argument, returns an error
+and writes no report.
 
 For example, an MCP client can call `find_person` with:
 

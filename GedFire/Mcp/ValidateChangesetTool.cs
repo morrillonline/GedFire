@@ -29,7 +29,8 @@ public sealed class ValidateChangesetTool
         "every violation of it (banned phrases, a low-graded fact with no verification note, a death place " +
         "with no death evidence) is reported as an error here, so it surfaces at the dry run. Pass \"cards\" to " +
         "get pointsPreview: which research cards the changeset closes by what it writes to the tree (cards may be " +
-        "given inline or by cardsPath, a file holding {\"cards\": [...]}).";
+        "given inline or by cardsPath, a file holding {\"cards\": [...]}). Pass reportPath to also write the result " +
+        "JSON, exactly as returned, to a file a script can read.";
 
     public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithCardsJson;
     public static readonly string OutputSchemaJson = ChangesetToolSchemas.OutputSchemaWithPreviewJson;
@@ -53,8 +54,10 @@ public sealed class ValidateChangesetTool
     // The delegate McpServerTool.Create binds arguments to and invokes.
     Task<CallToolResult> InvokeAsync(
         string changesetPath, string items, JsonElement? cards = null, JsonElement? cardsPath = null,
-        CancellationToken cancellationToken = default)
-        => HandleAsync(changesetPath, items, cards ?? default, cardsPath ?? default, cancellationToken);
+        JsonElement? reportPath = null, JsonElement? overwrite = null, CancellationToken cancellationToken = default)
+        => HandleAsync(
+            new ValidateChangesetArguments(changesetPath, items, cards ?? default, cardsPath ?? default, reportPath ?? default, overwrite ?? default),
+            cancellationToken);
 
     /// <summary>
     /// The tool's actual behavior, reachable directly without any MCP
@@ -63,25 +66,33 @@ public sealed class ValidateChangesetTool
     /// same last-chance-handler pattern as the other document tools.
     /// </summary>
     public Task<CallToolResult> HandleAsync(string changesetPath, string items, CancellationToken cancellationToken) =>
-        HandleAsync(changesetPath, items, default, default, cancellationToken);
+        HandleAsync(new ValidateChangesetArguments(changesetPath, items), cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         string changesetPath, string items, JsonElement cards, CancellationToken cancellationToken) =>
-        HandleAsync(changesetPath, items, cards, default, cancellationToken);
+        HandleAsync(new ValidateChangesetArguments(changesetPath, items, cards), cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         string changesetPath, string items, JsonElement cards, JsonElement cardsPath, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => Task.FromResult(Execute(changesetPath, items, cards, cardsPath, ct)), cancellationToken);
+        HandleAsync(new ValidateChangesetArguments(changesetPath, items, cards, cardsPath), cancellationToken);
 
-    CallToolResult Execute(
-        string changesetPath, string items, JsonElement cardsArgument, JsonElement cardsPath, CancellationToken cancellationToken)
+    public Task<CallToolResult> HandleAsync(ValidateChangesetArguments arguments, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => Task.FromResult(Execute(arguments, ct)), cancellationToken);
+
+    CallToolResult Execute(ValidateChangesetArguments arguments, CancellationToken cancellationToken)
     {
-        if (!ArgumentFile.TryResolve(cardsArgument, "cards", cardsPath, "cardsPath", out var cards, out string? error))
+        if (!ArgumentFile.TryResolve(arguments.Cards, "cards", arguments.CardsPath, "cardsPath", out var cards, out string? error))
             return CallToolResults.Error(error!);
         if (!PointsCardReader.TryRead(cards, out var cardList, out error))
             return CallToolResults.Error(error!);
+        if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, out var report, out error))
+            return CallToolResults.Error(error!);
 
         return ChangesetToolSupport.Execute(
-            _absoluteGedcomPath, changesetPath, items, dryRun: true, cancellationToken, _policy, cardList);
+            _absoluteGedcomPath, arguments.ChangesetPath, arguments.Items, dryRun: true, cancellationToken, _policy, cardList, report);
     }
 }
+
+public sealed record ValidateChangesetArguments(
+    string ChangesetPath, string Items, JsonElement Cards = default, JsonElement CardsPath = default,
+    JsonElement ReportPath = default, JsonElement Overwrite = default);

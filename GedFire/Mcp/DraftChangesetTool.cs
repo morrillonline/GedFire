@@ -38,7 +38,7 @@ public sealed class DraftChangesetTool
         "writes the changeset to a new file, replacing an existing one only when overwrite is true. Findings may be " +
         "given inline or by inputPath, a file holding {\"findings\": [...]}, to re-draft a saved input without " +
         "passing it back, or by findingPaths, the lake's correlated finding files, whose \"draft\" entries are compiled " +
-        "as one set. Reads the " +
+        "as one set. Pass reportPath to also write the result JSON, exactly as returned, to a file a script can read. Reads the " +
         "document for existing sources and names, writes nothing to it; run validate_changeset on the result.";
 
     public const string InputSchemaJson = """
@@ -201,9 +201,15 @@ public sealed class DraftChangesetTool
               "pattern": "\\S",
               "description": "Where to write the changeset. Refused when the file already exists, unless overwrite is true, or when the draft has errors."
             },
+            "reportPath": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "description": "Also write the result JSON, exactly as returned, to this file, so a script can read it without anyone retyping it. The folder must exist. Refused, before any work is done, when the file already exists unless overwrite is true, or when it is outPath."
+            },
             "overwrite": {
               "type": "boolean",
-              "description": "Replace an existing file at outPath. Default false."
+              "description": "Replace an existing file at outPath or reportPath. Default false."
             }
           }
         }
@@ -231,9 +237,10 @@ public sealed class DraftChangesetTool
               }
             },
             "errors": { "type": "array", "items": { "type": "string" } },
-            "writtenTo": { "type": ["string", "null"], "description": "The full path written, or null." }
+            "writtenTo": { "type": ["string", "null"], "description": "The full path written, or null." },
+            "reportWrittenTo": { "type": ["string", "null"], "description": "The full path the result was also written to when reportPath was given, else null." }
           },
-          "required": ["success", "changeset", "decisions", "errors", "writtenTo"]
+          "required": ["success", "changeset", "decisions", "errors", "writtenTo", "reportWrittenTo"]
         }
         """;
 
@@ -256,10 +263,12 @@ public sealed class DraftChangesetTool
     // field name rather than failing inside the SDK binder.
     Task<CallToolResult> InvokeAsync(
         JsonElement? findings = null, JsonElement? inputPath = null, JsonElement? findingPaths = null,
-        JsonElement? outPath = null, JsonElement? overwrite = null, CancellationToken cancellationToken = default)
+        JsonElement? outPath = null, JsonElement? overwrite = null, JsonElement? reportPath = null,
+        CancellationToken cancellationToken = default)
         => HandleAsync(
             new DraftChangesetArguments(
-                findings ?? default, inputPath ?? default, findingPaths ?? default, outPath ?? default, overwrite ?? default),
+                findings ?? default, inputPath ?? default, findingPaths ?? default, outPath ?? default, overwrite ?? default,
+                reportPath ?? default),
             cancellationToken);
 
     public Task<CallToolResult> HandleAsync(JsonElement findings, JsonElement outPath, JsonElement overwrite, CancellationToken cancellationToken) =>
@@ -280,11 +289,15 @@ public sealed class DraftChangesetTool
             return CallToolResults.Error(error!);
         if (path is not null && string.IsNullOrWhiteSpace(path))
             return CallToolResults.Error("outPath must not be blank.");
+        if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, out var report, out error))
+            return CallToolResults.Error(error!);
+        if (report is not null && path is not null && Path.GetFullPath(path.Trim()) == report.FullPath)
+            return CallToolResults.Error("reportPath must differ from outPath.");
 
         var input = ReadFindings(arguments, out error);
         if (error is not null) return CallToolResults.Error(error);
         if (input.Errors.Count > 0)
-            return Respond(new DraftResult(null, [], input.Errors), null);
+            return Respond(new DraftResult(null, [], input.Errors), null, report);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var draft = new ChangesetDrafter(new ModelDraftLookup(snapshot.Model), _policy).Draft(input.Findings);
@@ -294,10 +307,10 @@ public sealed class DraftChangesetTool
         if (path is not null && draft.Success)
         {
             var written = TryWrite(Path.GetFullPath(path.Trim()), draft.Changeset!, replace, out string? writeError);
-            if (writeError is not null) return Respond(draft with { Errors = [writeError] }, null);
+            if (writeError is not null) return Respond(draft with { Errors = [writeError] }, null, report);
             writtenTo = written;
         }
-        return Respond(draft, writtenTo);
+        return Respond(draft, writtenTo, report);
     }
 
     // Files names the file each finding came from when they came from findingPaths, so a check can name it.
@@ -331,14 +344,28 @@ public sealed class DraftChangesetTool
     static string? TryWrite(string fullPath, JsonObject changeset, bool replace, out string? error) =>
         ChangesetFileWriter.TryWrite(fullPath, ChangesetFileWriter.Serialize(changeset), replace, out error);
 
-    static CallToolResult Respond(DraftResult draft, string? writtenTo) =>
-        CallToolResults.Success(
-            new DraftChangesetResult(draft.Success, draft.Changeset, draft.Decisions, draft.Errors, writtenTo),
-            CallToolResults.JsonOptions);
+    // The result is also written to the report file when one was asked for. The report never changes the outcome: a write
+    // that fails leaves reportWrittenTo null and says so in an open decision.
+    static CallToolResult Respond(DraftResult draft, string? writtenTo, ReportRequest? report)
+    {
+        var result = new DraftChangesetResult(draft.Success, draft.Changeset, draft.Decisions, draft.Errors, writtenTo);
+        if (report is not null)
+        {
+            var reported = result with { ReportWrittenTo = report.FullPath };
+            if (ReportFile.TryWrite(reported, report, out string? error)) result = reported;
+            else result = result with { Decisions = [.. result.Decisions, new DraftDecision(DraftDecisionKinds.Open, $"report not written: {error}", [])] };
+        }
+        return CallToolResults.Success(result, CallToolResults.JsonOptions);
+    }
 }
 
 public sealed record DraftChangesetArguments(
-    JsonElement Findings, JsonElement InputPath, JsonElement FindingPaths, JsonElement OutPath, JsonElement Overwrite);
+    JsonElement Findings, JsonElement InputPath, JsonElement FindingPaths, JsonElement OutPath, JsonElement Overwrite,
+    JsonElement ReportPath = default);
 
 public sealed record DraftChangesetResult(
-    bool Success, JsonObject? Changeset, IReadOnlyList<DraftDecision> Decisions, IReadOnlyList<string> Errors, string? WrittenTo);
+    bool Success, JsonObject? Changeset, IReadOnlyList<DraftDecision> Decisions, IReadOnlyList<string> Errors, string? WrittenTo)
+{
+    /// <summary>The path the result was also written to when reportPath was given.</summary>
+    public string? ReportWrittenTo { get; init; }
+}
