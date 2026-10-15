@@ -60,7 +60,7 @@ Before declaring that a change is ready to commit, run the full test suite to en
 - GEDCOM extensions are allowed by the standard and so should be supported by this system.
 - Preserve GEDCOM record xrefs (such as `@I1@`) across all edits. Never renumber or reuse them; remove them only through an approved delete or merge.
 - With fixes and enhancements, make heavy use of unit tests to ensure correctness and no regressions.
-- Always respect the MCP read-only option when enabled.
+- Always respect the MCP read-only option when enabled. "Read-only" means exactly one thing: the GEDCOM file is not modified. That is the only intent. Do not read more into the word, such as a rule that no tool may write any other file, and do not extend it to other behavior.
 - Always respect the MCP enforce-privacy option when enabled.
 
 ## Documentation

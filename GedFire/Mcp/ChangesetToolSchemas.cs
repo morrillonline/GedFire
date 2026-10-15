@@ -65,15 +65,41 @@ static class ChangesetToolSchemas
               "type": "object",
               "additionalProperties": { "type": "string" },
               "description": "Original source xref to the source used in its place, for every shared source (cited by more than one structure) that an item updated: a new copy carrying the update, or an existing source that is exactly the updated one. The original is never changed. Empty when no shared source was updated, and for validate_changeset."
+            },
+            "reportWrittenTo": {
+              "type": ["string", "null"],
+              "description": "The full path the result was also written to when reportPath was given, else null. A report that could not be written is noted in log and does not change the outcome."
             }
           },
-          "required": ["success", "log", "errors", "deltas", "mintedXrefs", "copiedSources"]
+          "required": ["success", "log", "errors", "deltas", "mintedXrefs", "copiedSources", "reportWrittenTo"]
         }
         """;
+
+    /// <summary>The input schema with the optional <c>reportPath</c> and <c>overwrite</c> arguments.</summary>
+    public static readonly string InputSchemaWithReportJson = Compose(InputSchemaJson, AddReportProperties);
+
+    static void AddReportProperties(JsonNode schema)
+    {
+        schema["properties"]!["reportPath"] = JsonNode.Parse("""
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "description": "Also write the result JSON, exactly as returned, to this file, so a script can read it without anyone retyping it. The folder must exist. Refused, before any work is done, when the file already exists unless overwrite is true."
+            }
+            """);
+        schema["properties"]!["overwrite"] = JsonNode.Parse("""
+            {
+              "type": "boolean",
+              "description": "Replace an existing file at reportPath. Default false."
+            }
+            """);
+    }
 
     /// <summary>The input schema with the optional <c>cards</c> argument validate_changeset adds.</summary>
     public static readonly string InputSchemaWithCardsJson = Compose(InputSchemaJson, schema =>
     {
+        AddReportProperties(schema);
         schema["properties"]!["cardsPath"] = JsonNode.Parse("""
             {
               "type": "string",

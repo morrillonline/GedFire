@@ -20,4 +20,8 @@ public sealed record ChangesetResult(
     Dictionary<string, int> Deltas,
     Dictionary<string, string> MintedXrefs,
     Dictionary<string, string> CopiedSources,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PointsPreview? PointsPreview = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PointsPreview? PointsPreview = null)
+{
+    /// <summary>The path the result was also written to when reportPath was given.</summary>
+    public string? ReportWrittenTo { get; init; }
+}

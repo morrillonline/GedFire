@@ -39,14 +39,14 @@ static class ChangesetToolSupport
     public static CallToolResult Execute(
         string absoluteGedcomPath, string changesetPath, string items, bool dryRun,
         CancellationToken cancellationToken = default, ChangesetPolicy? policy = null,
-        IReadOnlyList<PointsCard>? cards = null)
+        IReadOnlyList<PointsCard>? cards = null, ReportRequest? report = null)
     {
         if (!ChangesetRequest.TryLoad(changesetPath, items, out var request, out var error))
             return error!;
 
         var violations = policy?.Check(request!.Json, request.ItemNumbers.ToHashSet()) ?? [];
         if (violations.Count > 0 && !dryRun)
-            return CallToolResults.Success(new ChangesetResult(false, [], [.. violations], [], [], []), CallToolResults.JsonOptions);
+            return Respond(new ChangesetResult(false, [], [.. violations], [], [], []), report);
 
         ApplyResult result;
         try
@@ -61,7 +61,20 @@ static class ChangesetToolSupport
 
         var mapped = Map(result, violations);
         if (cards is not null) mapped = mapped with { PointsPreview = CardScorer.Preview(cards, result.Changes) };
-        return CallToolResults.Success(mapped, CallToolResults.JsonOptions);
+        return Respond(mapped, report);
+    }
+
+    // The result is also written to the report file when one was asked for; a write that fails is noted in the log and changes nothing else.
+    static CallToolResult Respond(ChangesetResult result, ReportRequest? report)
+    {
+        if (report is not null)
+        {
+            var reported = result with { ReportWrittenTo = report.FullPath };
+            result = ReportFile.TryWrite(reported, report, out string? error)
+                ? reported
+                : result with { Log = [.. result.Log, $"report not written: {error}"] };
+        }
+        return CallToolResults.Success(result, CallToolResults.JsonOptions);
     }
 
     static ChangesetResult Map(ApplyResult result, IReadOnlyList<string> violations) =>
