@@ -8,7 +8,7 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
 {
     public string? FindSource(string title, string? author) =>
         model.Sources.Values
-            .Where(s => Same(s.Title, title) && (author is null || Same(s.Author, author)))
+            .Where(s => SourceTitles.SameCollection(s.Title, title) && (author is null || Same(s.Author, author)))
             .OrderBy(s => s.Xref, StringComparer.Ordinal)
             .Select(s => s.Xref)
             .FirstOrDefault();

@@ -24,6 +24,20 @@ public class ModelDraftLookupTests
         Assert.Equal("@S1@", Lookup().FindSource("find a grave ", null));
 
     [Fact]
+    public void FindSource_IgnoresPunctuationNoise() =>
+        Assert.Equal("@S1@", Lookup().FindSource("Find a Grave.", null));
+
+    [Fact]
+    public void FindSource_DistinguishesYearRanges()
+    {
+        var model = new GedModel();
+        model.Sources["@S1@"] = new GedSourceRecord { Xref = "@S1@", Title = "U.S., Social Security Death Index, 1935-2014", Author = "" };
+
+        Assert.Equal("@S1@", new ModelDraftLookup(model).FindSource("U.S., Social Security Death Index, 1935-2014", null));
+        Assert.Null(new ModelDraftLookup(model).FindSource("U.S., Social Security Death Index, 1935-2013", null));
+    }
+
+    [Fact]
     public void FindSource_IsNotASubstringSearch() =>
         Assert.Null(Lookup().FindSource("Find a", null));
 
