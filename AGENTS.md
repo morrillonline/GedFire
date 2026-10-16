@@ -72,6 +72,7 @@ Update `README.md`, command help, examples, and fixtures when user-visible comma
 - Do not discard or rewrite changes made by other contributors.
 - Inspect `git status` and the intended diff before proposing a commit.
 - Do not commit, push, merge, or create branches unless explicitly requested.
+- Do not add `Co-authored-by` trailers to commit messages or attribution lines to pull request descriptions.
 - Explain the behavior change, compatibility impact, and validation performed in pull requests.
 - Ensure CI passes before merging.
 
