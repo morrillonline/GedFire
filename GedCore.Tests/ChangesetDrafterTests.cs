@@ -69,6 +69,58 @@ public class ChangesetDrafterTests
         Assert.Single(result.Decisions, d => d.Kind == "reused-source" && d.Detail.Contains("@S00007@"));
     }
 
+    static DraftSource Collection(string name, string locator = "Memorial #1") =>
+        new(name, null, null, locator, null, "derivative", "primary");
+
+    [Fact]
+    public void ATitleWithAPersonNameSuffix_CitesTheExistingCollection()
+    {
+        var lookup = new FakeLookup(sources: new() { ["Find a Grave"] = "@S00007@" });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Collection("Find a Grave - Harry Morrill"), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)])]);
+
+        Assert.False(Json(result).TryGetProperty("newSources", out _));
+        Assert.Equal("@S00007@", Ops(result)[0].GetProperty("citation").GetProperty("source").GetString());
+        Assert.Equal("title \"Find a Grave - Harry Morrill\" → reusing @S00007@", Assert.Single(result.Decisions, d => d.Kind == "reused-source").Detail);
+    }
+
+    [Fact]
+    public void AnExactTitle_IsPreferredToTheBareCollectionItReducesTo()
+    {
+        var lookup = new FakeLookup(sources: new() { ["Ancestry - Family Trees"] = "@S1@", ["Ancestry"] = "@S2@" });
+
+        var result = new ChangesetDrafter(lookup).Draft(
+            [Finding("F-1", Collection("Ancestry - Family Trees"), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)])]);
+
+        Assert.Equal("@S1@", Ops(result)[0].GetProperty("citation").GetProperty("source").GetString());
+    }
+
+    [Fact]
+    public void FindingsDifferingOnlyInTheNameSuffix_MintOneSourceWithTheBareTitle()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Collection("Find a Grave Index - Harry Morrill"), "x", [Fact("DEAT", "1900", null, 2)]),
+            Finding("F-2", Collection("Find a Grave Index - Ann Blake", "Memorial #2"), "y", [Fact("BURI", null, "Salem", 2, "@I2@")], xref: "@I2@")]);
+
+        var groups = Json(result).GetProperty("newSources");
+        Assert.Equal(1, groups.GetArrayLength());
+        Assert.Equal("Find a Grave Index", groups[0].GetProperty("ops")[0].GetProperty("title").GetString());
+        Assert.All(Ops(result), o => Assert.Equal("@NewSource1@", o.GetProperty("citation").GetProperty("source").GetString()));
+        Assert.Equal(2, result.Decisions.Count(d => d.Kind == "minted-source" && d.Detail.Contains("→ minting new source @NewSource1@")));
+    }
+
+    [Fact]
+    public void DistinctCollections_StillMintSeparately()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Collection("U.S., Social Security Death Index, 1935-2014 - Harry Morrill"), "x", [Fact("DEAT", "1900", null, 2)]),
+            Finding("F-2", Collection("U.S., Social Security Death Index, 1935-2013 - Ann Blake"), "y", [Fact("BURI", null, "Salem", 2, "@I2@")], xref: "@I2@"),
+            Finding("F-3", Collection("1950 United States Federal Census"), "z", [Fact("RESI", null, "Salem", 2, "@I3@")], xref: "@I3@")]);
+
+        Assert.Equal(3, Json(result).GetProperty("newSources").GetArrayLength());
+    }
+
     [Fact]
     public void TheSourceUrl_IsWrittenOnlyWhenEveryFindingAgrees()
     {
