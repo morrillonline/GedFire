@@ -23,7 +23,8 @@ public sealed class DraftChangesetTool
     public const string Description =
         "Compile findings into a changeset in the op dialect, so the mechanical parts are written the same way every " +
         "time: one source record per collection (an existing source with the same title and author is cited instead " +
-        "of minted), one merged extract per (source, page, grade) in each item, the locator copied verbatim into the " +
+                "of minted; titles match ignoring case and punctuation, and a trailing \" - <person name>\" is dropped, so " +
+                "record-specific text belongs in the locator), one merged extract per (source, page, grade) in each item, the locator copied verbatim into the " +
         "citation page, a verification note on every record holding a fact graded at or below the policy ceiling " +
         "(QUAY 1 without a policy file), and a refusal, naming the field, for a QUAY the source and information " +
         "class cannot support, a target name that differs from the person's recorded name, or prose the server's " +

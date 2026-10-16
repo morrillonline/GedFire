@@ -3,7 +3,7 @@ namespace GedCore.Drafting;
 /// <summary>Finds sources the document already holds.</summary>
 public interface ISourceCatalog
 {
-    /// <summary>The xref of an existing source with this title and author, or null.</summary>
+    /// <summary>The xref of an existing source with this title (compared by collection identity) and author, or null.</summary>
     string? FindSource(string title, string? author);
 }
 

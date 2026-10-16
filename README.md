@@ -192,7 +192,13 @@ optionally ending in `-date` or `-place`. A card with no `gap`, or the queue gap
 NAME change, a per-fact `quay`, optional `excerpt`, `class`, `information`)
 and optional `notes`. The values and grades are yours; the compiler does the
 rest the same way every time. Findings with the same target become one item,
-and one source record is made per collection and author. The QUAY ceiling
+and one source record is made per collection and author. A source title matches
+an existing source regardless of case and punctuation, and a trailing
+` - <person name>` (a segment without digits) is dropped first, so
+`Find a Grave Index - Harry Morrill` cites a `Find a Grave Index` already in the
+file; put record-specific text in the `locator`. Different year ranges or record
+types stay separate sources. Each reuse or mint is listed in `decisions` as
+`title "…" → reusing @S1@` or `→ minting new source …`. The QUAY ceiling
 follows the source class and information class: original or image copy 3 for
 primary information and 2 otherwise, derivative 2 for primary and 1 otherwise,
 authored 1, user-contributed 0. Unrecognized fields are rejected by path.
