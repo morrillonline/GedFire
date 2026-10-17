@@ -122,8 +122,8 @@ public class McpServerIntegrationTests : IDisposable
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
 
         // apply_changeset is the one tool on this server that writes to the
-        // file, so it alone is destructive. draft_changeset and draft_package can create new
-        // changeset files (draft_package replaces one only with overwrite), so they are neither read-only
+        // file, so it alone is destructive. draft_changeset can create new changeset files and
+        // draft_package a new proposal file (each replaces one only with overwrite), so they are neither read-only
         // nor destructive. Every other tool — including validate_changeset,
         // its dry-run twin — is read-only, non-destructive, and idempotent.
         foreach (var tool in tools.EnumerateArray())

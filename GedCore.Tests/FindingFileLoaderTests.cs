@@ -18,35 +18,30 @@ public class FindingFileLoaderTests
     static string Finding(string tail = "") => "{ \"id\": \"F-1\", " + Draft + tail + " }";
 
     [Fact]
-    public void TheAnchorComesFromTheCorrelationTarget()
+    public void AReadyFile_YieldsItsDraftWhateverItsCorrelationSays()
     {
         var loaded = FindingFileLoader.Read(Utf8("{ \"correlation\": { \"kind\": \"add\", \"target\": \"@I7@\" }, " + Draft + " }"), "f.json");
 
-        Assert.Equal("@I7@", loaded.Anchor);
         Assert.True(loaded.Finding is not null, string.Join("; ", loaded.Errors));
+        Assert.Equal("F-1", loaded.Finding!.Id);
     }
 
     [Fact]
-    public void WithoutACorrelationTarget_AReadyFindingsAnchorIsItsDraftTarget()
+    public void AFileWithNoDraft_IsReportedByName()
     {
-        Assert.Equal("@I1@", FindingFileLoader.Read(Utf8(Finding()), "f.json").Anchor);
-    }
-
-    [Fact]
-    public void AnUnreadyFileKeepsItsAnchorSoItsItemCanReportIt()
-    {
-        string unready = """{ "id": "F-1", "correlation": { "kind": "enrich", "target": "@I7@" } }""";
-
-        var loaded = FindingFileLoader.Read(Utf8(unready), "f.json");
+        var loaded = FindingFileLoader.Read(Utf8("""{ "id": "F-1", "correlation": { "kind": "enrich", "target": "@I7@" } }"""), "f.json");
 
         Assert.Null(loaded.Finding);
-        Assert.Equal("@I7@", loaded.Anchor);
+        Assert.Contains("f.json has no draft", Assert.Single(loaded.Errors));
     }
 
     [Fact]
-    public void AFileThatIsNotJson_HasNoAnchor()
+    public void AFileThatIsNotJson_IsReportedByName()
     {
-        Assert.Null(FindingFileLoader.Read(Utf8("{ nope"), "f.json").Anchor);
+        var loaded = FindingFileLoader.Read(Utf8("{ nope"), "f.json");
+
+        Assert.Null(loaded.Finding);
+        Assert.Contains("f.json is not valid JSON", Assert.Single(loaded.Errors));
     }
 
     [Fact]

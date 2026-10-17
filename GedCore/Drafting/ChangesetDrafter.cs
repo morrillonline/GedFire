@@ -29,12 +29,18 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         var itemDrafter = new ItemDrafter(sources, lookup, lookup, policy?.VerificationNote ?? new VerificationNoteRule(1, DefaultNotePrefix), newPeople);
 
         var items = new JsonArray();
+        var evidence = new JsonArray();
         foreach (var group in findings.GroupBy(f => (f.Target.Xref, f.Target.Card)))
-            items.Add(itemDrafter.Draft(items.Count + 1, [.. group], decisions, errors));
+        {
+            int number = items.Count + 1;
+            items.Add(itemDrafter.Draft(number, [.. group], decisions, errors));
+            foreach (var finding in group) evidence.Add(FindingEvidence.Describe(finding, number, sources.RefFor(finding)));
+        }
 
         var changeset = new JsonObject();
         if (sources.NewSources.Count > 0) changeset["newSources"] = sources.NewSources;
         changeset["items"] = items;
+        changeset["findings"] = evidence;
 
         errors.AddRange(QuayDisagreements(items));
         if (policy is not null) errors.AddRange(policy.Check(changeset.ToJsonString()));

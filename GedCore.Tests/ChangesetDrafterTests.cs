@@ -137,6 +137,53 @@ public class ChangesetDrafterTests
         Assert.Contains(differing.Decisions, d => d.Kind == "open" && d.Detail.Contains("url"));
     }
 
+    // ---- evidence carried by the changeset ----
+
+    [Fact]
+    public void TheChangeset_CarriesATableOfItsFindingsWithTheirEvidence()
+    {
+        var finding = Finding("F-1", Memorial("Memorial #1", url: "https://example.org/fg"), "Died 1 Jan 1900.", [Fact("DEAT", "1 JAN 1900", "Salem", 2)]);
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([finding]);
+
+        var entry = Assert.Single(Json(result).GetProperty("findings").EnumerateArray());
+        Assert.Equal("F-1", entry.GetProperty("id").GetString());
+        Assert.Equal(1, entry.GetProperty("item").GetInt32());
+        Assert.Equal("Died 1 Jan 1900.", entry.GetProperty("extract").GetString());
+        var source = entry.GetProperty("source");
+        Assert.Equal("@NewSource1@", source.GetProperty("ref").GetString());
+        Assert.Equal(new[] { "Find a Grave", "Memorial #1", "https://example.org/fg", "derivative", "primary" },
+            new[] { "name", "locator", "url", "class", "information" }.Select(p => source.GetProperty(p).GetString()));
+        var claim = Assert.Single(entry.GetProperty("claims").EnumerateArray());
+        Assert.Equal(("@I1@", "DEAT", "1 JAN 1900", "Salem", 2),
+            (claim.GetProperty("record").GetString(), claim.GetProperty("fact").GetString(), claim.GetProperty("date").GetString(),
+             claim.GetProperty("place").GetString(), claim.GetProperty("quay").GetInt32()));
+    }
+
+    [Fact]
+    public void FindingsOfDifferentTargets_AreTabledUnderTheirOwnItems()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1900", null, 2)]),
+            Finding("F-2", Memorial("Memorial #2"), "y", [Fact("BURI", null, "Salem", 2, "@I2@")], xref: "@I2@")]);
+
+        Assert.Equal([("F-1", 1), ("F-2", 2)],
+            Json(result).GetProperty("findings").EnumerateArray().Select(f => (f.GetProperty("id").GetString()!, f.GetProperty("item").GetInt32())));
+    }
+
+    [Fact]
+    public void EachOp_NamesTheFindingsItRestsOn()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)]),
+            Finding("F-2", Memorial("Memorial #2"), "y", [Fact("DEAT", "1 JAN 1900", "Salem", 2), Fact("BURI", null, "Salem Cemetery", 2)])]);
+
+        var byFact = Ops(result).Where(o => o.GetProperty("op").GetString() == "createOrUpdateVital")
+            .ToDictionary(o => o.GetProperty("fact").GetString()!, o => o.GetProperty("findings").EnumerateArray().Select(f => f.GetString()));
+        Assert.Equal(["F-1", "F-2"], byFact["DEAT"]);
+        Assert.Equal(["F-2"], byFact["BURI"]);
+    }
+
     // ---- citations ----
 
     [Fact]

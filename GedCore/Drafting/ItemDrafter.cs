@@ -68,6 +68,14 @@ internal sealed class ItemDrafter(
         if (note.Match is not null) op["match"] = note.Match;
         var cites = note.Cites.Select(c => NoteClaim(group, owner, c).Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!).ToList();
         AttachCitations(op, cites);
+        return Backed(op, note.Cites.Select(c => c.Finding ?? owner.Id));
+    }
+
+    // Names the findings an op rests on, so a proposal can present the evidence behind each operation.
+    static JsonObject Backed(JsonObject op, IEnumerable<string> findingIds)
+    {
+        var ids = findingIds.Distinct().ToList();
+        if (ids.Count > 0) op["findings"] = new JsonArray([.. ids.Select(id => (JsonNode)id)]);
         return op;
     }
 
@@ -109,18 +117,23 @@ internal sealed class ItemDrafter(
     // A removal op carries no citation; a plain unlink is flagged so the author records the evidence in a cited note.
     static IEnumerable<JsonObject> RemovalOps(IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions)
     {
-        var seen = new HashSet<string>();
+        var removals = new Dictionary<string, (JsonObject Op, List<string> Findings)>();
         foreach (var finding in group)
             foreach (var relation in finding.Relations.Where(r => r.IsRemoval || r.From is not null))
             {
                 var op = RemovalOp(relation);
-                if (!seen.Add(op.ToJsonString())) continue;
+                if (removals.TryGetValue(op.ToJsonString(), out var known))
+                {
+                    known.Findings.Add(finding.Id);
+                    continue;
+                }
 
+                removals[op.ToJsonString()] = (op, [finding.Id]);
                 if (relation.IsRemoval)
                     decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
                         $"{DescribeRemoval(relation)} is not cited; record the evidence in a note that cites the finding", [finding.Id]));
-                yield return op;
             }
+        return removals.Values.Select(r => Backed(r.Op, r.Findings));
     }
 
     static JsonObject RemovalOp(DraftRelation relation)
@@ -168,7 +181,7 @@ internal sealed class ItemDrafter(
 
         if (relation.NotDuplicateOf.Count > 0) op["notDuplicateOf"] = new JsonArray([.. relation.NotDuplicateOf.Select(x => (JsonNode)x)]);
         AttachCitations(op, [.. link.Select(l => l.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!)]);
-        return op;
+        return Backed(op, link.Select(l => l.Finding.Id));
     }
 
     // HUSB/WIFE seed a family only at its creation; a later op on the same family must not repeat them.
@@ -293,7 +306,7 @@ internal sealed class ItemDrafter(
             cites.AddRange(RestatedCitations(
                 new FactKey(record, tag, null, null, null, "", null), held, cites, [.. attached.Select(a => a.Finding.Id).Distinct()], decisions));
         AttachCitations(op, cites);
-        return op;
+        return Backed(op, attached.Select(a => a.Finding.Id));
     }
 
     static string ConflictDetail(string record, string tag, List<FactClaim> claims, int recommended)
@@ -357,7 +370,7 @@ internal sealed class ItemDrafter(
             op["substructures"] = new JsonArray([.. facts[0].Fact.Substructures.Select(s => (JsonNode)new JsonObject { ["tag"] = s.Tag, ["value"] = s.Value })]);
         if (key.ReplacedCitations is { } disposition and not "keep") op["replacedCitations"] = disposition;
         AttachCitations(op, cites);
-        return op;
+        return Backed(op, facts.Select(a => a.Finding.Id));
     }
 
     // Citations added to facts the record already holds, one op per fact instance.
@@ -374,7 +387,7 @@ internal sealed class ItemDrafter(
                 op["match"] = match;
             }
             AttachCitations(op, [.. byFact.Select(a => a.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!)]);
-            yield return op;
+            yield return Backed(op, byFact.Select(a => a.Finding.Id));
         }
     }
 

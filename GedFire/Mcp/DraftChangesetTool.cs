@@ -35,7 +35,9 @@ public sealed class DraftChangesetTool
         "the finding's citation. A note may rewrite an existing note (match) and cite findings of its item (cites); " +
         "a fact may carry substructures, a replacedCitations disposition, or citeOnly to cite a fact already held. " +
         "Findings aimed at the same target become one item. Returns the changeset, a " +
-        "decisions list (what was reused, minted, merged, or left open for you), and errors; with outPath it also " +
+        "decisions list (what was reused, minted, merged, or left open for you), and errors; the changeset also carries a " +
+        "findings table (each finding's extract, source, classes and grades) and each op names the findings it rests on, " +
+        "which is what draft_package presents; with outPath it also " +
         "writes the changeset to a new file, replacing an existing one only when overwrite is true. Findings may be " +
         "given inline or by inputPath, a file holding {\"findings\": [...]}, to re-draft a saved input without " +
         "passing it back, or by findingPaths, the lake's correlated finding files, whose \"draft\" entries are compiled " +

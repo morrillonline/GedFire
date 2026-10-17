@@ -5,15 +5,15 @@ using GedCore.Drafting;
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// Reads the lake's correlated finding files for draft_changeset's findingPaths
-// and draft_package. Each file carries the finding's complete draft_changeset
+// Reads the lake's correlated finding files for draft_changeset's findingPaths.
+// Each file carries the finding's complete draft_changeset
 // entry under "draft" and what it could not place under "draftGaps"; a file
 // that is not ready (no draft, or draftGaps) is reported by name so the stage
 // that owns the gap can fix it, rather than compiling a draft with a hole in it.
 // ---------------------------------------------------------------------------
 
-/// <summary>One finding file as read: its draft when ready, otherwise why not, and the anchor it was correlated to when that could be read.</summary>
-public sealed record LoadedFindingFile(string Name, string? Anchor, DraftFinding? Finding, IReadOnlyList<string> Errors);
+/// <summary>One finding file as read: its draft when ready, otherwise why not.</summary>
+public sealed record LoadedFindingFile(string Name, DraftFinding? Finding, IReadOnlyList<string> Errors);
 
 public static partial class FindingFileLoader
 {
@@ -56,7 +56,7 @@ public static partial class FindingFileLoader
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return new LoadedFindingFile(fullPath, null, null, [$"{fullPath} could not be read: {ex.Message}"]);
+            return new LoadedFindingFile(fullPath, null, [$"{fullPath} could not be read: {ex.Message}"]);
         }
     }
 
@@ -71,30 +71,29 @@ public static partial class FindingFileLoader
         }
         catch (JsonException ex)
         {
-            return Failed(name, null, $"{name} is not valid JSON: {ex.Message}");
+            return Failed(name, $"{name} is not valid JSON: {ex.Message}");
         }
 
         if (root.ValueKind != JsonValueKind.Object)
-            return Failed(name, null, $"{name} must hold a finding object, not {ToolArguments.Describe(root)}.");
+            return Failed(name, $"{name} must hold a finding object, not {ToolArguments.Describe(root)}.");
 
-        string? anchor = AnchorOf(root);
         var errors = new List<string>();
         var gaps = GapsOf(root, name, errors);
-        if (errors.Count > 0) return new LoadedFindingFile(name, anchor, null, errors);
+        if (errors.Count > 0) return new LoadedFindingFile(name, null, errors);
         if (gaps.Count > 0)
-            return Failed(name, anchor, $"{name} has draftGaps: {string.Join("; ", gaps)}. Supply them at the stage that owns them and re-run correlation with --force.");
+            return Failed(name, $"{name} has draftGaps: {string.Join("; ", gaps)}. Supply them at the stage that owns them and re-run correlation with --force.");
 
         if (!root.TryGetProperty("draft", out var draft) || draft.ValueKind == JsonValueKind.Null)
-            return Failed(name, anchor, IsParked(root)
+            return Failed(name, IsParked(root)
                 ? $"{name} is parked; a park verdict writes no draft."
                 : $"{name} has no draft; correlate the finding to write one.");
 
         using var single = JsonDocument.Parse("[" + draft.GetRawText() + "]");
         var (read, readErrors) = DraftFindingReader.Read(single.RootElement);
         if (readErrors.Count > 0)
-            return new LoadedFindingFile(name, anchor, null, [.. readErrors.Select(e => $"{name}: {e.Replace("findings[0]", "draft")}")]);
+            return new LoadedFindingFile(name, null, [.. readErrors.Select(e => $"{name}: {e.Replace("findings[0]", "draft")}")]);
 
-        return new LoadedFindingFile(name, anchor ?? read[0].Target.Xref, read[0], []);
+        return new LoadedFindingFile(name, read[0], []);
     }
 
     /// <summary>Reads the draft entry of one finding file's stream; <paramref name="name"/> labels its errors.</summary>
@@ -114,14 +113,7 @@ public static partial class FindingFileLoader
     [GeneratedRegex(@"findings\[(\d+)\]")]
     private static partial Regex FindingIndex();
 
-    static LoadedFindingFile Failed(string name, string? anchor, string error) => new(name, anchor, null, [error]);
-
-    static string? AnchorOf(JsonElement root) =>
-        root.TryGetProperty("correlation", out var correlation) && correlation.ValueKind == JsonValueKind.Object
-        && correlation.TryGetProperty("target", out var target) && target.ValueKind == JsonValueKind.String
-        && !string.IsNullOrWhiteSpace(target.GetString())
-            ? target.GetString()!.Trim()
-            : null;
+    static LoadedFindingFile Failed(string name, string error) => new(name, null, [error]);
 
     static List<string> GapsOf(JsonElement root, string name, List<string> errors)
     {
