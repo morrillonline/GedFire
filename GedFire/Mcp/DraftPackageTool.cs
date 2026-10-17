@@ -1,7 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using GedCore.Drafting;
-using GedCore.Points;
 using GedCore.Policy;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -9,13 +9,13 @@ using ModelContextProtocol.Server;
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// The draft_package MCP tool: drafts a whole proposal package from the lake's
-// correlated finding files in one call. The files are grouped by the anchor
-// each was correlated to; each anchor's findings are compiled into one
-// changeset, dry-run against the bound document (points preview and
-// plausibility come from that one run), and written to
-// <folder>/<proposal>.item<N>.changes.json only when everything passes. An
-// anchor that fails never stops the others. Never touches the GEDCOM file.
+// The draft_package MCP tool: presents finished changesets for review. It
+// compiles nothing. Each changeset file (made by draft_changeset, then
+// validated and corrected upstream) is checked once more against the bound
+// document, and a changeset that does not pass fails the call with its errors
+// named. When all pass, one proposal markdown file is written presenting the
+// evidence behind each changeset, numbered in the order the paths were given.
+// Never touches the GEDCOM file.
 // ---------------------------------------------------------------------------
 
 public sealed class DraftPackageTool
@@ -23,125 +23,88 @@ public sealed class DraftPackageTool
     public const string ToolName = "draft_package";
 
     public const string Description =
-        "Draft a whole proposal package from the lake's correlated finding files in one call. The files in " +
-        "findingPaths are grouped by the anchor each was correlated to (correlation.target); each anchor's " +
-        "findings are compiled exactly as draft_changeset compiles them (findingPaths), dry-run against this " +
-        "server's document as validate_changeset and check_plausibility would, and written to " +
-        "<folder>/<proposal>.item<N>.changes.json only when the draft, the policy and the dry run all pass. " +
-        "Items are numbered by the first appearance of each anchor in findingPaths. An anchor that fails does " +
-        "not stop the others: every item reports its files, finding ids, errors, decisions, pointsPreview " +
-        "(priced from the cards under its anchor in cardsPath, a JSON file mapping each anchor xref to the " +
-        "cards array validate_changeset takes), the plausibility findings the changeset would introduce, and " +
-        "for a written file its path and sha256. A finding file with no draft, a parked finding, or a " +
-        "non-empty draftGaps fails its anchor by file name. An existing file is replaced only when overwrite " +
-        "is true. Reads the document, writes nothing to it.";
+        "Draft the proposal document that presents finished changesets for review. Takes changesetPaths, the " +
+        "changeset files draft_changeset produced and that have already been validated (validate_changeset, " +
+        "check_plausibility) and corrected, in the order they should be numbered, plus the proposal name and an " +
+        "existing folder. Writes one markdown file, <folder>/<proposal>.md, the document the reviewer reads: for " +
+        "each changeset, numbered so the reviewer can approve or deny it on its own, the findings each operation " +
+        "cites (resolved through the finding references the changeset carries), their verbatim extracts, source " +
+        "and information classes, and quality grades. It compiles nothing: a changeset that does not validate " +
+        "against this server's document, or that carries no findings, fails the call with its errors named, and " +
+        "nothing is written; fix the findings and draft the changeset again. The result reports the proposal's " +
+        "path and each changeset it presents, with the sha256 of the exact bytes presented. An existing proposal " +
+        "file is replaced only when overwrite is true. Reads the document, writes nothing to it.";
 
     public const string InputSchemaJson = """
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "findingPaths": {
+            "changesetPaths": {
               "type": "array",
               "minItems": 1,
               "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
-              "description": "Paths to the package's correlated finding files. Their order sets the item numbers."
+              "description": "Paths to the finished changesets, each written by draft_changeset and already validated. Their order sets the changeset numbers."
             },
             "folder": {
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "An existing folder to write the changeset files into."
+              "description": "An existing folder to write the proposal into."
             },
             "proposal": {
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "The package's name, the prefix of every file written: <proposal>.item<N>.changes.json."
-            },
-            "cardsPath": {
-              "type": "string",
-              "minLength": 1,
-              "pattern": "\\S",
-              "description": "A JSON file mapping each anchor xref to the array of research cards its item serves, each in validate_changeset's cards shape. An anchor with no entry gets no pointsPreview."
+              "description": "The proposal's name, the file name written: <proposal>.md."
             },
             "overwrite": {
               "type": "boolean",
-              "description": "Replace changeset files that already exist. Default false."
+              "description": "Replace the proposal file if it already exists. Default false."
             }
           },
-          "required": ["findingPaths", "folder", "proposal"]
+          "required": ["changesetPaths", "folder", "proposal"]
         }
         """;
 
-    public static readonly string OutputSchemaJson = BuildOutputSchema();
-
-    static string BuildOutputSchema()
-    {
-        var preview = JsonNode.Parse(ChangesetToolSchemas.PointsPreviewJson)!;
-        var schema = JsonNode.Parse("""
-            {
-              "$schema": "https://json-schema.org/draft/2020-12/schema",
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "success": { "type": "boolean", "description": "true only when every anchor was written and no finding file was left unplaced." },
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "item": { "type": "integer", "description": "The item number, by first appearance of the anchor." },
-                      "anchor": { "type": "string" },
-                      "files": { "type": "array", "items": { "type": "string" }, "description": "The finding files of this anchor, in the order given." },
-                      "findingIds": { "type": "array", "items": { "type": "string" } },
-                      "success": { "type": "boolean" },
-                      "writtenTo": { "type": ["string", "null"] },
-                      "sha256": { "type": ["string", "null"], "description": "Lowercase hex sha256 of the bytes written." },
-                      "errors": { "type": "array", "items": { "type": "string" } },
-                      "decisions": { "type": "array", "items": { "type": "object" }, "description": "The same decisions draft_changeset returns." },
-                      "pointsPreview": {},
-                      "plausibility": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "properties": {
-                            "code": { "type": "string" },
-                            "severity": { "type": "string" },
-                            "message": { "type": "string" },
-                            "xref": { "type": ["string", "null"] }
-                          },
-                          "required": ["code", "severity", "message", "xref"]
-                        }
-                      }
-                    },
-                    "required": ["item", "anchor", "files", "findingIds", "success", "writtenTo", "sha256", "errors", "decisions", "pointsPreview", "plausibility"]
-                  }
+    public const string OutputSchemaJson = """
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "success": { "type": "boolean", "description": "true only when every changeset validated and the proposal was written." },
+            "proposalPath": { "type": ["string", "null"], "description": "The proposal file written, or null." },
+            "proposalSha256": { "type": ["string", "null"], "description": "Lowercase hex sha256 of the proposal's bytes." },
+            "changesets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "number": { "type": "integer", "description": "The changeset's number in the proposal, by its position in changesetPaths." },
+                  "path": { "type": "string" },
+                  "sha256": { "type": ["string", "null"], "description": "Lowercase hex sha256 of the changeset file's bytes; null when it could not be read." },
+                  "success": { "type": "boolean" },
+                  "errors": { "type": "array", "items": { "type": "string" }, "description": "Why the changeset cannot be presented, each naming the file." }
                 },
-                "errors": { "type": "array", "items": { "type": "string" }, "description": "Problems not tied to one anchor, such as a finding file whose anchor could not be read." }
-              },
-              "required": ["success", "items", "errors"]
-            }
-            """)!;
-        schema["properties"]!["items"]!["items"]!["properties"]!["pointsPreview"] =
-            new JsonObject { ["anyOf"] = new JsonArray(new JsonObject { ["type"] = "null" }, preview) };
-        return schema.ToJsonString();
-    }
+                "required": ["number", "path", "sha256", "success", "errors"]
+              }
+            },
+            "errors": { "type": "array", "items": { "type": "string" }, "description": "Problems not tied to one changeset's validation, such as a changeset that carries no findings, or the proposal file that could not be written." }
+          },
+          "required": ["success", "proposalPath", "proposalSha256", "changesets", "errors"]
+        }
+        """;
 
-    readonly DocumentSession _session;
-    readonly string _absoluteGedcomPath;
+    readonly ChangesetValidator _validator;
     readonly ToolGate _gate;
-    readonly ChangesetPolicy? _policy;
 
-    public DraftPackageTool(DocumentSession session, string absoluteGedcomPath, ToolGate gate, ChangesetPolicy? policy = null)
+    public DraftPackageTool(string absoluteGedcomPath, ToolGate gate, ChangesetPolicy? policy = null)
     {
-        _session = session ?? throw new ArgumentNullException(nameof(session));
         if (string.IsNullOrEmpty(absoluteGedcomPath)) throw new ArgumentException("Path must not be empty.", nameof(absoluteGedcomPath));
-        _absoluteGedcomPath = absoluteGedcomPath;
+        _validator = new ChangesetValidator(absoluteGedcomPath, policy);
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
-        _policy = policy;
     }
 
     public McpServerTool ToMcpServerTool() =>
@@ -150,52 +113,98 @@ public sealed class DraftPackageTool
 
     // Arguments arrive as raw JsonElements so a wrong shape is reported by field name rather than failing inside the SDK binder.
     Task<CallToolResult> InvokeAsync(
-        JsonElement? findingPaths = null, JsonElement? folder = null, JsonElement? proposal = null,
-        JsonElement? cardsPath = null, JsonElement? overwrite = null, CancellationToken cancellationToken = default)
+        JsonElement? changesetPaths = null, JsonElement? folder = null, JsonElement? proposal = null,
+        JsonElement? overwrite = null, CancellationToken cancellationToken = default)
         => HandleAsync(
-            new DraftPackageArguments(findingPaths ?? default, folder ?? default, proposal ?? default, cardsPath ?? default, overwrite ?? default),
+            new DraftPackageArguments(changesetPaths ?? default, folder ?? default, proposal ?? default, overwrite ?? default),
             cancellationToken);
 
     public Task<CallToolResult> HandleAsync(DraftPackageArguments arguments, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(arguments, ct), cancellationToken);
+        GatedToolRunner.RunAsync(_gate, ct => Task.FromResult(Execute(arguments, ct)), cancellationToken);
 
-    async Task<CallToolResult> ExecuteAsync(DraftPackageArguments arguments, CancellationToken cancellationToken)
+    CallToolResult Execute(DraftPackageArguments arguments, CancellationToken cancellationToken)
     {
         if (!TryReadRequest(arguments, out var request, out string? error))
             return CallToolResults.Error(error!);
 
-        var plan = PackagePlanner.Plan(FindingFileLoader.LoadAll(request!.FindingPaths));
-        var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        var itemDrafter = new PackageItemDrafter(
-            new ChangesetDrafter(new ModelDraftLookup(snapshot.Model), _policy), _absoluteGedcomPath, request.Cards);
-
-        var items = new List<PackageItemResult>();
-        foreach (var item in plan.Items)
+        var ready = new List<ProposalChangeset>();
+        var changesets = new List<PackageChangesetResult>();
+        foreach (var (path, index) in request!.ChangesetPaths.Select((p, i) => (p, i + 1)))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string path = Path.Combine(request.Folder, $"{request.Proposal}.item{item.Number}.changes.json");
-            items.Add(itemDrafter.Draft(item, path, request.Overwrite, cancellationToken));
+            changesets.Add(Check(index, path, ready, cancellationToken));
         }
 
-        var errors = plan.Unassigned.SelectMany(f => f.Errors.Select(e => $"{e} (no anchor could be read from it, so it belongs to no item)")).ToList();
+        var errors = new List<string>();
+        string? proposalPath = null;
+        string? proposalSha = null;
+        if (changesets.All(c => c.Success))
+        {
+            var document = ProposalWriter.Write(request.Proposal, ready);
+            errors.AddRange(document.Errors);
+            if (document.Success) (proposalPath, proposalSha) = WriteProposal(request, document.Markdown!, errors);
+        }
+
         return CallToolResults.Success(
-            new DraftPackageResult(items.All(i => i.Success) && errors.Count == 0, items, errors), CallToolResults.JsonOptions);
+            new DraftPackageResult(proposalPath is not null && errors.Count == 0, proposalPath, proposalSha, changesets, errors),
+            CallToolResults.JsonOptions);
     }
 
-    sealed record Request(IReadOnlyList<string> FindingPaths, string Folder, string Proposal, bool Overwrite, IReadOnlyDictionary<string, IReadOnlyList<PointsCard>> Cards);
+    PackageChangesetResult Check(int number, string path, List<ProposalChangeset> ready, CancellationToken cancellationToken)
+    {
+        byte[] bytes;
+        try
+        {
+            bytes = File.ReadAllBytes(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return new PackageChangesetResult(number, path, null, false, [$"{path} could not be read: {ex.Message}"]);
+        }
+
+        string sha = Sha256Hex(bytes);
+        using var reader = new StreamReader(new MemoryStream(bytes));
+        string json = reader.ReadToEnd();
+        var errors = _validator.Check(path, json, cancellationToken);
+        if (errors.Count == 0) ready.Add(new ProposalChangeset(path, sha, json));
+        return new PackageChangesetResult(number, path, sha, errors.Count == 0, errors);
+    }
+
+    static (string? Path, string? Sha256) WriteProposal(Request request, string markdown, List<string> errors)
+    {
+        byte[] bytes = new UTF8Encoding(false).GetBytes(markdown);
+        string path = Path.Combine(request.Folder, $"{request.Proposal}.md");
+        if (ChangesetFileWriter.TryWrite(path, bytes, request.Overwrite, out string? writeError) is null)
+        {
+            errors.Add(writeError!);
+            return (null, null);
+        }
+        return (path, Sha256Hex(bytes));
+    }
+
+    static string Sha256Hex(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    sealed record Request(IReadOnlyList<string> ChangesetPaths, string Folder, string Proposal, bool Overwrite);
 
     static bool TryReadRequest(DraftPackageArguments arguments, out Request? request, out string? error)
     {
         request = null;
-        if (arguments.FindingPaths.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        if (arguments.ChangesetPaths.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
         {
-            error = "findingPaths is required: an array of finding file paths.";
+            error = "changesetPaths is required: an array of changeset file paths.";
             return false;
         }
-        if (!ToolArguments.TryReadOptionalStringList(arguments.FindingPaths, "findingPaths", out var paths, out error)) return false;
-        if (paths.Count == 0)
+        if (!ToolArguments.TryReadOptionalStringList(arguments.ChangesetPaths, "changesetPaths", out var names, out error)) return false;
+        if (names.Count == 0)
         {
-            error = "findingPaths must name at least one finding file.";
+            error = "changesetPaths must name at least one changeset file.";
+            return false;
+        }
+
+        var paths = names.Select(Path.GetFullPath).ToList();
+        if (paths.GroupBy(p => p, PathComparer).FirstOrDefault(g => g.Count() > 1) is { } twice)
+        {
+            error = $"changesetPaths names {twice.Key} more than once.";
             return false;
         }
 
@@ -215,11 +224,12 @@ public sealed class DraftPackageTool
         }
 
         if (!ToolArguments.TryReadOptionalBool(arguments.Overwrite, "overwrite", out bool overwrite, out error)) return false;
-        if (!TryReadCards(arguments.CardsPath, out var cards, out error)) return false;
 
-        request = new Request(paths, fullFolder, proposal, overwrite, cards);
+        request = new Request(paths, fullFolder, proposal, overwrite);
         return true;
     }
+
+    static StringComparer PathComparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     static bool TryReadRequiredText(JsonElement element, string field, out string? value, out string? error)
     {
@@ -232,33 +242,12 @@ public sealed class DraftPackageTool
         }
         return true;
     }
-
-    static bool TryReadCards(JsonElement cardsPath, out IReadOnlyDictionary<string, IReadOnlyList<PointsCard>> cards, out string? error)
-    {
-        cards = new Dictionary<string, IReadOnlyList<PointsCard>>();
-        if (!ToolArguments.TryReadOptionalString(cardsPath, "cardsPath", out string? path, out error)) return false;
-        if (path is null) return true;
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            error = "cardsPath must not be blank.";
-            return false;
-        }
-
-        string fullPath = Path.GetFullPath(path.Trim());
-        try
-        {
-            using var stream = File.OpenRead(fullPath);
-            return PackageCardsReader.TryRead(stream, $"cardsPath {fullPath}", out cards, out error);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            error = $"cardsPath {fullPath} could not be read: {ex.Message}";
-            return false;
-        }
-    }
 }
 
-public sealed record DraftPackageArguments(
-    JsonElement FindingPaths, JsonElement Folder, JsonElement Proposal, JsonElement CardsPath, JsonElement Overwrite);
+public sealed record DraftPackageArguments(JsonElement ChangesetPaths, JsonElement Folder, JsonElement Proposal, JsonElement Overwrite);
 
-public sealed record DraftPackageResult(bool Success, IReadOnlyList<PackageItemResult> Items, IReadOnlyList<string> Errors);
+/// <summary>One changeset the proposal presents, or fails to: its number, path, the hash of its bytes, and why it cannot be presented.</summary>
+public sealed record PackageChangesetResult(int Number, string Path, string? Sha256, bool Success, IReadOnlyList<string> Errors);
+
+public sealed record DraftPackageResult(
+    bool Success, string? ProposalPath, string? ProposalSha256, IReadOnlyList<PackageChangesetResult> Changesets, IReadOnlyList<string> Errors);

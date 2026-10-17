@@ -6,37 +6,170 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-2e7d32.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4.svg)](https://dotnet.microsoft.com/)
 
-GedFire is a command-line tool that lets an AI agent help with your family
-history research without giving it write access to your GEDCOM file. The agent
-writes its findings as a JSON proposal; you review it, approve the items you
-want, and GedFire applies them, keeping each citation attached to the claim it
-supports. It can then generate a static family-page site from the result.
+GedFire is a Model Context Protocol server that lets an AI agent do real
+genealogical work in your GEDCOM file — look people up, map families, score
+research gaps, compile findings into cited changesets, validate them, and
+apply the ones you approve — while you keep final say over every change.
+Point your MCP client (Claude Desktop, Claude Code, Cursor, Windsurf, Gemini
+CLI, Codex) at one GEDCOM file and the agent gets nineteen typed tools.
+Eighteen only read. The nineteenth applies a reviewed, validated changeset —
+or nothing at all.
 
 ```text
 agent research -> JSON proposal -> your review -> verified GEDCOM -> static HTML
 ```
 
-GedFire works only with local files and makes no network requests. Your chosen
-AI client controls where tool results are processed.
+GedFire exists for evidence-based research, not tree copying. Much of what
+passes for online genealogy is the incorporation of other people's family
+trees — unsourced conclusions merged wholesale, errors propagating from tree
+to tree until repetition looks like proof. GedFire is built around the
+opposite discipline, the one professional genealogy standards demand: every
+fact traces to a record somebody actually read. Each change arrives as a
+finding with a verbatim extract from a named source, graded by whether that
+source is an original record or a derivative and whether its information is
+firsthand; the compiler refuses a citation quality the source class cannot
+support, and a policy file can require independent verification before
+low-grade claims stand unflagged. A tree built this way is one you can defend
+fact by fact — not one you inherited.
+
+The division of labor is the point. Everything mechanical and deterministic
+is GedFire's job: resolving a name to scored candidates, surveying same-name
+rivals, detecting the gaps worth researching next, compiling findings into
+typed operations, enforcing citation grades, validating, applying, and
+verifying the written file. The agent spends its effort — and your tokens —
+only on judgment: reading records, resolving identity, weighing evidence.
 
 Why not just let the agent edit the file? GEDCOM looks like plain text, but
 the level hierarchy, cross-record pointers, and continuation rules are easy to
 get wrong — agents asked to rewrite raw GEDCOM tend to produce broken levels,
 dangling references, or files that no longer validate. GedFire instead applies
 typed operations to a parsed document and refuses to write anything invalid,
-so a valid input file stays valid. As a bonus, the agent doesn't have to read
-and reproduce whole GEDCOM records, which saves a lot of tokens.
+so a valid input file stays valid. And because the agent works with compact
+operations instead of reading and reproducing whole GEDCOM records, the
+workflow uses considerably fewer tokens.
+
+What that buys you:
+
+* **No second path to your data.** Every write is a numbered JSON changeset
+  you can dry-run, approve item by item, and apply with byte-stable
+  round-trip verification — whether it arrives over MCP or the command line.
+* **Citations stay attached to the claims they support**, from the agent's
+  finding all the way into the GEDCOM and the generated pages.
+* **Guardrails you choose:** `--read-only` lets an agent look and propose but
+  never write; `--policy` enforces your editorial rules on every changeset;
+  `--enforce-privacy` hides living and restricted individuals from the agent
+  entirely.
+* **Local files only.** GedFire makes no network requests and sends no
+  telemetry; your chosen MCP client controls where tool results go.
+* **A publishing pipeline built in:** a static family-page generator renders
+  the reviewed GEDCOM directly, so the published pages and the evidence never
+  drift apart.
+
+In other words, use GedFire if you want AI help with your research but final
+say over your family history.
 
 **[Browse a live generated family-page site →](https://morrillonline.github.io/GedFire/)**
 *Generated from the synthetic family in [`docs/demo`](docs/demo), rebuilt by
 CI on every push. Facts retain their source citations, available as
 hover-popover footnotes in the HTML.*
 
-## MCP server
+GedFire began as a command-line tool, and the same engine is still scriptable
+as a GEDCOM 7 validator, 5.5 converter, GEDZIP packer, and site generator —
+see [The command line](#the-command-line) near the end.
 
-GedFire also runs as a Model Context Protocol server, so clients including
-Claude Desktop, Claude Code, Cursor, Windsurf, Gemini CLI, and Codex can query
-your GEDCOM directly, in conversation, instead of shelling out to the CLI:
+## Findings, changesets, proposals
+
+Three nouns carry the whole workflow. Each is a concrete JSON artifact you
+can read, and each flows into the next.
+
+A **finding** is one discovery in one source: "the 1850 census of Oakland,
+Maine, page 312, shows Mercy Ash, age 55, in the household of Nathaniel Ash."
+It carries the verbatim extract, the source (name, locator, class —
+original, image copy, derivative, authored, or user-contributed — and whether
+its information is firsthand), the tree person it concerns, the facts it
+states, and the quality grade each fact deserves. A finding records what a
+record says — it asserts nothing about the tree yet. Findings are the unit of
+evidence: several findings about one person can agree, disagree, or cover
+different facts, and all of that is preserved rather than flattened.
+
+Not every record deserves equal trust, and GedFire grades credibility the
+way the profession does rather than inventing its own scale. A source is
+classed by what it physically is — an original record, an image copy of one,
+a derivative such as an index or transcription, an authored work, or a
+user-contributed tree — and its information by whether the informant could
+have known the fact firsthand. Together those bound the quality grade
+(GEDCOM's QUAY) any fact cited to that source may carry: a death certificate
+speaks with firsthand authority about the death but only secondhand about
+the birth it also mentions, and an index entry can never outrank the image
+it was transcribed from. The grade is assigned when the finding is captured,
+and `draft_changeset` enforces it — a citation claiming more quality than
+its source class supports is refused, not quietly accepted. When sources
+conflict — the census says 1812, the gravestone says 1814 — the compiler
+never silently picks a winner: the disagreement surfaces as an open
+decision listing every value with the findings behind it, to be settled by
+better evidence rather than by whichever record arrived first. And facts
+that enter the file on weak evidence are marked: policy can require a
+verification note on anything graded at or below a ceiling, so the file
+itself remembers what still needs proving.
+
+Between the finding and any change lies **correlation** — deciding which tree
+person a record is actually about. This is where most genealogical error is
+born: records name a "Mercy Ash" and the tree holds three of them, in the
+same county, a generation apart. A fact attached to the wrong same-named
+person is worse than no fact at all, so GedFire makes the identity question a
+scored, inspectable computation instead of a hunch. `find_person` resolves
+one name against the tree, ranked by structured hints — birth, death,
+parents, a particular marriage — and declares a confident match only above a
+documented floor, never because a candidate merely came first.
+`match_record` correlates a whole record at once — a census household, an
+obituary's survivors, a probate's heirs — scoring every person in it against
+tree family subgraphs so the record's own internal relationships do the
+identifying, and returning a closed survey of every same-name rival with the
+reason each was excluded: died before the event, wrong spouse, impossible
+age, or simply outscored. A record person who matches nobody is flagged as a
+potential new person, never force-matched. Both tools are deterministic —
+the same evidence yields the same verdict — and `research_brief` assembles
+everything known about a candidate (kin, gaps, notes, standing plausibility
+problems) in one call so the judgment that remains is an informed one.
+
+A **changeset** is what correlated findings compile into: typed operations against the
+parsed document — write this death date on this person, cite this source on
+that fact at this quality, add this child to that family. `draft_changeset`
+does the compiling deterministically: it reconciles findings that state the
+same fact (the most specific value wins, every agreeing finding is cited on
+the one fact), refuses to pick between findings that genuinely disagree
+(those come back as `open` decisions for a human or agent to resolve with
+better evidence), reuses sources the file already holds, and caps every
+citation's quality at what its source class can support. The same evidence
+compiles to the same changeset every time; judgment went into the findings,
+not the compilation.
+
+A **proposal** presents the genealogical evidence for its changesets. It is
+the document a reviewer reads: the finished changesets, numbered so the
+reviewer can rule on each, presented with the findings that justify them —
+their verbatim extracts, source and information classes, and quality
+grades — and the identity argument for why the records concern this person
+and not a same-named rival. By the time a proposal is drafted, every
+changeset in it has already been validated with `validate_changeset` and
+`check_plausibility` and any errors corrected by fixing the findings and
+drafting again; `draft_package` takes those finished changeset files and
+writes the proposal document that presents them. The reviewer's job is to
+assess the evidence: does the record actually say what the finding claims,
+is the identification sound, is the quality grade honest? On that assessment
+each changeset is approved or denied, and only approved changesets reach
+`apply_changeset`, which validates everything again before a byte-verified
+write. The proposal is the unit of consent.
+
+So the flow is: records are read and captured as findings; each finding is
+correlated to the one tree person it concerns; correlated findings compile
+into changesets; changesets travel as a proposal; the proposal is reviewed;
+and only then does the GEDCOM change — with every fact still holding the
+citation that justified it. Nothing an agent believes gets into your file
+except through that chain.
+
+## Setup
+
+Start the server bound to one GEDCOM file:
 
 ```powershell
 gedfire mcp --input family.ged
@@ -114,12 +247,21 @@ parameter "nme". Accepted parameters: query (required), hints, maxResults.`
 As a smoke test, ask "How many people and families are in this file?" The
 client should call `get_document_stats` and report both counts.
 
+If the server does not start, run `gedfire --version` in a new terminal to
+confirm that the installed command is available, then verify the input path
+exists. Check the client's MCP status or server log for startup errors. An
+absolute executable path in `command` avoids `PATH` differences between a
+terminal and a desktop application.
+
+## The tools
+
 The server binds to one document over stdio and exposes nineteen tools. Sixteen
 are read-only; `apply_changeset` is the only one that writes to the file,
 and only after validation and in-memory verification both pass (or not at
 all, if the server was started with `--read-only`); `draft_changeset` and
-`draft_package` never touch the file either, but with `outPath` (or, for
-`draft_package`, always) they create new changeset files. The server also watches
+`draft_package` never touch the file either — `draft_changeset` creates new
+changeset files with `outPath`, and `draft_package` writes the proposal
+document that presents finished changesets. The server also watches
 the bound file and reloads automatically if it changes on disk — including
 a change `apply_changeset` itself just wrote — no restart needed:
 
@@ -140,7 +282,7 @@ a change `apply_changeset` itself just wrote — no restart needed:
 | `describe_changeset_ops` | Return the changeset envelope shape and the full v2 op dialect (every `createOrUpdate`/`delete`/`merge` op, its required and optional fields, and one worked example) — so an agent can compose a valid changeset without external documentation or trial-and-error against `validate_changeset`'s error text. Takes no arguments. |
 | `check_plausibility` | Preview a proposal changeset and return only the chronological and biological plausibility findings it would introduce, structured for routing by severity. Name characters are checked too: digits and symbols (other than apostrophe, hyphen and period) are errors that block a changeset, an ordinal suffix such as `3rd` is allowed, and punctuation standing in for a name (`----`) is a warning to use `Unknown`. Always available, even under `--read-only`. |
 | `draft_changeset` | Compile findings into a changeset in the op dialect (see [Drafting a changeset](#drafting-a-changeset)). Reuses an existing source or mints one per collection, merges each (source, page, grade) group's extracts into one `dataText`, copies the locator verbatim into the citation page, adds a verification note for every fact graded at or below the policy ceiling, and refuses a QUAY the source and information class cannot support, a target name that differs from the recorded one, and prose the policy bans. Returns the changeset, a `decisions` list, and `errors`; `outPath` writes it to a new file, replacing an existing one only with `overwrite`; `reportPath` also writes the result JSON to a file (see [Result reports](#result-reports)); `inputPath` reads the findings from a file, and `findingPaths` reads them from correlated finding files. New people and families come from `people` and `relations`, which can also move a child between families or remove a link. |
-| `draft_package` | Draft a whole proposal package from correlated finding files in one call (see [Drafting a package](#drafting-a-package)). Groups `findingPaths` by anchor, compiles each anchor's findings as `draft_changeset` does, dry-runs the result, and writes `<folder>/<proposal>.item<N>.changes.json` only for the anchors that pass. Returns per item its files, finding ids, errors, `decisions`, `pointsPreview` (priced from `cardsPath`), plausibility findings, and the file's path and sha256. |
+| `draft_package` | Draft the proposal document for finished changesets (see [Drafting a package](#drafting-a-package)). Takes `changesetPaths` — validated changeset files produced by `draft_changeset` — and writes one proposal markdown file presenting the genealogical evidence for each changeset, numbered so a reviewer can rule per changeset: the findings each operation cites, their verbatim extracts, source and information classes, and quality grades. A changeset that does not validate against the bound document fails the call with its errors named — validation and plausibility checking are upstream work, finished before a proposal is drafted. The result reports the paths of the proposal file and the changesets it presents. |
 | `validate_changeset` | Dry-run a proposal changeset (`changesetPath`, `items`) against the bound document: every op is validated exactly as `apply_changeset` would validate it, but the document is never touched. Policy violations are reported as errors. Pass `cards` to get a `pointsPreview` (see [Points preview](#points-preview)), or `cardsPath`, a file holding `{"cards": [...]}`, to read the same list from disk. `reportPath` also writes the result JSON to a file (see [Result reports](#result-reports)). Always available, even under `--read-only`. |
 | `validate_document` | Run the same GEDCOM 7 conformance checks as `gedfire validate` against the whole bound document — independent of any changeset — and return the findings structured instead of as plain-text lines. Optional `warningsAsErrors` mirrors the CLI flag. Always available, even under `--read-only`. |
 | `apply_changeset` | Validate, apply, and verify a proposal changeset, then write the file — the same safety model as `gedfire apply` (dry-run-equivalent validation, byte-stable round-trip check, pointer resolution, record-count deltas) reached over MCP instead of the CLI. `reportPath` also writes the result JSON to a file (see [Result reports](#result-reports)). Refuses to run under `--read-only`. |
@@ -150,7 +292,7 @@ a one-shot CLI mirror — `find-person`, `get-record`, `get-document-stats`,
 and `date-calc` — that runs the same engine and prints the same JSON without
 starting a server. `validate_changeset` and `apply_changeset` mirror the
 CLI's own `apply --dry-run` and `apply`, and `validate_document` mirrors
-`validate`, described under "Command reference" below, rather than having
+`validate`, described under [The command line](#the-command-line), rather than having
 a same-named CLI counterpart of their own.
 
 ### Changeset policy file
@@ -256,16 +398,21 @@ citation to a fact the record already holds (`date` and `place` pick the
 instance). A `spouse` or `child` relation takes `notDuplicateOf`, a list of
 existing people confirmed not to be the new person. A note takes `match`, the
 exact text of an existing note to rewrite, and `cites`, a list of
-`{"finding", "quay", "excerpt"}` citations of findings in the same item (the
+`{"finding", "quay", "excerpt"}` citations of findings in the same changeset (the
 note's own finding when `finding` is omitted).
 
 With `outPath` the changeset is written to a new file; an existing file is
-replaced only when `overwrite` is `true`. Instead of `findings`, pass
+replaced only when `overwrite` is `true`. The changeset carries its own
+evidence: a top-level `findings` list holds each finding's verbatim extract,
+source, source and information classes and per-claim grades, and every op
+names the findings it rests on in its own `findings`, so `draft_package` can
+present the changeset without compiling anything. The apply engine ignores
+both. Instead of `findings`, pass
 `inputPath`, a file holding `{"findings": [...]}`, to re-draft a saved input
 without sending it back through the model, or `findingPaths`, a list of
 correlated finding files, each holding its complete entry under `draft` (the
 same shape as one `findings` item). The entries are compiled as one set, and
-notes that several findings of one item wrote on the same record are joined
+notes that several findings of one changeset wrote on the same record are joined
 into one note that still cites each finding. A file with no `draft`, a parked
 finding, or a non-empty `draftGaps` is reported by file name and nothing is
 drafted. Give only one of the three. A check that names a finding, such as
@@ -282,27 +429,26 @@ finding. A removal from a family that does not list the child is refused.
 
 ### Drafting a package
 
-`draft_package` drafts every anchor of a proposal in one call. Its arguments
-are `findingPaths` (the correlated finding files), `folder` (an existing
-folder), `proposal` (the file-name prefix), and optionally `cardsPath` and
-`overwrite`. Each finding file is grouped by the anchor it was correlated to
-(`correlation.target`); items are numbered by the first appearance of each
-anchor in `findingPaths`. For each anchor the findings are compiled exactly as
-`draft_changeset` compiles `findingPaths`, then dry-run against the document
-once, which supplies both the `pointsPreview` and the plausibility findings.
-The changeset is written to `<folder>/<proposal>.item<N>.changes.json` only
-when the draft, the policy and the dry run all pass, so a failing anchor never
-stops the others and leaves no file behind. A file that already exists is kept
-unless `overwrite` is `true`.
+A proposal is drafted only after its changesets are finished: each compiled
+by `draft_changeset` — the only operation that compiles a changeset —
+validated with `validate_changeset` and `check_plausibility`, and any errors
+corrected by fixing the findings and drafting again. `draft_package` then
+presents the finished changesets for review. Its arguments are
+`changesetPaths` (the changeset files, in the order they should be
+numbered), `folder` (an existing folder), `proposal` (the file-name prefix),
+and optionally `overwrite`. It writes `<folder>/<proposal>.md` — the
+document the reviewer reads — presenting the genealogical evidence for each
+changeset: the findings its operations cite (resolved through the finding
+references the changeset carries), their verbatim extracts, source and
+information classes, and quality grades, numbered so the reviewer can
+approve or deny each changeset on its own.
 
-`cardsPath` is a JSON file mapping each anchor xref to the array of cards its
-item serves, each in the `cards` shape `validate_changeset` takes; an anchor
-with no entry gets a null `pointsPreview`. The result lists, per item, the
-finding files and ids, `success`, `errors`, `decisions`, `pointsPreview`,
-`plausibility`, and for a written file its `writtenTo` path and the lowercase
-hex `sha256` of exactly the bytes written. A finding file whose anchor cannot
-be read (not JSON, or no `correlation.target`) is reported under the top-level
-`errors` and belongs to no item.
+A changeset that does not validate against the bound document fails the call
+with its errors named. That is a defect in the upstream drafting step, not a
+condition the packager tolerates or repairs — validation and plausibility
+checking are already done by the time a proposal is drafted. The result
+reports the proposal file's path and the changesets it presents; a proposal
+file that already exists is kept unless `overwrite` is `true`.
 
 ### Result reports
 
@@ -323,6 +469,8 @@ done, the failure is added to the result's `log` (to an `open` decision for
 `draft_changeset`) and `reportWrittenTo` is null. An apply refused because the
 server is read-only, or any call refused for a bad argument, returns an error
 and writes no report.
+
+### Hinted lookups
 
 For example, an MCP client can call `find_person` with:
 
@@ -363,48 +511,9 @@ ranking, or confidence classification.
 the same numbered JSON changeset you'd review by hand — an agent proposing a
 change still writes a changeset for you to see, not a second, unreviewed
 path to your data; `apply_changeset` is how that reviewed changeset gets
-applied without leaving the conversation, instead of shelling out to
-`gedfire apply`. Start the server with `--read-only` if you want an agent to
-look and propose but never write, regardless of what it's asked to do. GedFire
-itself makes no network requests and sends no telemetry; the MCP client you
-choose is responsible for what it does with tool results. Every returned
+applied without leaving the conversation. Every returned
 xref belongs to the one GEDCOM bound by `--input`; do not reuse it against
 another file.
-
-If the server does not start, run `gedfire --version` in a new terminal to
-confirm that the installed command is available, then verify the input path
-exists. Check the client's MCP status or server log for startup errors. An
-absolute executable path in `command` avoids `PATH` differences between a
-terminal and a desktop application.
-
-## Why should I use GedFire?
-
-* GedFire keeps the agent's hands off your master file. The agent writes a
-  numbered JSON proposal instead of editing the GEDCOM, so nothing changes
-  until you've reviewed it.
-* GedFire applies changes as typed operations against a parsed document
-  rather than raw text edits, so it can't produce broken levels, dangling
-  pointers, or a file that no longer validates.
-* You can dry-run a proposal with `--dry-run` and then apply all of its
-  numbered items or only the ones you agree with.
-* Citations stay attached to the claims they support, from the agent's
-  finding all the way into the GEDCOM and the generated pages.
-* GedFire generates a static family-page site directly from the reviewed
-  GEDCOM, so the published pages and the evidence never drift apart.
-* Because the agent works with compact operations instead of reading and
-  reproducing whole GEDCOM records, the workflow uses considerably fewer
-  agent tokens.
-* GedFire is also a scriptable GEDCOM 7 validator, a GEDCOM 5.5 converter,
-  a GEDZIP packer, and a JSON name-index exporter, so it can anchor a
-  genealogy build pipeline on its own.
-* GedFire runs as an MCP server (`gedfire mcp`), so agents like Claude
-  Desktop or Claude Code can look up people and records in your GEDCOM, and
-  validate or apply a reviewed changeset, directly in conversation instead
-  of shelling out to the CLI — or start it with `--read-only` to keep the
-  agent to lookups and previews only.
-
-In other words, use GedFire if you want AI help with your research but final
-say over your family history.
 
 ## Installation
 
@@ -433,7 +542,8 @@ gedfire --version
 
 The repository includes a fictional Ash family and a proposed set of findings.
 From the repository root, copy the GEDCOM, dry-run the proposal, apply it, and
-generate the site:
+generate the site (the same proposal validates and applies identically over
+MCP via `validate_changeset` and `apply_changeset`):
 
 ```powershell
 cp docs/demo/ash-whitfield.ged family.ged
@@ -548,26 +658,9 @@ relationships, notes, media, deletion, and person merges live in
 
 ### Date arithmetic
 
-`date-calc` performs genealogical calendar arithmetic without reading a
-GEDCOM file:
-
-```powershell
-gedfire date-calc --op normalize --date "11 FEB 1691/2"
-gedfire date-calc --op add --date "27 SEP 1777" --age "63y 4m 2d"
-gedfire date-calc --op sub --date "29 JAN 1841" --age "63y 4m 2d"
-gedfire date-calc --op diff --from "27 SEP 1777" --to "29 JAN 1841"
-```
-
-The commands print `11 FEB 1692`, `29 JAN 1841`, `27 SEP 1777`, and
-`63y 4m 2d`, respectively. Arithmetic requires exact Gregorian dates;
-qualified, partial, BCE, and non-Gregorian dates are rejected rather than
-having uncertainty invented or discarded. GEDCOM reading, writing, and HTML
-generation continue to preserve original date text such as `1860`, `BEF
-1860`, and dual dates.
-
-The MCP server exposes the same operations through `date_calc`. Its
-`operation` is `normalize`, `add`, `sub`, or `diff`; the advertised schema
-describes which fields each operation requires. For example:
+`date_calc` performs genealogical calendar arithmetic without reading the
+bound document. Its `operation` is `normalize`, `add`, `sub`, or `diff`; the
+advertised schema describes which fields each operation requires. For example:
 
 ```json
 {
@@ -579,9 +672,23 @@ describes which fields each operation requires. For example:
 
 The result is `{ "operation": "diff", "date": null, "age": "63y 4m 2d" }`.
 The other operations return the canonical result in `date` and set `age` to
-`null`.
+`null`:
 
-## Command reference
+```powershell
+gedfire date-calc --op normalize --date "11 FEB 1691/2"   # 11 FEB 1692
+gedfire date-calc --op add --date "27 SEP 1777" --age "63y 4m 2d"   # 29 JAN 1841
+```
+
+Arithmetic requires exact Gregorian dates;
+qualified, partial, BCE, and non-Gregorian dates are rejected rather than
+having uncertainty invented or discarded. GEDCOM reading, writing, and HTML
+generation continue to preserve original date text such as `1860`, `BEF
+1860`, and dual dates.
+
+## The command line
+
+Everything above is also scriptable without a server: the same engine behind
+the MCP tools runs as a CLI for build pipelines and one-shot lookups.
 
 | Command | What it does |
 |---|---|
@@ -618,15 +725,6 @@ family-tree editor, a research provider, or a hosted genealogy service.
   declared and undeclared extensions, unresolved pointers, and GEDZIP/media
   sharing readiness so researchers can understand a file before sending it to
   another tool or collaborator.
-- **MCP write support** — shipped. `gedfire mcp` now exposes `validate_changeset`
-  and `apply_changeset`, extending the MCP server through the same reviewed
-  changeset-and-approval path the CLI's `apply`/`apply --dry-run` already
-  enforce, rather than opening a second way to mutate a GEDCOM. Start the
-  server with `--read-only` to keep `apply_changeset` disabled for a given
-  run — `validate_changeset` and every lookup tool stay available either way.
-  `describe_changeset_ops` ships alongside them so the changeset format
-  itself is discoverable over MCP — no external documentation needed to
-  compose one from scratch.
 - **Agent skills** — companion Claude Code skills for the full research
   workflow (evidence grading, identity correlation, record harvesting, and
   driving GedFire safely) are being prepared for publication as a separate
