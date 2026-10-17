@@ -93,7 +93,14 @@ public static partial class FindingFileLoader
         if (readErrors.Count > 0)
             return new LoadedFindingFile(name, null, [.. readErrors.Select(e => $"{name}: {e.Replace("findings[0]", "draft")}")]);
 
-        return new LoadedFindingFile(name, read[0], []);
+        if (!root.TryGetProperty("argument", out var argument) || argument.ValueKind == JsonValueKind.Null)
+            return new LoadedFindingFile(name, read[0], []);
+
+        var argumentErrors = new List<string>();
+        var carried = FindingArgumentReader.Read(argument, "argument", argumentErrors);
+        return carried is null
+            ? new LoadedFindingFile(name, null, [.. argumentErrors.Select(e => $"{name}: {e}")])
+            : new LoadedFindingFile(name, read[0] with { Argument = carried }, []);
     }
 
     /// <summary>Reads the draft entry of one finding file's stream; <paramref name="name"/> labels its errors.</summary>

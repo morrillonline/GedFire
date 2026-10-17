@@ -29,7 +29,8 @@ public sealed class DraftPackageTool
         "existing folder. Writes one markdown file, <folder>/<proposal>.md, the document the reviewer reads: for " +
         "each changeset, numbered so the reviewer can approve or deny it on its own, the findings each operation " +
         "cites (resolved through the finding references the changeset carries), their verbatim extracts, source " +
-        "and information classes, and quality grades. It compiles nothing: a changeset that does not validate " +
+        "and information classes, and quality grades, then, for each item, why him, why not others, conflicts " +
+        "and cautions, and difficulty from the identity arguments those findings carry. It compiles nothing: a changeset that does not validate " +
         "against this server's document, or that carries no findings, fails the call with its errors named, and " +
         "nothing is written; fix the findings and draft the changeset again. The result reports the proposal's " +
         "path and each changeset it presents, with the sha256 of the exact bytes presented. An existing proposal " +

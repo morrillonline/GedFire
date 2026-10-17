@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace GedCore.Drafting;
 
 /// <summary>
@@ -77,6 +79,9 @@ public sealed record DraftFinding(
 {
     public IReadOnlyList<DraftPerson> People { get; init; } = [];
     public IReadOnlyList<DraftRelation> Relations { get; init; } = [];
+
+    /// <summary>Why the records concern this person and not a same-named rival, exactly as correlation wrote it; carried into the changeset, never judged.</summary>
+    public JsonObject? Argument { get; init; }
 }
 
 /// <summary>Something the compiler did or left undone; <see cref="Kind"/> is one of <see cref="DraftDecisionKinds.All"/>.</summary>

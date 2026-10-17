@@ -184,6 +184,22 @@ public class ChangesetDrafterTests
         Assert.Equal(["F-2"], byFact["BURI"]);
     }
 
+    [Fact]
+    public void AnArgument_IsCarriedIntoTheFindingsTableAndTheOpsAreUntouched()
+    {
+        var plain = Finding("F-1", Memorial(), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)]);
+        var argument = System.Text.Json.Nodes.JsonNode.Parse("""{ "anchors": ["Born in Salem."], "identity": "Surveyed elsewhere.", "difficulty": "high" }""")!.AsObject();
+
+        var without = new ChangesetDrafter(new FakeLookup()).Draft([plain]);
+        var with = new ChangesetDrafter(new FakeLookup()).Draft([plain with { Argument = argument }]);
+
+        Assert.Equal(without.Changeset!["items"]!.ToJsonString(), with.Changeset!["items"]!.ToJsonString());
+        Assert.Equal(without.Changeset["newSources"]!.ToJsonString(), with.Changeset["newSources"]!.ToJsonString());
+        Assert.Equal(without.Decisions.Select(d => (d.Kind, d.Detail)), with.Decisions.Select(d => (d.Kind, d.Detail)));
+        Assert.Equal(argument.ToJsonString(), Json(with).GetProperty("findings")[0].GetProperty("argument").GetRawText());
+        Assert.False(Json(without).GetProperty("findings")[0].TryGetProperty("argument", out _));
+    }
+
     // ---- citations ----
 
     [Fact]

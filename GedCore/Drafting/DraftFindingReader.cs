@@ -38,7 +38,7 @@ public sealed class DraftFindingReader
 
     DraftFinding? ReadFinding(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "id", "extract", "source", "target", "facts", "notes", "people", "relations")) return null;
+        if (!IsObject(el, path, "id", "extract", "source", "target", "facts", "notes", "people", "relations", "argument")) return null;
         int before = _errors.Count;
 
         string? id = Text(el, "id", path, required: true);
@@ -49,9 +49,12 @@ public sealed class DraftFindingReader
         var notes = ReadList(el, "notes", path, ReadNote);
         var people = ReadList(el, "people", path, ReadPerson);
         var relations = ReadList(el, "relations", path, ReadRelation);
+        var argument = el.TryGetProperty("argument", out var given) && given.ValueKind != JsonValueKind.Null
+            ? FindingArgumentReader.Read(given, $"{path}.argument", _errors)
+            : null;
 
         if (_errors.Count > before || id is null || extract is null || source is null || target is null) return null;
-        return new DraftFinding(id, source, extract, target, facts, notes) { People = people, Relations = relations };
+        return new DraftFinding(id, source, extract, target, facts, notes) { People = people, Relations = relations, Argument = argument };
     }
 
     DraftSource? ReadSource(JsonElement? el, string path)

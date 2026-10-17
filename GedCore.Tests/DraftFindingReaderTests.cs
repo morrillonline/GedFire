@@ -31,6 +31,28 @@ public class DraftFindingReaderTests
     }
 
     [Fact]
+    public void AnArgument_IsCarriedOnTheFindingAsGiven()
+    {
+        var (findings, errors) = Read($$"""[{{Valid.Replace("\"id\": \"F-1\",", "\"id\": \"F-1\", \"argument\": { \"anchors\": [\"Born in Salem.\"], \"difficulty\": \"low\" },")}}]""");
+
+        Assert.Empty(errors);
+        Assert.Equal("""{"anchors":["Born in Salem."],"difficulty":"low"}""", Assert.Single(findings).Argument!.ToJsonString());
+    }
+
+    [Fact]
+    public void AFindingWithoutAnArgument_HasNone() =>
+        Assert.Null(Assert.Single(Read($"[{Valid}]").Findings).Argument);
+
+    [Fact]
+    public void AnInvalidArgument_IsRejectedByItsPath()
+    {
+        var (findings, errors) = Read($$"""[{{Valid.Replace("\"id\": \"F-1\",", "\"id\": \"F-1\", \"argument\": { \"difficulty\": \"easy\" },")}}]""");
+
+        Assert.Empty(findings);
+        Assert.Contains("findings[0].argument.difficulty must be one of low, medium, high.", Assert.Single(errors));
+    }
+
+    [Fact]
     public void ANonArray_IsRejected() =>
         Assert.Contains("non-empty array", Assert.Single(Read("{}").Errors));
 
