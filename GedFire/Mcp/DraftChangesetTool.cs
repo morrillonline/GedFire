@@ -36,7 +36,7 @@ public sealed class DraftChangesetTool
         "a fact may carry substructures, a replacedCitations disposition, or citeOnly to cite a fact already held. " +
         "Findings aimed at the same target become one item. Returns the changeset, a " +
         "decisions list (what was reused, minted, merged, or left open for you), and errors; the changeset also carries a " +
-        "findings table (each finding's extract, source, classes and grades) and each op names the findings it rests on, " +
+        "findings table (each finding's extract, source, classes, grades and identity argument, carried unchanged) and each op names the findings it rests on, " +
         "which is what draft_package presents; with outPath it also " +
         "writes the changeset to a new file, replacing an existing one only when overwrite is true. Findings may be " +
         "given inline or by inputPath, a file holding {\"findings\": [...]}, to re-draft a saved input without " +
@@ -154,6 +154,26 @@ public sealed class DraftChangesetTool
                       "required": ["kind"]
                     }
                   },
+                  "argument": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "The identity argument correlation wrote for this finding: why this person and not a same-named rival. Carried unchanged into the changeset's findings table for draft_package to present; never judged and never applied. Every field is optional.",
+                    "properties": {
+                      "anchors": { "type": "array", "items": { "type": "string" }, "description": "Why him: the anchoring facts, one sentence each." },
+                      "identity": { "type": "string", "description": "The sentence the author wrote saying how the identity was resolved, e.g. the find_person survey; presented as written." },
+                      "exclusions": {
+                        "type": "array",
+                        "description": "Why not others: one entry per excluded rival.",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": { "name": { "type": "string" }, "xref": { "type": "string" }, "fact": { "type": "string" }, "finding": { "type": "string" } }
+                        }
+                      },
+                      "cautions": { "type": "string", "description": "Conflicts weighed; omit for none." },
+                      "difficulty": { "type": "string", "enum": ["low", "medium", "high"] }
+                    }
+                  },
                   "notes": {
                     "type": "array",
                     "description": "Notes you wrote, passed through unchanged and checked against the policy.",
@@ -196,7 +216,7 @@ public sealed class DraftChangesetTool
               "type": "array",
               "minItems": 1,
               "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
-              "description": "Paths to correlated finding files from the lake. Each holds the finding's complete entry under \"draft\" (the same shape as one findings item); the entries are compiled as one set and the notes several findings of one item wrote on the same record are joined. A file with no draft, a parked finding, or a non-empty draftGaps is reported by name instead of being compiled. Give findingPaths, or findings or inputPath, not both."
+              "description": "Paths to correlated finding files from the lake. Each holds the finding's complete entry under \"draft\" (the same shape as one findings item); an optional \"argument\" object beside \"draft\" holds the finding's identity argument, which is carried unchanged into the changeset. The entries are compiled as one set and the notes several findings of one item wrote on the same record are joined. A file with no draft, a parked finding, or a non-empty draftGaps is reported by name instead of being compiled. Give findingPaths, or findings or inputPath, not both."
             },
             "outPath": {
               "type": "string",

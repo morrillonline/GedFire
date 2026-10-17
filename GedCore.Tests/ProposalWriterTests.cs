@@ -163,4 +163,111 @@ public class ProposalWriterTests
     [Fact]
     public void TheSameChangesets_GiveTheSameProposal() =>
         Assert.Equal(Write(Presented(), Presented("b.json")), Write(Presented(), Presented("b.json")));
+
+    // ---- the identity argument ----
+
+    static string Argued(string id, string argument) =>
+        Finding.Replace("\"F-1\"", $"\"{id}\"").Replace("\"id\": \"" + id + "\",", $"\"id\": \"{id}\", \"argument\": {argument},");
+
+    static string CitingOps(params string[] ids) =>
+        string.Join(", ", ids.Select(id => DeathOp.Replace("\"F-1\"", $"\"{id}\"").Replace("\"fact\": \"DEAT\"", $"\"fact\": \"DEAT{id}\"")));
+
+    static string ArguedChangeset(string[] cited, params string[] findings) =>
+        Changeset(CitingOps(cited), string.Join(", ", findings));
+
+    const string FullArgument = """
+        { "anchors": ["Born in Salem in 1850.", "Married Ann Blake in 1875."],
+          "identity": "Searched the tree for Harry Morrill born 1850: three candidates, the runner-up @I9@ at 0.41.",
+          "exclusions": [ { "name": "Harry Morrill", "xref": "@I9@", "fact": "a death in 1801", "finding": "F-2" } ],
+          "cautions": "The census gives 1851.", "difficulty": "medium" }
+        """;
+
+    [Fact]
+    public void AnItem_PresentsTheArgumentOfTheFindingsItsOpsName()
+    {
+        string markdown = Write(Presented(json: ArguedChangeset(["F-1"], Argued("F-1", FullArgument))));
+
+        Assert.Contains("#### Why him\n\n- Born in Salem in 1850.\n- Married Ann Blake in 1875.\n", markdown.ReplaceLineEndings("\n"));
+        Assert.Contains("#### Why not others\n\n- Searched the tree for Harry Morrill born 1850: three candidates, the runner-up @I9@ at 0.41.\n" +
+                        "- Harry Morrill (@I9@) is excluded by a death in 1801 (finding F-2).\n", markdown.ReplaceLineEndings("\n"));
+        Assert.Contains("#### Conflicts and cautions\n\n- The census gives 1851.\n", markdown.ReplaceLineEndings("\n"));
+        Assert.Contains("#### Difficulty\n\nmedium\n", markdown.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
+    public void TheIdentitySentence_IsPresentedExactlyAsTheAuthorWroteIt()
+    {
+        string sentence = "Surveyed outside find_person; the only Morrill in Salem.";
+
+        string markdown = Write(Presented(json: ArguedChangeset(["F-1"], Argued("F-1", $$"""{ "identity": "{{sentence}}" }"""))));
+
+        Assert.Contains($"- {sentence}", markdown);
+    }
+
+    [Fact]
+    public void AnchorsAndCautions_AreDeduplicatedAcrossTheItemsFindings()
+    {
+        string one = Argued("F-1", """{ "anchors": ["Born in Salem.", "Only on F-1."], "cautions": "Same caution.", "difficulty": "low" }""");
+        string two = Argued("F-2", """{ "anchors": ["Born in Salem.", "Only on F-2."], "cautions": "Same caution.", "difficulty": "high" }""");
+
+        string markdown = Write(Presented(json: ArguedChangeset(["F-1", "F-2"], one, two))).ReplaceLineEndings("\n");
+
+        Assert.Contains("- Born in Salem.\n- Only on F-1.\n- Only on F-2.\n", markdown);
+        Assert.Single(markdown.Split("- Same caution.", StringSplitOptions.None).Skip(1));
+        Assert.Contains("#### Difficulty\n\nhigh\n", markdown);
+    }
+
+    [Theory]
+    [InlineData("low", "medium", "medium")]
+    [InlineData("high", "medium", "high")]
+    [InlineData("low", "low", "low")]
+    public void TheDifficulty_IsTheHardestOfTheFindings(string first, string second, string expected)
+    {
+        string one = Argued("F-1", $$"""{ "difficulty": "{{first}}" }""");
+        string two = Argued("F-2", $$"""{ "difficulty": "{{second}}" }""");
+
+        string markdown = Write(Presented(json: ArguedChangeset(["F-1", "F-2"], one, two))).ReplaceLineEndings("\n");
+
+        Assert.Contains($"#### Difficulty\n\n{expected}\n", markdown);
+    }
+
+    [Fact]
+    public void AFindingWithoutAnArgument_RendersNoneRecordedAndLowDifficulty()
+    {
+        string markdown = Write(Presented()).ReplaceLineEndings("\n");
+
+        Assert.Contains("#### Why him\n\n(none recorded)\n", markdown);
+        Assert.Contains("#### Why not others\n\n(none recorded)\n", markdown);
+        Assert.Contains("#### Conflicts and cautions\n\n(none recorded)\n", markdown);
+        Assert.Contains("#### Difficulty\n\nlow\n", markdown);
+    }
+
+    [Fact]
+    public void AFindingNoOpNames_ContributesNoArgument()
+    {
+        string cited = Argued("F-1", """{ "anchors": ["Cited anchor."], "difficulty": "low" }""");
+        string uncited = Argued("F-2", """{ "anchors": ["Uncited anchor."], "difficulty": "high" }""");
+
+        string markdown = Write(Presented(json: ArguedChangeset(["F-1"], cited, uncited))).ReplaceLineEndings("\n");
+
+        Assert.Contains("- Cited anchor.", markdown);
+        Assert.DoesNotContain("Uncited anchor.", markdown);
+        Assert.Contains("#### Difficulty\n\nlow\n", markdown);
+    }
+
+    [Fact]
+    public void EachItem_GetsItsOwnArgumentSections()
+    {
+        string items = $$"""
+            { "items": [ { "item": 1, "target": "@I1@", "ops": [ {{DeathOp}} ] },
+                         { "item": 2, "target": "@I2@", "ops": [ {{DeathOp.Replace("F-1", "F-2")}} ] } ],
+              "findings": [ {{Argued("F-1", """{ "anchors": ["First anchor."] }""")}}, {{Argued("F-2", """{ "anchors": ["Second anchor."] }""").Replace("\"item\": 1", "\"item\": 2")}} ] }
+            """;
+
+        string markdown = Write(Presented(json: items));
+
+        int second = markdown.IndexOf("### Item 2", StringComparison.Ordinal);
+        Assert.True(markdown.IndexOf("First anchor.", StringComparison.Ordinal) < second);
+        Assert.True(markdown.IndexOf("Second anchor.", StringComparison.Ordinal) > second);
+    }
 }

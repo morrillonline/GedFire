@@ -60,6 +60,8 @@ internal static class ChangesetSection
         }
         markdown.AppendLine();
 
+        ArgumentSection.Write([.. cited.DistinctBy(f => Text(f, "id"))], markdown);
+
         var shown = cited.Concat(findings.Where(f => f.TryGetProperty("item", out var i) && i.TryGetInt32(out int fi) && fi == number))
             .DistinctBy(f => Text(f, "id")).ToList();
         if (shown.Count == 0) return;

@@ -404,10 +404,10 @@ note's own finding when `finding` is omitted).
 With `outPath` the changeset is written to a new file; an existing file is
 replaced only when `overwrite` is `true`. The changeset carries its own
 evidence: a top-level `findings` list holds each finding's verbatim extract,
-source, source and information classes and per-claim grades, and every op
-names the findings it rests on in its own `findings`, so `draft_package` can
-present the changeset without compiling anything. The apply engine ignores
-both. Instead of `findings`, pass
+source, source and information classes, per-claim grades and identity
+argument, and every op names the findings it rests on in its own `findings`,
+so `draft_package` can present the changeset without compiling anything. The
+apply engine ignores both. Instead of `findings`, pass
 `inputPath`, a file holding `{"findings": [...]}`, to re-draft a saved input
 without sending it back through the model, or `findingPaths`, a list of
 correlated finding files, each holding its complete entry under `draft` (the
@@ -417,6 +417,26 @@ into one note that still cites each finding. A file with no `draft`, a parked
 finding, or a non-empty `draftGaps` is reported by file name and nothing is
 drafted. Give only one of the three. A check that names a finding, such as
 one that compiles to nothing, is reported with its file name.
+
+A finding may also carry an `argument`, the identity argument correlation
+wrote: why these records concern this person and not a same-named rival. In a
+finding file it sits beside `draft`; in `findings` or `inputPath` it is a field
+of the finding. Every field is optional:
+
+```json
+"argument": {
+  "anchors": ["Born in Salem in 1850."],
+  "identity": "Searched for Harry Morrill (born 1850): one confident match, @I4@; the runner-up @I9@ scored 0.41.",
+  "exclusions": [{"name": "Harry Morrill", "xref": "@I9@", "fact": "a death in 1801", "finding": "F-2"}],
+  "cautions": "The census gives 1851.",
+  "difficulty": "medium"
+}
+```
+
+`identity` is the author's own sentence on how the identity was resolved (for
+example the outcome of a `find_person` survey); GedFire writes none of it. The draft checks only the shape of the argument and copies it
+unchanged into the finding's entry in the changeset's `findings` list; a finding
+without one drafts exactly as before.
 
 A relation can also take a link away. A `child` relation with `from` (an
 existing family that lists the child) moves the child out of that family and
@@ -441,7 +461,13 @@ document the reviewer reads — presenting the genealogical evidence for each
 changeset: the findings its operations cite (resolved through the finding
 references the changeset carries), their verbatim extracts, source and
 information classes, and quality grades, numbered so the reviewer can
-approve or deny each changeset on its own.
+approve or deny each changeset on its own. Under each item it also renders,
+from the identity arguments of the findings the item's operations cite: *Why
+him* (the anchoring facts, deduplicated), *Why not others* (the author's
+`identity` sentence as written, then one sentence per excluded rival), *Conflicts and
+cautions*, and *Difficulty* (the hardest of the findings'; one that states none
+counts as low). A finding with no argument shows `(none recorded)`, and the
+proposal is still written. All of it is read from the changeset file alone.
 
 A changeset that does not validate against the bound document fails the call
 with its errors named. That is a defect in the upstream drafting step, not a

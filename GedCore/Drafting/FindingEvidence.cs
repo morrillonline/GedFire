@@ -4,15 +4,15 @@ namespace GedCore.Drafting;
 
 /// <summary>
 /// The changeset's table of findings: each entry holds what a reviewer needs to weigh the finding (its verbatim
-/// extract, its source and the source's classes, and the grade of each claim), keyed by the id the ops name in their
-/// "findings", so a changeset carries its own evidence.
+/// extract, its source and the source's classes, the grade of each claim, and the identity argument correlation
+/// wrote), keyed by the id the ops name in their "findings", so a changeset carries its own evidence.
 /// </summary>
 internal static class FindingEvidence
 {
     public static JsonObject Describe(DraftFinding finding, int item, string sourceRef)
     {
         var claims = finding.Facts.Select(FactClaim).Concat(finding.Relations.Where(r => !r.IsRemoval).Select(RelationClaim));
-        return new JsonObject
+        var evidence = new JsonObject
         {
             ["id"] = finding.Id,
             ["item"] = item,
@@ -20,6 +20,8 @@ internal static class FindingEvidence
             ["source"] = SourceOf(finding.Source, sourceRef),
             ["claims"] = new JsonArray([.. claims]),
         };
+        if (finding.Argument is not null) evidence["argument"] = finding.Argument.DeepClone();
+        return evidence;
     }
 
     static JsonObject SourceOf(DraftSource source, string sourceRef)

@@ -104,6 +104,35 @@ public class DraftPackageToolTests : IDisposable
     }
 
     [Fact]
+    public async Task TheArgumentACorrelatedFindingCarries_ReachesTheProposalFromTheChangesetAlone()
+    {
+        string findings = Finding("F-1", "@I1@", "DEAT", "26 Mar 2013").Replace(
+            "\"id\": \"F-1\",",
+            "\"id\": \"F-1\", \"argument\": { \"anchors\": [\"Wife of Hiram.\"], \"exclusions\": [ { \"name\": \"Gladys Giedd\", \"xref\": \"@I9@\", \"fact\": \"a death in 1801\", \"finding\": \"F-7\" } ], \"cautions\": \"Spelling varies.\", \"difficulty\": \"high\" },");
+        string changeset = await Drafted("a.changes.json", findings);
+
+        string proposal = Structured(await Call([changeset])).GetProperty("proposalPath").GetString()!;
+
+        string markdown = File.ReadAllText(proposal).ReplaceLineEndings("\n");
+        Assert.Contains("#### Why him\n\n- Wife of Hiram.\n", markdown);
+        Assert.Contains("- Gladys Giedd (@I9@) is excluded by a death in 1801 (finding F-7).", markdown);
+        Assert.Contains("#### Conflicts and cautions\n\n- Spelling varies.\n", markdown);
+        Assert.Contains("#### Difficulty\n\nhigh\n", markdown);
+    }
+
+    [Fact]
+    public async Task AChangesetThatCarriesArguments_StillValidatesAgainstTheDocument()
+    {
+        string findings = Finding("F-1", "@I1@", "DEAT", "26 Mar 2013").Replace(
+            "\"id\": \"F-1\",", "\"id\": \"F-1\", \"argument\": { \"anchors\": [\"Wife of Hiram.\"] },");
+        string changeset = await Drafted("a.changes.json", findings);
+
+        var result = Structured(await Call([changeset]));
+
+        Assert.True(result.GetProperty("success").GetBoolean(), result.GetRawText());
+    }
+
+    [Fact]
     public async Task AChangesetTheDocumentRejects_FailsTheCallNamingItAndWritesNothing()
     {
         string good = await Drafted("good.changes.json", Finding("F-1", "@I1@", "DEAT", "26 Mar 2013"));

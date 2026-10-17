@@ -27,6 +27,30 @@ public class FindingFileLoaderTests
     }
 
     [Fact]
+    public void AnArgumentBesideTheDraft_IsCarriedOnTheFinding()
+    {
+        string argument = """{ "anchors": ["Born in Salem."], "difficulty": "high" }""";
+
+        var loaded = FindingFileLoader.Read(Utf8("{ \"correlation\": { \"kind\": \"add\", \"target\": \"@I7@\" }, \"argument\": " + argument + ", " + Draft + " }"), "f.json");
+
+        Assert.True(loaded.Finding is not null, string.Join("; ", loaded.Errors));
+        Assert.Equal("""{"anchors":["Born in Salem."],"difficulty":"high"}""", loaded.Finding!.Argument!.ToJsonString());
+    }
+
+    [Fact]
+    public void AFileWithoutAnArgument_YieldsAFindingWithNone() =>
+        Assert.Null(FindingFileLoader.Read(Utf8(Finding()), "f.json").Finding!.Argument);
+
+    [Fact]
+    public void AnInvalidArgument_IsReportedByFileName()
+    {
+        var loaded = FindingFileLoader.Read(Utf8("{ \"argument\": { \"difficulty\": \"easy\" }, " + Draft + " }"), "f.json");
+
+        Assert.Null(loaded.Finding);
+        Assert.Equal("f.json: argument.difficulty must be one of low, medium, high.", Assert.Single(loaded.Errors));
+    }
+
+    [Fact]
     public void AFileWithNoDraft_IsReportedByName()
     {
         var loaded = FindingFileLoader.Read(Utf8("""{ "id": "F-1", "correlation": { "kind": "enrich", "target": "@I7@" } }"""), "f.json");
