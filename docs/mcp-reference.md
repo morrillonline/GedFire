@@ -1,0 +1,425 @@
+# MCP reference
+
+This reference explains GedFire's tool behavior and changeset semantics.
+Start with the [README](../README.md) for installation, client configuration,
+and the safety model. Use the MCP schemas for exact parameter names and types;
+call `describe_changeset_ops` for the operation dialect.
+
+All xrefs belong to the server's bound GEDCOM. Never carry them into another
+document. Only `apply_changeset` modifies that GEDCOM. Draft and report tools
+can write separate files, including when the server uses `--read-only`.
+
+## Lookups
+
+### Hinted lookups
+
+Call `find_person` with a name and optional structured hints:
+
+```json
+{
+  "query": "Frederick Ash",
+  "hints": {
+    "birth": { "year": 1841, "place": "New Hampshire" },
+    "parents": { "father": "Wyman Ash" },
+    "spouse": {
+      "name": "Sarah Whitfield",
+      "marriage": { "year": 1865, "place": "Maine" }
+    }
+  },
+  "maxResults": 20
+}
+```
+
+- Each supplied hint object needs at least one fact. Birth and death places
+  describe those events, not census or unclassified locations.
+- Parent names need a known father or mother role. All spouse hints describe
+  one marriage; the matcher never combines different marriages.
+- `sex` (`M` or `F`) lowers the rank of a differing recorded sex. Missing sex
+  neither helps nor penalizes a candidate. Neither case removes a candidate.
+- Hints rank people the name query recalls. Missing candidate data incurs no
+  penalty. `Unknown` name parts do not require a literal match to that word.
+- `maxResults` accepts 1-20, default 8. It changes the returned list length,
+  not recall, ranking, or the confidence decision.
+
+Results carry `matchType`, `confidentMatchXref`, `confidentMatchScore`, `person`,
+`candidates`, `suggestions`, `totalMatches`, and `truncated`. Candidates and
+suggestions include `matchScore`. Scores are not statistical probabilities.
+Use `matchType` and `confidentMatchXref` to inspect whether the tool resolved
+one person.
+
+`find_family` searches through a named relative. `relation` is `spouse`
+(find the named person's partner), `child` (find their parents), or `parent`
+(find their children). Optional birth and death hints describe the person
+sought. Results include the connecting family xref and matched relative.
+
+`find_source` accepts case-insensitive title, author, and URL substrings.
+Supply at least one; all supplied filters must match. An empty `sources`
+array means no match. A matching source returns `xref`, `title`, `author`,
+and `url` (null when absent).
+
+### Records and lists
+
+`get_record` returns a person, family, or source. Citations include the source
+xref, page, quoted `dataText`, and `quay`. `includeSources` adds the cited
+source text. Source lookups include `citedBy`.
+
+Individual events such as baptism and burial appear in `otherEvents`.
+A burial without a death also supplies `approximateDeath`; `death` stays
+null. Families carry their own `citations`.
+
+`get_records` accepts up to 500 xrefs and preserves request order. With
+`includeSources`, it returns one top-level `sources` array. `fields` selects
+fields while retaining `recordType` and `xref`. An unknown field is an error;
+a missing xref yields a `not_found` record in its slot.
+
+`list_people` sorts by surname, given name, and xref. It supports surname
+filters and `pageSize` 1-2000 (default 500). Pass `nextCursor` back as `cursor`
+to continue. Death summaries use burial year when no death exists.
+
+`list_unanchored_people` finds people without a dated event, place, or placed
+parent, spouse, or child. Ties only to unplaced people do not count as anchors.
+It reports fact counts and unplaced relatives, and omits privacy-hidden people.
+
+## Correlation and research targets
+
+### Whole-record matching
+
+`match_record` compares a household, obituary, probate, or other multi-person
+record against tree family subgraphs. Supply:
+
+- `persons`: roles, names, sex, birth year or age, and birth place.
+- `relationships`: person-index pairs using `spouse-of`, `child-of`,
+  `parent-of`, or `sibling-of`.
+- `event`: the record's date and place.
+- Optional `focus`: the person whose result you want.
+
+Results rank candidates by name, lifespan, kin overlap, and place. Each
+person's `sameNameSurvey` lists the same-name candidates considered and the
+reason each non-leader lost: incompatible dates, wrong spouse, impossible age,
+or a lower score. The verdict is `single`, `candidates`, or `none`.
+`single` uses the same confidence floors as `find_person`.
+
+A person matching nobody receives `potentialNewPerson` and any near-miss
+`possibleDuplicates`, not a forced match. The same inputs yield the same
+result. The survey covers candidates the matcher considers, not every
+historical person who might bear that name.
+
+### Research briefs
+
+`research_brief` combines the person's full record with:
+
+- `kin`: parents, siblings, spouses with marriage details, and children.
+- `gaps`: the same gaps `select_targets` reports.
+- `possibleDuplicateOf`: up to three scored candidates, plus the full count.
+- `plausibility`: standing issues against the person or their families.
+- `notes`: person and family note texts.
+
+Optional `cardType` adds tailored `emphasis`. `new-spouse` highlights children
+with an unknown other parent. Enrichment types highlight dated facts that
+bound a missing vital. Missing kin, notes, or duplicates produce empty arrays.
+
+### Target selection
+
+`select_targets` draws `count` gaps for study `surnames`, returning a
+`wanted.json`-shaped result without the GEDCOM path. The clock seeds the draw.
+Alternatively, pass `xrefs` instead of count and surnames to score specified
+people deterministically. This returns every gap, names people without gaps
+in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error.
+
+- An `enrich-person` card covers all inexact birth, marriage, and death dates
+  and places for one person, plus any such fact with an exact date or place but
+  no citation. `nominalPoints` counts missing dates, places, and citations;
+  `score` adds a difficulty bonus once.
+- An exact burial date and place close a death gap when no exact death exists.
+  The summary's `died` falls back to burial.
+- New-child cards require a husband with a study surname.
+- Duplicate hints use the GEN301 plausibility test. Results include up to
+  three candidates plus `possibleDuplicateCount`; duplicates do not prevent a draw.
+- An `Unknown` name part needs an agreeing parent or spouse name for duplicate
+  pairing.
+
+To price an enrich-person card during validation, use `gap: "enrich-fact"`,
+`points: 1`, and `bonus` equal to `score - nominalPoints`.
+
+## Drafting a changeset
+
+`draft_changeset` compiles findings. Supply exactly one input form:
+
+| Input | Content |
+|---|---|
+| `findings` | An array of draft finding entries. |
+| `inputPath` | A JSON file containing `{"findings": [...]}`. |
+| `findingPaths` | Correlated finding files, each with a complete entry under `draft`. |
+
+The compiler rejects unrecognized fields by path. File-based errors name the
+file. A missing `draft`, parked finding, or non-empty `draftGaps` prevents
+drafting.
+
+### Finding fields
+
+Each entry carries `id`, a verbatim `extract`, `source`, `target`, and `facts`.
+It may also carry `people`, `relations`, `notes`, and an identity `argument`.
+
+| Field | Content |
+|---|---|
+| `source` | `name`, `locator`, `class`, `information`; optional `author`, `url`, `accessed`. |
+| `target` | `xref`; optional `card` and `name`. |
+| Each fact | `record`, `fact`, per-fact `quay`; date/place or text `value`; optional `excerpt`, `class`, `information`. |
+
+Use the tool schema for the full contract. The compiler returns the changeset,
+`decisions`, and `errors`. It rejects a target name that differs from the
+recorded name and prose that violates policy. Inspect `open` decisions before
+proceeding.
+
+### Sources and quality grades
+
+Findings for one target become one item. The compiler reuses existing sources
+or creates one per collection and author. It merges extracts by source, page,
+and grade into citation `dataText`, and copies the locator into `page`.
+
+Source-title matching ignores case and punctuation. It also drops a trailing
+` - <person name>` segment without digits. Keep record-specific details in
+the locator; different year ranges and record types remain separate sources.
+The `decisions` list reports source reuse and creation.
+
+The compiler rejects a citation grade above these ceilings:
+
+| Source class | Primary information | Other information |
+|---|---|---|
+| Original or image copy | 3 | 2 |
+| Derivative | 2 | 1 |
+| Authored | 1 | 1 |
+| User-contributed | 0 | 0 |
+
+These are ceilings, not automatic grades or proof of accuracy. The author
+assigns each fact's grade. Policy can require verification notes for low grades.
+
+### Reconciliation
+
+- Repeatable events such as `CENS` and `RESI` retain separate values. A date
+  matching an existing event updates that instance; another date adds an event.
+- Single-valued facts such as `BIRT`, `DEAT`, `BURI`, and `MARR` reconcile date
+  and place separately. Agreeing findings all contribute citations.
+- A more precise compatible date or place wins. A specific date supersedes an
+  approximate date; the approximate citation stays only if its year fits.
+  Otherwise an `open` decision explains its omission.
+- A less specific finding adds a citation, not a downgrade. The compiler
+  reports a `resolved` decision with `no improvement`.
+- Genuine disagreements leave the fact undrafted. An `open` decision lists
+  values and findings, recommending by QUAY and then source quality.
+- Name reconciliation only expands documented nicknames with matching surname,
+  suffix, and given-name count. Other disagreements stay `open`.
+
+The compiler maintains its own standard verification notes. Once stronger
+citations lift a named fact above the policy ceiling, it removes that fact
+from the note or deletes the note when no low-grade facts remain. It preserves
+sources. It leaves other verification-note wording to the author and raises an
+`open` decision. An author's explicit note rewrite with `match` takes precedence.
+
+### People, relationships, and notes
+
+New people use `people` entries with placeholder `xref`, `name`, and `sex`
+(needed for a partner). Use placeholders such as `@NewI1@` in their facts.
+Relations cite the finding at their own `quay`:
+
+| `kind` | Fields |
+|---|---|
+| `spouse` | `person`, `spouse`, `family`, `quay` |
+| `child` | `family`, `child`, `husb`, `wife`, `quay` |
+| `parent` | `person`, `role`, `parent`, `quay` |
+
+`husb` and `wife` seed a new family only. Later relations omit those seeds;
+the compiler reports `dropped-seed` when it removes them. Marriage facts use
+the family placeholder as `record`.
+
+- `spouse` and `child` relations accept `notDuplicateOf`: existing people
+  the author has confirmed are not the new person.
+- A child relation with `from` moves the child from that existing family into
+  `family`. `unlink-child` takes `family` and `child`; `unlink-parent` takes
+  `person`, `role`, and optional `family`.
+- Removal ops carry no citation, `quay`, or `excerpt`. The draft raises an
+  `open` decision requesting a cited explanatory note. It refuses to remove a
+  child the family does not list.
+- A fact can carry `substructures`, such as an `EVEN` with a `TYPE`.
+  Such an event adds an instance rather than matching by date.
+- `replacedCitations` chooses `keep`, `drop`, or `moveToNote` for citations on
+  a replaced value.
+- `citeOnly: true` cites an existing fact; date/place select its instance.
+- A note's `match` names the exact text to rewrite. `cites` lists
+  `{"finding", "quay", "excerpt"}` entries; omitting `finding` uses its own.
+  The compiler joins notes on the same record within a changeset and retains
+  every finding's citations.
+
+### Identity arguments and output
+
+An optional `argument` records the author's identity reasoning:
+
+```json
+{
+  "anchors": ["Born in Oakland in 1850."],
+  "identity": "One candidate matches the recorded spouse and parents.",
+  "exclusions": [
+    {"name": "Harry Ash", "xref": "@I9@", "fact": "died in 1801", "finding": "F-2"}
+  ],
+  "cautions": "The census gives a birth year of 1851.",
+  "difficulty": "medium"
+}
+```
+
+All argument fields are optional. In correlated finding files, `argument`
+sits beside `draft`; in direct entries it sits inside the finding.
+GedFire checks the shape and copies the argument, but does not write or
+verify its reasoning.
+
+`outPath` writes the changeset to a new file; `overwrite: true` permits
+replacement. The changeset embeds evidence under top-level `findings`, and
+each operation names its supporting findings. The apply engine ignores this
+evidence metadata; the proposal renderer uses it.
+
+## Drafting a package
+
+First compile with `draft_changeset`, then run `validate_changeset` and
+`check_plausibility`. Fix inputs and redraft when either check exposes a defect.
+
+Call `draft_package` with:
+
+- `changesetPaths`: finished changesets in the desired numbering order.
+- `folder`: an existing output folder.
+- `proposal`: the filename prefix.
+- Optional `overwrite`: allow replacement.
+
+The tool writes `<folder>/<proposal>.md` and reports its path and changesets.
+It validates changesets against the bound document and fails on invalid input.
+It does not repair changesets or replace the upstream plausibility check.
+
+Each numbered item presents its cited findings, extracts, source and
+information classes, grades, and supplied identity arguments:
+*Why him*, *Why not others*, *Conflicts and cautions*, and *Difficulty*.
+Difficulty uses the hardest finding; an unspecified difficulty counts as low.
+A missing argument renders `(none recorded)` and does not block output.
+Package creation therefore does not certify evidentiary completeness or approval.
+
+## Changeset policy file
+
+Pass `--policy <json>` when starting the server. Every key is optional;
+unknown keys stop startup. See the [complete example](policy.example.json).
+
+| Key | Rule |
+|---|---|
+| `bannedPhrases` | Reject case-insensitive phrases in note text or citation pages. |
+| `bannedPatterns` | Reject regular-expression matches in note text or citation pages. |
+| `verificationNote` | Require a note with `notePrefix` for records receiving facts at or below `maxQuay`. |
+| `deathPlaceEvidence` | Require a death-place citation whose page or `dataText` matches this regular expression. |
+
+For example, `{"maxQuay": 1, "notePrefix": "needs independent verification:"}`
+requires a note identifying the affected record. It can sit on the record,
+name the person's given name, or mention marriage for a marriage fact.
+
+Only selected items undergo policy checks. Violations appear as
+`policy: item 2: ...`; validation reports errors and apply refuses the changes.
+Policy matches text and grades, not the underlying truth of a source.
+
+## Points preview
+
+Pass `cards` to `validate_changeset`, or `cardsPath` pointing to
+`{"cards": [...]}`. Each card supplies `xref`, `class`, and `points`, with
+optional `gap`, `name`, and `bonus`.
+
+Classes are `enrich-person`, `new-parent`, `new-spouse`, and `new-child`.
+Enrichment gaps are `enrich-birth`, `enrich-death`, or `enrich-marriage`,
+optionally ending in `-date` or `-place`.
+
+With no gap, or with `enrich-fact`, the card covers any improved fact on the
+subject. Each improved date, place, or newly added citation earns `points`;
+`bonus` pays once.
+`pointsPreview` compares the touched records before and after:
+
+- `closed`: cards with a written improvement or new family relationship.
+  `wrote` identifies the fact and improved components.
+- `notClosed`: remaining cards with reasons. An identical restatement earns no
+  closure.
+- `subjectMismatch`: cards left open by a name mismatch. An enrich card detects
+  a subject rename; a new-relative card requires the minted person's name to
+  match `name` exactly, including case and spelling.
+- `total`: points from closed cards.
+
+Points measure changes, not evidentiary reliability.
+
+## Changeset application
+
+`validate_changeset(changesetPath, items)` previews the selected operations.
+`apply_changeset` validates and verifies them before writing. Use
+`check_plausibility` alongside validation to inspect introduced chronological,
+biological, name, and duplicate issues. `validate_document` checks whole-file
+GEDCOM 7 conformance separately; `warningsAsErrors` promotes warnings.
+
+New records use reserved `@New<token>@` placeholders. Tokens contain letters,
+digits, and underscores. The first creation fixes the record kind; later
+references resolve to the same allocated xref. Library callers receive
+`ApplyResult.MintedXrefs`; the CLI logs allocations.
+
+- Person creation rejects high-confidence duplicates, including planned people.
+  Family, source, and media creation do not use the person duplicate detector.
+- Multiple marriages between the same people are valid; a duplicate marriage
+  on the same exact date is not.
+- Source creation reuses a matching title and author with no publication,
+  ignoring case and extra spaces. This apply-time rule differs from the
+  draft compiler's broader title normalization.
+- Updating a shared source makes a copy (or reuses an exact updated source).
+  Only facts the same item cites point to the copy. The item must cite the fact
+  needing the change. `ApplyResult.CopiedSources` reports the mapping.
+- A citation page belongs to the citation, not the source. A matching page
+  updates; another page adds a citation. With only one citation for that source
+  on a fact, the update corrects its page. `deleteCitation` can select a page.
+- Omit `fact` to edit a family-level citation with `createOrUpdateCitation`
+  or `deleteCitation`. Use exact `note` text to address note citations.
+- Validation rejects internal ids in stored prose: note text, citation pages
+  and extracts, source titles and authors, and merge notes.
+
+See the [synthetic changeset fixtures](../GedCore.Tests/TestData/Changesets)
+for examples of relationships, notes, media, deletion, and merges.
+Calling apply does not prove that anyone approved the selected items; see
+[review permissions](../README.md#what-you-and-your-client-control).
+
+## Result reports
+
+`draft_changeset`, `validate_changeset`, and `apply_changeset` accept
+`reportPath`. It saves the returned result as UTF-8 indented JSON, including
+`reportWrittenTo`. Scripts can read that file instead of having the model
+retype results.
+
+The parent folder must exist. Existing files require `overwrite: true`.
+A draft's `outPath` and `reportPath` must differ. GedFire checks these paths
+before work, including before apply can modify the GEDCOM.
+
+Reports cover successful and failed work, including policy refusal. Bad
+arguments or read-only apply refusal return errors without writing a report.
+If report writing fails after work finishes, the result records that failure
+in `log` (or an `open` draft decision) and sets `reportWrittenTo` to null.
+That failure does not undo a successful apply; inspect the returned outcome.
+
+## Date arithmetic
+
+`date_calc` never reads the bound document. Its `operation` is `normalize`,
+`add`, `sub`, or `diff`. For example:
+
+```json
+{
+  "operation": "diff",
+  "from": "27 SEP 1777",
+  "to": "29 JAN 1841"
+}
+```
+
+The result is `{"operation": "diff", "date": null, "age": "63y 4m 2d"}`.
+Other operations return `date` and set `age` to null. CLI equivalents:
+
+```powershell
+gedfire date-calc --op normalize --date "11 FEB 1691/2"
+gedfire date-calc --op add --date "27 SEP 1777" --age "63y 4m 2d"
+```
+
+These return `11 FEB 1692` and `29 JAN 1841`. Arithmetic accepts exact
+Gregorian dates only; it rejects qualified, partial, BCE, and non-Gregorian
+dates rather than discarding uncertainty. GEDCOM reading, writing, and site
+generation still preserve original date text.
