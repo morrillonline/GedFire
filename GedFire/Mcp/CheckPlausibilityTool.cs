@@ -59,7 +59,7 @@ public sealed class CheckPlausibilityTool
                 "additionalProperties": false,
                 "properties": {
                   "code": { "type": "string", "description": "Stable rule code, e.g. \"GEN102\"." },
-                  "severity": { "type": "string", "enum": ["Warning", "Error"], "description": "Error only for GEN302 (ancestor cycle); every other rule is Warning." },
+                  "severity": { "type": "string", "enum": ["Info", "Warning", "Error"], "description": "Error only for GEN302 (ancestor cycle); Info only for GEN405 (spouses share a surname); every other rule is Warning." },
                   "message": { "type": "string" },
                   "xref": { "type": ["string", "null"], "description": "The INDI or FAM xref the finding is anchored to." }
                 },
