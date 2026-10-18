@@ -211,24 +211,25 @@ public static class GapDetector
 
     // -------------------------------------------------------------------
     // Enrich person — one card per person listing every birth, marriage and
-    // death whose date or place is not exact. Each missing part is a point;
-    // the difficulty bonus is added once. Geography keys off the subject's
+    // death whose date or place is not exact, or that has an exact date or
+    // place but no citation. Each missing part is a point; the difficulty
+    // bonus is added once. Geography keys off the subject's
     // own birth place.
     // -------------------------------------------------------------------
 
     static void DetectEnrichPerson(GedIndividual person, HashSet<string> familiesSeen, List<SelectionTarget> targets)
     {
         var facts = new List<EnrichmentEntry>();
-        AddIfInexact(facts, "Birth", person.Birth?.Date, person.Birth?.Place);
+        AddIfImprovable(facts, "Birth", person.Birth);
         if (!BurialSatisfiesDeath(person))
-            AddIfInexact(facts, "Death", person.Death?.Date, person.Death?.Place);
+            AddIfImprovable(facts, "Death", person.Death);
         foreach (var fam in person.FamSpouse.Where(f => familiesSeen.Add(f.Xref)))
             // A missing MARR record (fam.Marriage null) still counts as "not
             // exact" because both date and place are absent.
-            AddIfInexact(facts, "Marriage", fam.Marriage?.Date, fam.Marriage?.Place);
+            AddIfImprovable(facts, "Marriage", fam.Marriage);
         if (facts.Count == 0) return;
 
-        int nominal = facts.Sum(f => (f.MissingDate ? 1 : 0) + (f.MissingPlace ? 1 : 0));
+        int nominal = facts.Sum(f => (f.MissingDate ? 1 : 0) + (f.MissingPlace ? 1 : 0) + (f.MissingCitation ? 1 : 0));
         var difficulty = DifficultyScore.Compute(
             EraWeightForDate(EarliestDate(person, facts)),
             ExactnessRules.GeographyWeight(person.Birth?.Place),
@@ -241,11 +242,14 @@ public static class GapDetector
     static bool BurialSatisfiesDeath(GedIndividual person) =>
         person.Burial is { } burial && ExactnessRules.IsExactDate(burial.Date) && ExactnessRules.IsExactPlace(burial.Place);
 
-    static void AddIfInexact(List<EnrichmentEntry> facts, string fact, string? date, string? place)
+    static void AddIfImprovable(List<EnrichmentEntry> facts, string fact, GedEvent? gedEvent)
     {
+        string? date = gedEvent?.Date;
+        string? place = gedEvent?.Place;
         bool missingDate = !ExactnessRules.IsExactDate(date);
         bool missingPlace = !ExactnessRules.IsExactPlace(place);
-        if (!missingDate && !missingPlace) return;
+        bool missingCitation = (!missingDate || !missingPlace) && !IsCited(gedEvent);
+        if (!missingDate && !missingPlace && !missingCitation) return;
 
         facts.Add(new EnrichmentEntry
         {
@@ -254,8 +258,12 @@ public static class GapDetector
             CurrentPlace = NullIfEmpty(place),
             MissingDate = missingDate,
             MissingPlace = missingPlace,
+            MissingCitation = missingCitation,
         });
     }
+
+    // A personal-note pseudo-source records no evidence, so it does not cite the fact.
+    static bool IsCited(GedEvent? gedEvent) => gedEvent is not null && gedEvent.Sources.Any(s => !s.NoCitation);
 
     // The era of the person's own birth, else of the first listed fact that has a date.
     static string? EarliestDate(GedIndividual person, List<EnrichmentEntry> facts) =>

@@ -175,9 +175,11 @@ public class SelectTargetsToolTests : IDisposable
         1 BIRT
         2 DATE 15 MAR 1820
         2 PLAC Boston, Massachusetts
+        2 SOUR @S1@
         1 DEAT
         2 DATE 2 FEB 1890
         2 PLAC Boston, Massachusetts
+        2 SOUR @S1@
         1 FAMC @F1@
         1 FAMS @F2@
         0 @I11@ INDI
@@ -209,6 +211,7 @@ public class SelectTargetsToolTests : IDisposable
         1 MARR
         2 DATE 20 JUN 1845
         2 PLAC Boston, Massachusetts
+        2 SOUR @S1@
         """;
 
     SelectTargetsTool XrefTool() => new(_sessions.Open(XrefGed), new ToolGate());

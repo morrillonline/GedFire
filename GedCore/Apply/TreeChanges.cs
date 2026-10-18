@@ -2,15 +2,16 @@ namespace GedCore.Apply;
 
 /// <summary>
 /// A dated or placed fact present after a changeset that was not present before.
-/// <see cref="DateImproved"/> and <see cref="PlaceImproved"/> say which parts are new or changed
-/// against the record's closest prior fact of the same tag.
+/// <see cref="DateImproved"/>, <see cref="PlaceImproved"/> and <see cref="CitationImproved"/> say which parts
+/// are new or changed against the record's closest prior fact of the same tag.
 /// </summary>
-public sealed record FactWrite(string Record, string Tag, string? Date, string? Place, bool DateImproved, bool PlaceImproved)
+public sealed record FactWrite(
+    string Record, string Tag, string? Date, string? Place, bool DateImproved, bool PlaceImproved, bool CitationImproved = false)
 {
     public FactWrite(string record, string tag, string? date, string? place)
         : this(record, tag, date, place, date is not null, place is not null) { }
 
-    public int Improvements => (DateImproved ? 1 : 0) + (PlaceImproved ? 1 : 0);
+    public int Improvements => (DateImproved ? 1 : 0) + (PlaceImproved ? 1 : 0) + (CitationImproved ? 1 : 0);
 }
 
 /// <summary>A person's primary name before and after; <see cref="Before"/> is null for a new person.</summary>
@@ -23,8 +24,8 @@ public sealed record FamilyChange(
 
 /// <summary>
 /// What a changeset actually changed in the tree, found by comparing the touched
-/// records before and after: a citation-only edit writes no fact, and a re-stated
-/// identical fact is not a write.
+/// records before and after: a citation added to an existing fact is a write of that
+/// fact's citation, and a re-stated identical fact is not a write.
 /// </summary>
 public sealed class TreeChanges
 {
@@ -66,32 +67,35 @@ public sealed class TreeChanges
         return new TreeChanges(facts, names, families, touched);
     }
 
+    sealed record FactSignature(string Tag, string? Date, string? Place, bool Cited);
+
     static IEnumerable<FactWrite> WrittenFacts(string xref, GedRecord? prior, GedRecord current)
     {
-        var remaining = prior is null ? new List<(string Tag, string? Date, string? Place)>() : FactSignatures(prior).ToList();
+        var remaining = prior is null ? new List<FactSignature>() : FactSignatures(prior).ToList();
         foreach (var fact in FactSignatures(current))
         {
             if (remaining.Remove(fact)) continue;
-            yield return Written(xref, fact, remaining.Where(r => r.Tag == fact.Tag).ToList());
+            var write = Written(xref, fact, remaining.Where(r => r.Tag == fact.Tag).ToList());
+            if (write.Improvements > 0) yield return write;
         }
     }
 
     // The prior fact sharing the date or place is the one this write refines; otherwise the first of that tag.
-    static FactWrite Written(string xref, (string Tag, string? Date, string? Place) fact, List<(string Tag, string? Date, string? Place)> sameTag)
+    static FactWrite Written(string xref, FactSignature fact, List<FactSignature> sameTag)
     {
-        if (sameTag.Count == 0) return new FactWrite(xref, fact.Tag, fact.Date, fact.Place);
+        if (sameTag.Count == 0) return new FactWrite(xref, fact.Tag, fact.Date, fact.Place, fact.Date is not null, fact.Place is not null, fact.Cited);
 
-        var prior = sameTag.FirstOrDefault(r => r.Date == fact.Date || r.Place == fact.Place);
-        if (prior.Tag is null) prior = sameTag[0];
+        var prior = sameTag.FirstOrDefault(r => r.Date == fact.Date || r.Place == fact.Place) ?? sameTag[0];
         return new FactWrite(xref, fact.Tag, fact.Date, fact.Place,
-            fact.Date is not null && fact.Date != prior.Date, fact.Place is not null && fact.Place != prior.Place);
+            fact.Date is not null && fact.Date != prior.Date, fact.Place is not null && fact.Place != prior.Place,
+            fact.Cited && !prior.Cited);
     }
 
-    static IEnumerable<(string Tag, string? Date, string? Place)> FactSignatures(GedRecord record) =>
+    static IEnumerable<FactSignature> FactSignatures(GedRecord record) =>
         record.Children
             .Where(c => c.Tag is not ("CHAN" or "CREA"))
             .Where(c => c.FirstChild("DATE") is not null || c.FirstChild("PLAC") is not null)
-            .Select(c => (c.Tag, Payload(c.FirstChild("DATE")), Payload(c.FirstChild("PLAC"))));
+            .Select(c => new FactSignature(c.Tag, Payload(c.FirstChild("DATE")), Payload(c.FirstChild("PLAC")), c.FirstChild("SOUR") is not null));
 
     static string? Payload(GedRecord? node) => node?.FullValue().Trim() is { Length: > 0 } text ? text : null;
 

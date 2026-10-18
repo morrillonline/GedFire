@@ -120,7 +120,7 @@ static class ChangesetToolSchemas
                   "class": { "type": "string", "description": "enrich-person, new-parent, new-spouse or new-child (select_targets' card type, case and spacing ignored)." },
                   "gap": { "type": "string", "description": "For enrich-person, the fact the card names: enrich-birth, enrich-death or enrich-marriage, optionally ending -date or -place. Omit it, or use enrich-fact, for a card that names no single fact: it closes on any improved fact written on the subject." },
                   "name": { "type": "string", "description": "For enrich-person, the subject's name: a changeset that renames the subject to something else leaves the card open. For new-parent, new-spouse and new-child, the name of the person to mint: a person the changeset creates must carry exactly this name, or the card stays open." },
-                  "points": { "type": "integer", "minimum": 0, "description": "The card's points. For a card with no single named fact (no gap, or enrich-fact) this is the points for each improved date or place, and closed.points is this times the improvements plus bonus." },
+                  "points": { "type": "integer", "minimum": 0, "description": "The card's points. For a card with no single named fact (no gap, or enrich-fact) this is the points for each improved date, place or citation, and closed.points is this times the improvements plus bonus." },
                   "bonus": { "type": "integer", "minimum": 0, "description": "The card's difficulty bonus, added once to a card that names no single fact; ignored for other cards, whose points already include it." }
                 },
                 "required": ["xref", "class", "points"]

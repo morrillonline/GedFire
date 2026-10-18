@@ -681,6 +681,59 @@ public class PlausibilityCheckerTests
         Assert.Equal("WIFE", diag.Tag);
     }
 
+    private static GedDocument SpousesWithNames(string husbName, string wifeName) => Parse($"""
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        1 NAME {husbName}
+        1 SEX M
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME {wifeName}
+        1 SEX F
+        1 FAMS @F1@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        0 TRLR
+        """);
+
+    [Fact]
+    public void GEN405_SpousesShareSurname_IsFlaggedAsInfoAdvisingUnknown()
+    {
+        var diag = Single(SpousesWithNames("Robert /Anderson/", "Mary /Anderson/"), "GEN405");
+
+        Assert.Equal(GedDiagnosticSeverity.Info, diag.Severity);
+        Assert.Equal("@F1@", diag.Xref);
+        Assert.Contains("Unknown", diag.Message);
+    }
+
+    [Fact]
+    public void GEN405_SurnamesDifferOnlyByCase_IsFlagged()
+    {
+        Single(SpousesWithNames("Robert /Anderson/", "Mary /ANDERSON/"), "GEN405");
+    }
+
+    [Fact]
+    public void GEN405_DifferentSurnames_IsNotFlagged()
+    {
+        var doc = SpousesWithNames("Robert /Anderson/", "Mary /Baker/");
+
+        Assert.Empty(PlausibilityChecker.Check(doc).Where(d => d.Code == "GEN405"));
+    }
+
+    [Theory]
+    [InlineData("Robert /Unknown/", "Mary /Unknown/")]
+    [InlineData("Robert //", "Mary //")]
+    [InlineData("Robert", "Mary")]
+    public void GEN405_PlaceholderOrMissingSurnames_AreNotFlagged(string husbName, string wifeName)
+    {
+        var doc = SpousesWithNames(husbName, wifeName);
+
+        Assert.Empty(PlausibilityChecker.Check(doc).Where(d => d.Code == "GEN405"));
+    }
+
     [Fact]
     public void CleanOrdinaryFamily_IsNotFlagged()
     {

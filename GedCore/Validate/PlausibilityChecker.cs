@@ -78,6 +78,8 @@ public static class PlausibilityChecker
         CheckMissingSex(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
         CheckHusbandWifeSexMismatch(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
+        CheckSpousesShareSurname(doc, diags);
 
         return [.. diags.OrderBy(d => d.Severity).ThenBy(d => d.Code, StringComparer.Ordinal)];
     }
@@ -626,6 +628,35 @@ public static class PlausibilityChecker
         invalid.Contains("?")
             ? "put a suspected name in a footnote and use Unknown in the name field"
             : "use Unknown for an unknown part, NICK for a nickname, NSFX for a suffix";
+
+    // -------------------------------------------------------------------
+    // GEN405 — spouses share a surname
+    // -------------------------------------------------------------------
+
+    // Info, not a Warning: a shared surname is sometimes real (a cousin marriage), but usually it is
+    // the husband's name entered for a wife whose maiden name is unknown. Placeholders never match.
+    private static void CheckSpousesShareSurname(GedDocument doc, List<GedDiagnostic> diags)
+    {
+        foreach (var fam in doc.Records.Where(r => r.Tag == "FAM"))
+        {
+            string husbSurname = PrimarySurname(doc, fam.FirstChild("HUSB")?.Value);
+            string wifeSurname = PrimarySurname(doc, fam.FirstChild("WIFE")?.Value);
+            if (UnknownName.IsPlaceholder(husbSurname) || husbSurname != wifeSurname) continue;
+
+            diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Info, "GEN405",
+                $"{fam.Xref} husband and wife both have surname \"{husbSurname}\"; the wife's married name may " +
+                "have been entered as her maiden name -- use Unknown when the maiden name is not known",
+                fam.Xref, "FAM"));
+        }
+    }
+
+    private static string PrimarySurname(GedDocument doc, string? xref)
+    {
+        if (xref is null || xref == GedRecord.VoidPointer) return "";
+        if (!doc.ByXref.TryGetValue(xref, out var indi) || indi.Tag != "INDI") return "";
+        var surname = GedNamePayload.Split(indi.FirstChild("NAME")?.FullValue()).Surname;
+        return PersonNameNormalizer.Normalize(surname);
+    }
 
     // -------------------------------------------------------------------
     // GEN402 — sex not specified

@@ -25,14 +25,19 @@ public class TreeChangesTests : ApplyTestBase
     }
 
     [Fact]
-    public void CitationOnly_WritesNoFact()
+    public void CitationOnAnExistingFact_ImprovesOnlyTheCitation()
     {
         var changes = DryRunChanges("""
             { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
               "citation": { "source": "@S00001@", "page": "p. 1", "quay": 2 } }
             """);
 
-        Assert.Empty(changes.Facts);
+        var write = Assert.Single(changes.Facts);
+        Assert.Equal("BIRT", write.Tag);
+        Assert.False(write.DateImproved);
+        Assert.False(write.PlaceImproved);
+        Assert.True(write.CitationImproved);
+        Assert.Equal(1, write.Improvements);
     }
 
     [Fact]
