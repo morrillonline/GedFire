@@ -334,6 +334,7 @@ public class GapDetectorTests
             1 BIRT
             2 DATE 15 MAR 1802
             2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
             """;
         var targets = Detect(ged, "Morrill");
         var target = Assert.Single(targets, t => t.CardType == "Enrich person");
@@ -358,6 +359,109 @@ public class GapDetectorTests
     }
 
     [Fact]
+    public void EnrichPerson_ExactUncitedBirth_ReportsMissingCitationOnly()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 15 MAR 1802
+            2 PLAC Boston, Massachusetts
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
+        var birth = Assert.Single(target.Enrichments!, e => e.Fact == "Birth");
+        Assert.False(birth.MissingDate);
+        Assert.False(birth.MissingPlace);
+        Assert.True(birth.MissingCitation);
+    }
+
+    [Fact]
+    public void EnrichPerson_ExactDateOnlyUncited_AlsoReportsMissingCitation()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 15 MAR 1802
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
+        var birth = Assert.Single(target.Enrichments!, e => e.Fact == "Birth");
+        Assert.True(birth.MissingPlace);
+        Assert.True(birth.MissingCitation);
+    }
+
+    [Fact]
+    public void EnrichPerson_InexactUncitedBirth_HasNoCitationPoint()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE ABT 1780
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
+        Assert.False(Assert.Single(target.Enrichments!, e => e.Fact == "Birth").MissingCitation);
+    }
+
+    [Fact]
+    public void EnrichPerson_CitationOnTheDateOrThePlace_CountsAsCited()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 15 MAR 1802
+            3 SOUR @S1@
+            2 PLAC Boston, Massachusetts
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
+        Assert.DoesNotContain(target.Enrichments!, e => e.Fact == "Birth");
+    }
+
+    [Fact]
+    public void EnrichPerson_PersonalNoteSource_DoesNotCiteTheFact()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 15 MAR 1802
+            2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
+            3 DATA
+            4 TEXT NOCITATION: TRUE|A family recollection.
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
+        Assert.True(Assert.Single(target.Enrichments!, e => e.Fact == "Birth").MissingCitation);
+    }
+
+    [Fact]
+    public void EnrichPerson_UncitedDeathSatisfiedByAnExactBurial_IsNotAGap()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 1 JAN 1850
+            2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
+            1 DEAT
+            2 DATE 8 FEB 1937
+            2 PLAC Boston, Massachusetts
+            1 BURI
+            2 DATE 8 FEB 1937
+            2 PLAC Boston, Massachusetts
+            """;
+        Assert.DoesNotContain(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
+    }
+
+    [Fact]
     public void EnrichPerson_ExactBurialWithNoDeath_ClosesTheDeathGap()
     {
         const string ged = """
@@ -367,6 +471,7 @@ public class GapDetectorTests
             1 BIRT
             2 DATE 1 JAN 1850
             2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
             1 BURI
             2 DATE 8 FEB 1937
             2 PLAC Boston, Massachusetts
@@ -385,6 +490,7 @@ public class GapDetectorTests
             1 BIRT
             2 DATE 1 JAN 1850
             2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
             1 DEAT
             2 DATE 1937
             1 BURI
@@ -405,6 +511,7 @@ public class GapDetectorTests
             1 BIRT
             2 DATE 1 JAN 1850
             2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
             1 BURI
             2 DATE 1937
             """;
@@ -482,7 +589,7 @@ public class GapDetectorTests
     }
 
     [Fact]
-    public void EnrichPerson_IsOneCardPerPersonWithOnePointPerMissingDateOrPlace()
+    public void EnrichPerson_IsOneCardPerPersonWithOnePointPerMissingDatePlaceOrCitation()
     {
         const string ged = """
             0 @I1@ INDI
@@ -502,8 +609,8 @@ public class GapDetectorTests
 
         var card = Assert.Single(targets, t => t.CardType == "Enrich person");
         Assert.Equal(["Birth", "Death", "Marriage"], card.Enrichments!.Select(e => e.Fact));
-        // birth: inexact date and no place (2); death: no place (1); marriage: no date (1)
-        Assert.Equal(4, card.NominalPoints);
+        // birth: inexact date and no place (2); death: no place, exact date uncited (2); marriage: no date, exact place uncited (2)
+        Assert.Equal(6, card.NominalPoints);
         Assert.True(card.Score >= card.NominalPoints, "the difficulty bonus is added once, never subtracted");
     }
 

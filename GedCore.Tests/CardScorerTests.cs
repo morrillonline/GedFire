@@ -97,6 +97,28 @@ public class CardScorerTests
     }
 
     [Fact]
+    public void AGenericEnrichCard_PricesANewCitationAsOneImprovement()
+    {
+        var card = new PointsCard("@I1@", "enrich-person", "enrich-fact", null, 1);
+        var changes = Facts(new FactWrite("@I1@", "BIRT", "1850", "Duluth", DateImproved: false, PlaceImproved: false, CitationImproved: true));
+
+        var closed = Assert.Single(CardScorer.Preview([card], changes).Closed);
+
+        Assert.Equal(1, closed.Points);
+        Assert.Equal("BIRT @I1@ (citation)", closed.Wrote);
+    }
+
+    [Fact]
+    public void ANamedDatePlaceGap_IsNotClosedByACitationAlone()
+    {
+        var changes = Facts(new FactWrite("@I1@", "BIRT", "1850", "Duluth", DateImproved: false, PlaceImproved: false, CitationImproved: true));
+
+        Assert.Single(CardScorer.Preview([Enrich("enrich-birth-date")], changes).NotClosed);
+        Assert.Single(CardScorer.Preview([Enrich("enrich-birth-place")], changes).NotClosed);
+        Assert.Single(CardScorer.Preview([Enrich("enrich-birth")], changes).Closed);
+    }
+
+    [Fact]
     public void AGenericEnrichCard_AddsItsDifficultyBonusOnceNotPerImprovement()
     {
         var card = new PointsCard("@I1@", "enrich-person", "enrich-fact", null, 1, Bonus: 4);

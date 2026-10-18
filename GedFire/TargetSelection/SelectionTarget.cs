@@ -33,7 +33,7 @@ public sealed record SelectionTarget
     /// <summary>New child only: the spouse family that has no children recorded.</summary>
     public SpouseFamilyEntry? SpouseFamily { get; init; }
 
-    /// <summary>Enrich person only: every fact with an inexact date or place, one entry per fact. The card's points are one per missing part across all of them.</summary>
+    /// <summary>Enrich person only: every fact with an inexact date or place, or an exact one lacking a citation, one entry per fact. The card's points are one per missing part across all of them.</summary>
     public IReadOnlyList<EnrichmentEntry>? Enrichments { get; init; }
 }
 
@@ -68,4 +68,7 @@ public sealed record EnrichmentEntry
     public string? CurrentPlace { get; init; }
     public required bool MissingDate { get; init; }
     public required bool MissingPlace { get; init; }
+
+    /// <summary>The fact has an exact date or place but no citation to support it.</summary>
+    public required bool MissingCitation { get; init; }
 }

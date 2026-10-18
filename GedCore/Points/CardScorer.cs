@@ -122,7 +122,7 @@ public static class CardScorer
     // A gapless card, or the queue gap "enrich-fact", names no single fact: its points are per improvement.
     static bool IsGenericGap(string gap) => gap is "" or "enrich" or "enrich-fact" or "enrich-facts" or "fact" or "facts";
 
-    // Closes on any improved fact written on the subject: the card's points for each improved date and place, plus its difficulty bonus once.
+    // Closes on any improved fact written on the subject: the card's points for each improved date, place and citation, plus its difficulty bonus once.
     static Closure CloseAnyFact(PointsCard card, TreeChanges changes)
     {
         var written = changes.Facts.Where(f => WrittenOnSubject(f, card.Xref, changes) && f.Improvements > 0).ToList();
@@ -134,7 +134,10 @@ public static class CardScorer
     }
 
     static string Improved(FactWrite fact) =>
-        string.Join(" and ", new[] { fact.DateImproved ? "date" : null, fact.PlaceImproved ? "place" : null }.OfType<string>());
+        string.Join(" and ", new[]
+        {
+            fact.DateImproved ? "date" : null, fact.PlaceImproved ? "place" : null, fact.CitationImproved ? "citation" : null,
+        }.OfType<string>());
 
     static bool WroteOnSubject(PointsCard card, TreeChanges changes) =>
         changes.Touched.Contains(card.Xref)
@@ -145,7 +148,7 @@ public static class CardScorer
         || (changes.Families.TryGetValue(fact.Record, out var family) && family.Partners.Contains(subject));
 
     static bool Carries(FactWrite fact, string? part) =>
-        part switch { "date" => fact.Date is not null, "place" => fact.Place is not null, _ => true };
+        part switch { "date" => fact.DateImproved, "place" => fact.PlaceImproved, _ => fact.Improvements > 0 };
 
     static string PartSuffix(string? part) => part is null ? "" : $" {part}";
 
