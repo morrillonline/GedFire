@@ -317,4 +317,66 @@ public class CardScorerTests
         Assert.Single(CardScorer.Preview([new PointsCard("@I1@", "new-spouse", null, "Edna Test", 5)], changes).Closed);
         Assert.Single(CardScorer.Preview([new PointsCard("@I1@", "new-spouse", null, "Edna Tast", 5)], changes).SubjectMismatch);
     }
+
+    // ---- one applied person closes at most one new-relative card ----
+
+    [Fact]
+    public void TwoNewChildCards_OneMintedChild_CloseOnlyOneAndNameTheCollision()
+    {
+        var changes = MintedChild("Ruth /Test/");
+        var cards = new[]
+        {
+            new PointsCard("@I1@", "new-child", null, null, 10),
+            new PointsCard("@I2@", "new-child", null, null, 10),
+        };
+
+        var preview = CardScorer.Preview(cards, changes);
+
+        var closed = Assert.Single(preview.Closed);
+        Assert.Equal("@I1@|new-child", closed.CardKey);
+        var open = Assert.Single(preview.NotClosed);
+        Assert.Equal("@I2@|new-child", open.CardKey);
+        Assert.Contains("@I9@", open.Reason);
+        Assert.Contains("@I1@|new-child", open.Reason);
+        Assert.Equal(10, preview.Total);
+    }
+
+    [Fact]
+    public void TwoNewChildCards_TheExactNameMatchClaimsTheMintedChild()
+    {
+        var changes = MintedChild("Ruth /Test/");
+        var cards = new[]
+        {
+            new PointsCard("@I1@", "new-child", null, "Someone Else", 10),
+            new PointsCard("@I2@", "new-child", null, "Ruth Test", 5),
+        };
+
+        var preview = CardScorer.Preview(cards, changes);
+
+        var closed = Assert.Single(preview.Closed);
+        Assert.Equal("@I2@|new-child", closed.CardKey);
+        var open = Assert.Single(preview.NotClosed);
+        Assert.Equal("@I1@|new-child", open.CardKey);
+        Assert.Contains("@I9@", open.Reason);
+    }
+
+    [Fact]
+    public void TwoNewChildCards_TwoMintedChildren_EachCloseOnTheirOwnChild()
+    {
+        var changes = new TreeChanges([],
+            new Dictionary<string, NameChange> { ["@I8@"] = new(null, "Ann /Test/"), ["@I9@"] = new(null, "Ruth /Test/") },
+            new Dictionary<string, FamilyChange> { ["@F1@"] = new(["@I1@", "@I2@"], ["@I8@", "@I9@"], [], ["@I8@", "@I9@"]) });
+        var cards = new[]
+        {
+            new PointsCard("@I1@", "new-child", null, "Ruth Test", 10),
+            new PointsCard("@I2@", "new-child", null, "Ann Test", 5),
+        };
+
+        var preview = CardScorer.Preview(cards, changes);
+
+        Assert.Equal(2, preview.Closed.Count);
+        Assert.Equal(15, preview.Total);
+        Assert.Contains("@I9@", preview.Closed[0].Wrote);
+        Assert.Contains("@I8@", preview.Closed[1].Wrote);
+    }
 }

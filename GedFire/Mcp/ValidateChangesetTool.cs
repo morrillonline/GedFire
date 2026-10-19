@@ -29,8 +29,8 @@ public sealed class ValidateChangesetTool
         "every violation of it (banned phrases, a low-graded fact with no verification note, a death place " +
         "with no death evidence) is reported as an error here, so it surfaces at the dry run. Pass \"cards\" to " +
         "get pointsPreview: which research cards the changeset closes by what it writes to the tree (cards may be " +
-        "given inline or by cardsPath, a file holding {\"cards\": [...]}). Pass reportPath to also write the result " +
-        "JSON, exactly as returned, to a file a script can read.";
+        "given inline or by cardsPath, a file holding {\"cards\": [...]}). Pass reportPath to write the full result " +
+        "JSON to a file a script can read; the response is then only a digest of its counts, unless verbose is true.";
 
     public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithCardsJson;
     public static readonly string OutputSchemaJson = ChangesetToolSchemas.OutputSchemaWithPreviewJson;
@@ -54,9 +54,12 @@ public sealed class ValidateChangesetTool
     // The delegate McpServerTool.Create binds arguments to and invokes.
     Task<CallToolResult> InvokeAsync(
         string changesetPath, string items, JsonElement? cards = null, JsonElement? cardsPath = null,
-        JsonElement? reportPath = null, JsonElement? overwrite = null, CancellationToken cancellationToken = default)
+        JsonElement? reportPath = null, JsonElement? overwrite = null, JsonElement? verbose = null,
+        CancellationToken cancellationToken = default)
         => HandleAsync(
-            new ValidateChangesetArguments(changesetPath, items, cards ?? default, cardsPath ?? default, reportPath ?? default, overwrite ?? default),
+            new ValidateChangesetArguments(
+                changesetPath, items, cards ?? default, cardsPath ?? default, reportPath ?? default, overwrite ?? default,
+                verbose ?? default),
             cancellationToken);
 
     /// <summary>
@@ -85,14 +88,15 @@ public sealed class ValidateChangesetTool
             return CallToolResults.Error(error!);
         if (!PointsCardReader.TryRead(cards, out var cardList, out error))
             return CallToolResults.Error(error!);
-        if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, out var report, out error))
+        if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, arguments.Verbose, out var report, out error))
             return CallToolResults.Error(error!);
 
         return ChangesetToolSupport.Execute(
-            _absoluteGedcomPath, arguments.ChangesetPath, arguments.Items, dryRun: true, cancellationToken, _policy, cardList, report);
+            _absoluteGedcomPath, arguments.ChangesetPath, arguments.Items, dryRun: true, cancellationToken, _policy, cardList,
+            report);
     }
 }
 
 public sealed record ValidateChangesetArguments(
     string ChangesetPath, string Items, JsonElement Cards = default, JsonElement CardsPath = default,
-    JsonElement ReportPath = default, JsonElement Overwrite = default);
+    JsonElement ReportPath = default, JsonElement Overwrite = default, JsonElement Verbose = default);

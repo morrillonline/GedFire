@@ -126,4 +126,64 @@ public class PossibleDuplicateFinderTests
 
         Assert.Single(pairs);
     }
+
+    // ---- GEN301 precision: birth decades and given-name tokens temper name similarity ----
+
+    [Fact]
+    public void Find_SameNameBornMoreThanAGenerationApart_IsNotPaired()
+    {
+        // A father/son namesake pair: identical names, births 35 years apart.
+        Assert.Empty(PossibleDuplicateFinder.Find(
+            [Person("@I1@", "William", "Ashworth", birthYear: 1850), Person("@I2@", "William", "Ashworth", birthYear: 1885)]));
+    }
+
+    [Fact]
+    public void Find_SameNameBornThreeYearsApart_StillWarns()
+    {
+        Assert.Single(PossibleDuplicateFinder.Find(
+            [Person("@I1@", "William", "Ashworth", birthYear: 1850), Person("@I2@", "William", "Ashworth", birthYear: 1853)]));
+    }
+
+    [Fact]
+    public void Find_BirthsExactlyAtTheGapLimit_StillCompare()
+    {
+        Assert.Single(PossibleDuplicateFinder.Find(
+            [Person("@I1@", "William", "Ashworth", birthYear: 1850),
+             Person("@I2@", "William", "Ashworth", birthYear: 1850 + PossibleDuplicateFinder.MaxVitalYearGap)]));
+    }
+
+    static PersonMatchCandidate Died(string id, string given, int deathYear, int? birthYear = null) => new(
+        id, $"{given} Ashworth", PersonNameNormalizer.Normalize("Ashworth"), PersonNameNormalizer.Normalize(given), true,
+        birthYear is null ? null : new PersonMatchEvent(birthYear, null),
+        new PersonMatchEvent(deathYear, PersonNameNormalizer.Normalize("Missouri")),
+        new PersonMatchParents(PersonNameNormalizer.Normalize("Moses Ashworth"), null), []);
+
+    [Fact]
+    public void Find_DeathsMoreThanAGenerationApart_AreNotPaired()
+    {
+        // Neither carries a birth, so only the recorded deaths can separate them.
+        Assert.Empty(PossibleDuplicateFinder.Find([Died("@I1@", "Barney", 1869), Died("@I2@", "Barnes", 1815)]));
+    }
+
+    [Fact]
+    public void Find_DeathsCloseTogether_StillCompare()
+    {
+        Assert.Single(PossibleDuplicateFinder.Find([Died("@I1@", "Barney", 1869), Died("@I2@", "Barnes", 1866)]));
+    }
+
+    [Fact]
+    public void Find_GivenNamesSharingNoTokenOrInitial_AreNotPaired()
+    {
+        // Ella and Bella score high on letters alone yet share no token, initial or documented nickname.
+        Assert.Empty(PossibleDuplicateFinder.Find(
+            [Person("@I1@", "Ella", "Ashworth", isMale: false), Person("@I2@", "Bella", "Ashworth", isMale: false)]));
+    }
+
+    [Fact]
+    public void Find_GivenNamesSharingABareInitial_AreStillComparable()
+    {
+        // "Ella M" carries the bare initial M that "Mabel Ella"'s given names share.
+        Assert.Single(PossibleDuplicateFinder.Find(
+            [Person("@I1@", "Ella M", "Ashworth", isMale: false), Person("@I2@", "Ella Mabel", "Ashworth", isMale: false)]));
+    }
 }

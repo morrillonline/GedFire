@@ -8,6 +8,9 @@ public sealed record PossibleDuplicatePair(string FirstId, string SecondId, doub
 /// birth, parents and spouse as hints, against the others sharing their
 /// surname, and the best match at or above the score floor forms a pair.
 /// A person whose name has an Unknown part is compared only when a parent or spouse is recorded.
+/// A pair whose recorded births (or recorded deaths) sit more than a generation
+/// apart, or whose given names share nothing at all, is never reported, however
+/// alike the surnames.
 /// </summary>
 public static class PossibleDuplicateFinder
 {
@@ -16,6 +19,9 @@ public static class PossibleDuplicateFinder
 
     // With a part of the name Unknown, the score rests on less name evidence, so it must clear a higher bar.
     public const double WildcardScoreFloor = 85.0;
+
+    // Two recorded years of one vital (both births, or both deaths) more than two decades apart belong to different people, so the pair is suppressed whatever the names score.
+    public const int MaxVitalYearGap = 20;
 
     static readonly Lazy<NicknameDirectory> Nicknames = new(NicknameDirectory.LoadEmbedded);
     static readonly PersonMatchCore MatchCore = new();
@@ -50,7 +56,7 @@ public static class PossibleDuplicateFinder
     // Candidates still carries a real top score.
     static PersonMatchScore? BestMatch(PersonMatchCandidate self, IReadOnlyList<PersonMatchCandidate> pool)
     {
-        var others = pool.Where(c => c.Id != self.Id).ToList();
+        var others = pool.Where(c => c.Id != self.Id && PlausiblySamePerson(self, c)).ToList();
         if (others.Count == 0) return null;
 
         var outcome = MatchCore.Match(
@@ -60,6 +66,29 @@ public static class PossibleDuplicateFinder
         var match = outcome.Matches[0];
         double floor = match.Wildcard ? WildcardScoreFloor : ScoreFloor;
         return match.FinalScore >= floor ? match : null;
+    }
+
+    // The checks name similarity cannot see: two recorded births (or two recorded deaths) a
+    // generation apart are two people, and given names sharing no token, initial or documented
+    // nickname carry no given-name evidence at all, whatever their letters coincidentally score.
+    static bool PlausiblySamePerson(PersonMatchCandidate self, PersonMatchCandidate other) =>
+        YearsCompatible(self.Birth?.Year, other.Birth?.Year)
+        && YearsCompatible(self.Death?.Year, other.Death?.Year)
+        && GivenNamesShareSomething(self, other);
+
+    static bool YearsCompatible(int? mine, int? theirs) =>
+        mine is not int a || theirs is not int b || Math.Abs(a - b) <= MaxVitalYearGap;
+
+    // A given name with an Unknown part carries no tokens to compare, so the check does not apply.
+    static bool GivenNamesShareSomething(PersonMatchCandidate self, PersonMatchCandidate other)
+    {
+        if (UnknownName.IsPlaceholder(self.NormalizedGiven) || UnknownName.IsPlaceholder(other.NormalizedGiven))
+            return true;
+        var mine = self.NormalizedGiven.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var theirs = other.NormalizedGiven.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (mine.Length == 0 || theirs.Length == 0) return true;
+        return mine.Any(m => theirs.Any(t => m == t || m[0] == t[0]))
+            || Nicknames.Value.AreEquivalent(mine[0], theirs[0], self.IsMale);
     }
 
     static bool HasUnknownPart(PersonMatchCandidate c) =>

@@ -137,6 +137,9 @@ in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error
   three candidates plus `possibleDuplicateCount`; duplicates do not prevent a draw.
 - An `Unknown` name part needs an agreeing parent or spouse name for duplicate
   pairing.
+- GEN301 never pairs two people whose recorded births (or recorded deaths) sit
+  more than twenty years apart, or whose given names share no token, initial,
+  or documented nickname.
 
 To price an enrich-person card during validation, use `gap: "enrich-fact"`,
 `points: 1`, and `bonus` equal to `score - nominalPoints`.
@@ -343,6 +346,11 @@ subject. Each improved date, place, or newly added citation earns `points`;
   match `name` exactly, including case and spelling.
 - `total`: points from closed cards.
 
+Card-to-write matching is one-to-one: an applied person closes at most one
+new-relative card. An exact `name` match claims the minted person first, the
+rest claim by anchor xref, and a card left only with already-claimed people
+appears in `notClosed` with the collision named.
+
 Points measure changes, not evidentiary reliability.
 
 ## Changeset application
@@ -371,6 +379,9 @@ references resolve to the same allocated xref. Library callers receive
 - A citation page belongs to the citation, not the source. A matching page
   updates; another page adds a citation. With only one citation for that source
   on a fact, the update corrects its page. `deleteCitation` can select a page.
+- Relationship provenance never corrects a page: a child, spouse, or parent
+  link citing a page the family does not already cite adds a citation beside
+  the existing ones, so a link can never overwrite another record's provenance.
 - Omit `fact` to edit a family-level citation with `createOrUpdateCitation`
   or `deleteCitation`. Use exact `note` text to address note citations.
 - Validation rejects internal ids in stored prose: note text, citation pages
@@ -384,9 +395,13 @@ Calling apply does not prove that anyone approved the selected items; see
 ## Result reports
 
 `draft_changeset`, `validate_changeset`, and `apply_changeset` accept
-`reportPath`. It saves the returned result as UTF-8 indented JSON, including
-`reportWrittenTo`. Scripts can read that file instead of having the model
-retype results.
+`reportPath`. It saves the full result as UTF-8 indented JSON, including
+`reportWrittenTo`, and quiets the tool response to a digest: a draft reports
+each item's number, target, and op count plus its errors and decisions counted
+by kind; a validation or apply reports the selected items, pass/fail, error and
+log counts, deltas, the minted-xref count, and — with cards — the points
+preview total. Scripts read the file for the full result; `verbose: true`
+returns it inline as well.
 
 The parent folder must exist. Existing files require `overwrite: true`.
 A draft's `outPath` and `reportPath` must differ. GedFire checks these paths
