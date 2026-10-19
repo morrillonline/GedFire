@@ -909,7 +909,7 @@ public class McpServerIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task ToolsCall_ValidateChangeset_WithReportPath_WritesTheResultItReturned()
+    public async Task ToolsCall_ValidateChangeset_WithReportPath_ReturnsADigestAndWritesTheFullResult()
     {
         string gedPath = WriteGed();
         string changesetPath = WriteChangeset(AddNoteToI1Changeset);
@@ -926,7 +926,11 @@ public class McpServerIntegrationTests : IDisposable
         var structured = response.GetProperty("result").GetProperty("structuredContent");
         Assert.True(structured.GetProperty("success").GetBoolean());
         Assert.Equal(reportPath, structured.GetProperty("reportWrittenTo").GetString());
-        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(File.ReadAllText(reportPath)), JsonNode.Parse(structured.GetRawText())));
+        Assert.False(structured.TryGetProperty("log", out _));
+        var report = JsonNode.Parse(File.ReadAllText(reportPath))!;
+        Assert.True(report["success"]!.GetValue<bool>());
+        Assert.Equal(report["log"]!.AsArray().Count, structured.GetProperty("logCount").GetInt32());
+        Assert.Equal(reportPath, report["reportWrittenTo"]!.GetValue<string>());
     }
 
     [Fact]
@@ -948,7 +952,10 @@ public class McpServerIntegrationTests : IDisposable
         Assert.True(structured.GetProperty("success").GetBoolean());
         Assert.Contains("A note.", File.ReadAllText(gedPath));
         Assert.Equal(reportPath, structured.GetProperty("reportWrittenTo").GetString());
-        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(File.ReadAllText(reportPath)), JsonNode.Parse(structured.GetRawText())));
+        Assert.Equal(0, structured.GetProperty("errorCount").GetInt32());
+        var report = JsonNode.Parse(File.ReadAllText(reportPath))!;
+        Assert.True(report["success"]!.GetValue<bool>());
+        Assert.NotNull(report["log"]);
     }
 
     [Fact]
@@ -976,7 +983,7 @@ public class McpServerIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task ToolsCall_DraftChangeset_WithReportPath_WritesTheResultItReturned()
+    public async Task ToolsCall_DraftChangeset_WithReportPath_ReturnsADigestAndWritesTheFullResult()
     {
         string gedPath = WriteGed();
         string reportPath = Path.Combine(_dir, "draft-report.json");
@@ -1002,7 +1009,13 @@ public class McpServerIntegrationTests : IDisposable
         var structured = response.GetProperty("result").GetProperty("structuredContent");
         Assert.True(structured.GetProperty("success").GetBoolean(), structured.GetRawText());
         Assert.Equal(reportPath, structured.GetProperty("reportWrittenTo").GetString());
-        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(File.ReadAllText(reportPath)), JsonNode.Parse(structured.GetRawText())));
+        Assert.False(structured.TryGetProperty("changeset", out _));
+        var item = Assert.Single(structured.GetProperty("items").EnumerateArray());
+        var report = JsonNode.Parse(File.ReadAllText(reportPath))!;
+        Assert.NotNull(report["changeset"]);
+        Assert.Equal(
+            Assert.Single(report["changeset"]!["items"]!.AsArray())!["ops"]!.AsArray().Count,
+            item.GetProperty("ops").GetInt32());
     }
 
     [Fact]

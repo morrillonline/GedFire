@@ -46,7 +46,7 @@ static class ChangesetToolSupport
 
         var violations = policy?.Check(request!.Json, request.ItemNumbers.ToHashSet()) ?? [];
         if (violations.Count > 0 && !dryRun)
-            return Respond(new ChangesetResult(false, [], [.. violations], [], [], []), report);
+            return Respond(new ChangesetResult(false, [], [.. violations], [], [], []), request!.ItemNumbers, report);
 
         ApplyResult result;
         try
@@ -61,18 +61,20 @@ static class ChangesetToolSupport
 
         var mapped = Map(result, violations);
         if (cards is not null) mapped = mapped with { PointsPreview = CardScorer.Preview(cards, result.Changes) };
-        return Respond(mapped, report);
+        return Respond(mapped, request.ItemNumbers, report);
     }
 
-    // The result is also written to the report file when one was asked for; a write that fails is noted in the log and changes nothing else.
-    static CallToolResult Respond(ChangesetResult result, ReportRequest? report)
+    // The result is also written to the report file when one was asked for; a write that fails is noted in the log and
+    // changes nothing else. A written report quiets the response to a digest of counts, unless verbose asks for both.
+    static CallToolResult Respond(ChangesetResult result, IReadOnlyList<int> items, ReportRequest? report)
     {
         if (report is not null)
         {
             var reported = result with { ReportWrittenTo = report.FullPath };
-            result = ReportFile.TryWrite(reported, report, out string? error)
-                ? reported
-                : result with { Log = [.. result.Log, $"report not written: {error}"] };
+            if (ReportFile.TryWrite(reported, report, out string? error))
+                return CallToolResults.Success(
+                    report.Verbose ? reported : ChangesetRunDigest.Of(reported, items), CallToolResults.JsonOptions);
+            result = result with { Log = [.. result.Log, $"report not written: {error}"] };
         }
         return CallToolResults.Success(result, CallToolResults.JsonOptions);
     }

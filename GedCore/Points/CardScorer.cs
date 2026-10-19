@@ -7,8 +7,9 @@ namespace GedCore.Points;
 /// Decides which cards a changeset closes by what it wrote to the tree. An enrich
 /// card closes only when the fact it names was written on its subject (a card naming no
 /// single fact closes on any improved fact, at its points per improvement); a new-parent,
-/// new-spouse or new-child card closes only when the family gained that relative; a
-/// changeset that renames a card's subject closes nothing for it.
+/// new-spouse or new-child card closes only when the family gained that relative, allocated
+/// one-to-one by <see cref="NewRelativeCardAllocator"/>; a changeset that renames a card's
+/// subject closes nothing for it.
 /// </summary>
 public static class CardScorer
 {
@@ -33,20 +34,23 @@ public static class CardScorer
 
     public static PointsPreview Preview(IEnumerable<PointsCard> cards, TreeChanges changes)
     {
+        var list = cards.ToList();
+        var relatives = NewRelativeCardAllocator.Allocate(list, changes);
         var closed = new List<ClosedCard>();
         var notClosed = new List<UnclosedCard>();
         var mismatches = new List<SubjectMismatch>();
 
-        foreach (var card in cards)
+        for (int index = 0; index < list.Count; index++)
         {
-            if (Normalize(card.Class) == "enrich-person" && !NamesTheSubject(card) && RenamedAway(card, changes) is { } appliedName)
+            var card = list[index];
+            if (CardText.Normalize(card.Class) == "enrich-person" && !NamesTheSubject(card) && RenamedAway(card, changes) is { } appliedName)
             {
                 mismatches.Add(new SubjectMismatch(card.Key, card.Name!, appliedName));
                 notClosed.Add(new UnclosedCard(card.Key, $"the changeset renames the subject to \"{appliedName}\""));
                 continue;
             }
 
-            var closure = Close(card, changes);
+            var closure = relatives.TryGetValue(index, out var allocated) ? ToClosure(allocated) : Close(card, changes);
             if (closure.Wrote is not null && MintedOtherName(card, changes, closure.Added) is { } minted)
             {
                 mismatches.Add(new SubjectMismatch(card.Key, card.Name!, minted));
@@ -62,11 +66,9 @@ public static class CardScorer
         card.Name is not null
         && changes.Names.TryGetValue(card.Xref, out var change)
         && change is { Before: not null, After: not null }
-        && !string.Equals(Fold(change.After), Fold(card.Name), StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(CardText.Fold(change.After), CardText.Fold(card.Name), StringComparison.OrdinalIgnoreCase)
             ? change.After
             : null;
-
-    static string Fold(string name) => string.Join(' ', name.Replace("/", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     // A new-relative card's name is the person to mint: a person the changeset creates under it must carry that name exactly.
     static string? MintedOtherName(PointsCard card, TreeChanges changes, IReadOnlyList<string> added)
@@ -76,26 +78,24 @@ public static class CardScorer
             .Where(x => changes.Names.TryGetValue(x, out var n) && n.Before is null && n.After is not null)
             .Select(x => changes.Names[x].After!)
             .ToList();
-        return minted.Count > 0 && !minted.Any(n => Fold(n) == Fold(card.Name)) ? minted[0] : null;
+        return minted.Count > 0 && !minted.Any(n => CardText.Fold(n) == CardText.Fold(card.Name)) ? minted[0] : null;
     }
 
     static Closure Close(PointsCard card, TreeChanges changes) =>
-        Normalize(card.Class) switch
+        CardText.Normalize(card.Class) switch
         {
             "enrich-person" => CloseEnrich(card, changes),
-            "new-child" => CloseNewChild(card, changes),
-            "new-parent" => CloseNewParent(card, changes),
-            "new-spouse" => CloseNewSpouse(card, changes),
             _ => Closure.Open($"unknown card class \"{card.Class}\""),
         };
 
-    static string Normalize(string text) => text.Trim().ToLowerInvariant().Replace(' ', '-').Replace('_', '-');
+    static Closure ToClosure(NewRelativeOutcome outcome) =>
+        outcome.Wrote is not null ? Closure.Closes(outcome.Wrote, outcome.Added) : Closure.Open(outcome.Reason!);
 
-    static bool NamesTheSubject(PointsCard card) => card.Gap is not null && ReadTag(Normalize(card.Gap)) == "NAME";
+    static bool NamesTheSubject(PointsCard card) => card.Gap is not null && ReadTag(CardText.Normalize(card.Gap)) == "NAME";
 
     static Closure CloseEnrich(PointsCard card, TreeChanges changes)
     {
-        string gap = Normalize(card.Gap ?? "");
+        string gap = CardText.Normalize(card.Gap ?? "");
         if (gap.Length > 0 && NonFactGap.IsMatch(gap))
             return WroteOnSubject(card, changes) ? Closure.Closes($"touched {card.Xref}") : Closure.Open("the changeset does not touch the subject");
 
@@ -156,33 +156,9 @@ public static class CardScorer
 
     static bool TryReadGap(string? gap, out string tag, out string? part)
     {
-        string normalized = Normalize(gap ?? "");
+        string normalized = CardText.Normalize(gap ?? "");
         tag = ReadTag(normalized) ?? "";
         part = normalized.Split('-', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(s => s is "date" or "place");
         return tag.Length > 0;
-    }
-
-    static Closure CloseNewChild(PointsCard card, TreeChanges changes)
-    {
-        foreach (var (xref, family) in changes.Families)
-            if (family.Partners.Contains(card.Xref) && family.AddedChildren.Count > 0)
-                return Closure.Closes($"CHIL {family.AddedChildren[0]} in {xref}", family.AddedChildren);
-        return Closure.Open("no child added to a family the subject is a partner in");
-    }
-
-    static Closure CloseNewParent(PointsCard card, TreeChanges changes)
-    {
-        foreach (var (xref, family) in changes.Families)
-            if (family.Children.Contains(card.Xref) && family.AddedPartners.Count > 0)
-                return Closure.Closes($"parent {family.AddedPartners[0]} of {card.Xref} in {xref}", family.AddedPartners);
-        return Closure.Open("no parent added to a family the subject is a child in");
-    }
-
-    static Closure CloseNewSpouse(PointsCard card, TreeChanges changes)
-    {
-        foreach (var (xref, family) in changes.Families)
-            if (family.Partners.Contains(card.Xref) && family.Partners.Count >= 2 && family.AddedPartners.Count > 0)
-                return Closure.Closes($"spouse in {xref}", [.. family.AddedPartners.Where(p => p != card.Xref)]);
-        return Closure.Open("no spouse added to a family the subject is a partner in");
     }
 }

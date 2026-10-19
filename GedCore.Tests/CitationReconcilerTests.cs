@@ -222,4 +222,90 @@ public class CitationReconcilerTests : ApplyTestBase
 
         Assert.Empty(BirthCitations());
     }
+
+    // ---- relationship provenance: a link op never rewrites an existing FAM citation; a differing page is added beside it ----
+
+    List<string> LinesWithFamilyCitation(string family, string page, string text)
+    {
+        var lines = BaseLines.ToList();
+        lines.InsertRange(lines.IndexOf($"0 {family} FAM") + 1,
+            ["1 SOUR @S00001@", $"2 PAGE {page}", "2 DATA", $"3 TEXT {text}"]);
+        return lines;
+    }
+
+    List<GedRecord> FamilyCitations(string family) => [.. ReadDoc().ByXref[family].ChildrenByTag("SOUR")];
+
+    static string? DataText(GedRecord citation) => citation.FirstChild("DATA")?.FirstChild("TEXT")?.Value;
+
+    [Fact]
+    public void ChildLink_CitingADifferentPageOfTheFamilysSource_AddsASecondCitation()
+    {
+        WriteFile(LinesWithFamilyCitation("@F00002@", "p89 n25", "Edward's register entry"));
+
+        var result = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateChild", "family": "@F00002@",
+                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M" },
+                "citation": { "source": "@S00001@", "page": "p91 n12", "dataText": "Junior's register entry", "quay": 2 } } ] } ] }
+            """);
+
+        var citations = FamilyCitations("@F00002@");
+        Assert.Equal(["p89 n25", "p91 n12"], citations.Select(Page));
+        Assert.Equal("Edward's register entry", DataText(citations[0]));
+        Assert.Equal("Junior's register entry", DataText(citations[1]));
+        Assert.Contains(result.Log, l => l.Contains("cited @S00001@ (p91 n12)"));
+        Assert.DoesNotContain(result.Log, l => l.Contains("updated citation"));
+    }
+
+    [Fact]
+    public void SpouseLink_CitingADifferentPageOfTheFamilysSource_AddsASecondCitation()
+    {
+        WriteFile(LinesWithFamilyCitation("@F00002@", "p89 n25", "Edward's register entry"));
+
+        var result = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00004@", "family": "@F00002@",
+                "citations": [ { "source": "@S00001@", "page": "p91 n12", "dataText": "the couple's register entry", "quay": 2 } ] } ] } ] }
+            """);
+
+        var citations = FamilyCitations("@F00002@");
+        Assert.Equal(["p89 n25", "p91 n12"], citations.Select(Page));
+        Assert.Equal("Edward's register entry", DataText(citations[0]));
+        Assert.DoesNotContain(result.Log, l => l.Contains("updated citation"));
+    }
+
+    [Fact]
+    public void ParentLink_CitingADifferentPageOfTheFamilysSource_AddsASecondCitation()
+    {
+        WriteFile(LinesWithFamilyCitation("@F00001@", "p89 n25", "Edward's register entry"));
+
+        var result = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateParent", "person": "@I00001@", "role": "father", "parent": "@I00002@",
+                "citation": { "source": "@S00001@", "page": "p91 n12", "dataText": "son of Harvey", "quay": 2 } } ] } ] }
+            """);
+
+        var citations = FamilyCitations("@F00001@");
+        Assert.Equal(["p89 n25", "p91 n12"], citations.Select(Page));
+        Assert.Equal("Edward's register entry", DataText(citations[0]));
+        Assert.DoesNotContain(result.Log, l => l.Contains("updated citation"));
+    }
+
+    [Fact]
+    public void ChildLink_RestatingTheSamePage_UpdatesThatCitationInPlace()
+    {
+        WriteFile(LinesWithFamilyCitation("@F00002@", "p89 n25", "Edward's register entry"));
+
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateChild", "family": "@F00002@",
+                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M" },
+                "citation": { "source": "@S00001@", "page": "p89 n25", "quay": 2 } } ] } ] }
+            """);
+
+        var citation = Assert.Single(FamilyCitations("@F00002@"));
+        Assert.Equal("p89 n25", Page(citation));
+        Assert.Equal("Edward's register entry", DataText(citation));
+        Assert.Equal("2", citation.FirstChild("QUAY")!.Value);
+    }
 }

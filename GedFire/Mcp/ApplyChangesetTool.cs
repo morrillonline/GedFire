@@ -26,8 +26,8 @@ public sealed class ApplyChangesetTool
         "deltas, no newly created source left uncited), and only then write the file -- there is no window " +
         "where a bad state exists on disk. Call validate_changeset first with the same arguments to preview " +
         "without writing. Refuses to run at all when this server was started with --read-only, and refuses a " +
-        "changeset that violates the server's policy file. Pass reportPath to also write the result JSON, exactly " +
-        "as returned, to a file a script can read.";
+        "changeset that violates the server's policy file. Pass reportPath to write the full result JSON to a " +
+        "file a script can read; the response is then only a digest of its counts, unless verbose is true.";
 
     public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithReportJson;
     public const string OutputSchemaJson = ChangesetToolSchemas.OutputSchemaJson;
@@ -53,8 +53,8 @@ public sealed class ApplyChangesetTool
     // The delegate McpServerTool.Create binds arguments to and invokes.
     Task<CallToolResult> InvokeAsync(
         string changesetPath, string items, JsonElement? reportPath = null, JsonElement? overwrite = null,
-        CancellationToken cancellationToken = default)
-        => HandleAsync(changesetPath, items, reportPath ?? default, overwrite ?? default, cancellationToken);
+        JsonElement? verbose = null, CancellationToken cancellationToken = default)
+        => HandleAsync(changesetPath, items, reportPath ?? default, overwrite ?? default, verbose ?? default, cancellationToken);
 
     /// <summary>
     /// The tool's actual behavior, reachable directly without any MCP
@@ -64,20 +64,27 @@ public sealed class ApplyChangesetTool
     /// pattern as the other document tools.
     /// </summary>
     public Task<CallToolResult> HandleAsync(string changesetPath, string items, CancellationToken cancellationToken) =>
-        HandleAsync(changesetPath, items, default, default, cancellationToken);
+        HandleAsync(changesetPath, items, default, default, default, cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         string changesetPath, string items, JsonElement reportPath, JsonElement overwrite, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => Task.FromResult(Execute(changesetPath, items, reportPath, overwrite, ct)), cancellationToken);
+        HandleAsync(changesetPath, items, reportPath, overwrite, default, cancellationToken);
 
-    CallToolResult Execute(string changesetPath, string items, JsonElement reportPath, JsonElement overwrite, CancellationToken cancellationToken)
+    public Task<CallToolResult> HandleAsync(
+        string changesetPath, string items, JsonElement reportPath, JsonElement overwrite, JsonElement verbose,
+        CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => Task.FromResult(Execute(changesetPath, items, reportPath, overwrite, verbose, ct)), cancellationToken);
+
+    CallToolResult Execute(
+        string changesetPath, string items, JsonElement reportPath, JsonElement overwrite, JsonElement verbose,
+        CancellationToken cancellationToken)
     {
         if (_readOnly)
             return CallToolResults.Error(
                 "This server was started with --read-only: apply_changeset is disabled. Restart `gedfire mcp` " +
                 "without --read-only to enable it, or use validate_changeset to preview the same changeset.");
 
-        if (!ReportFile.TryRead(reportPath, overwrite, out var report, out string? error))
+        if (!ReportFile.TryRead(reportPath, overwrite, verbose, out var report, out string? error))
             return CallToolResults.Error(error!);
 
         return ChangesetToolSupport.Execute(

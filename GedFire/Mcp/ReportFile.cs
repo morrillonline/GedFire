@@ -5,13 +5,15 @@ namespace GedFire.Mcp;
 // ---------------------------------------------------------------------------
 // The optional reportPath of the changeset tools: the structured result the
 // tool returns is also written, as JSON, to a file the caller names, so a
-// script can read the exact result instead of having it retyped. The path is
-// checked before any work is done, so a bad one fails cleanly up front. The
-// report never changes the outcome of the tool: should the write fail after
-// the work is done, the failure is noted in the result's log.
+// script can read the exact result instead of having it retyped; the response
+// is then only a digest of that result, unless verbose asks for both. The
+// path is checked before any work is done, so a bad one fails cleanly up
+// front. The report never changes the outcome of the tool: should the write
+// fail after the work is done, the failure is noted in the result's log.
 // ---------------------------------------------------------------------------
 
-public sealed record ReportRequest(string FullPath, bool Replace);
+/// <summary>A validated reportPath request: where to write, whether to replace, and whether the response stays verbose.</summary>
+public sealed record ReportRequest(string FullPath, bool Replace, bool Verbose = false);
 
 public static class ReportFile
 {
@@ -19,13 +21,15 @@ public static class ReportFile
 
     /// <summary>
     /// True with <paramref name="request"/> null when no report was asked for; false with an error naming the
-    /// argument when the path cannot be used or already exists and <paramref name="overwrite"/> is not true.
+    /// argument when a value cannot be read, or the path cannot be used or already exists and overwrite is not true.
     /// </summary>
-    public static bool TryRead(JsonElement reportPath, JsonElement overwrite, out ReportRequest? request, out string? error)
+    public static bool TryRead(
+        JsonElement reportPath, JsonElement overwrite, JsonElement verbose, out ReportRequest? request, out string? error)
     {
         request = null;
         if (!ToolArguments.TryReadOptionalString(reportPath, "reportPath", out string? path, out error)) return false;
         if (!ToolArguments.TryReadOptionalBool(overwrite, "overwrite", out bool replace, out error)) return false;
+        if (!ToolArguments.TryReadOptionalBool(verbose, "verbose", out bool full, out error)) return false;
         if (path is null) return true;
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -45,7 +49,7 @@ public static class ReportFile
             return false;
         }
 
-        request = new ReportRequest(fullPath, replace);
+        request = new ReportRequest(fullPath, replace, full);
         return true;
     }
 

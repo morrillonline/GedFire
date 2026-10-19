@@ -1,6 +1,14 @@
 namespace GedCore.Apply;
 
 /// <summary>
+/// How a stated citation that matches no existing page is treated: an explicit
+/// citation edit corrects a wrong page in place, while relationship provenance
+/// never rewrites an existing citation — it is added beside it, so linking a
+/// relative to an already-cited family can never destroy provenance.
+/// </summary>
+internal enum CitationUpsertMode { CorrectPageInPlace, AddBeside }
+
+/// <summary>
 /// Brings the citations on one structure (a fact, a note, or a FAM) in line
 /// with the citations a request states, one source at a time. The request says
 /// what each citation should read; this works out which existing citation each
@@ -11,22 +19,27 @@ namespace GedCore.Apply;
 ///   1. a stated citation whose page equals an existing citation's page (or
 ///      that names no page, against an existing citation with none) updates
 ///      that citation's other fields;
-///   2. what is left over is paired in order and updated in place only when
-///      the counts are equal, which is how a wrong page is corrected;
-///   3. with nothing left to pair against, each leftover becomes a new citation;
-///   4. any other combination is ambiguous and is rejected.
+///   2. in <see cref="CitationUpsertMode.CorrectPageInPlace"/>, what is left
+///      over is paired in order and updated in place only when the counts are
+///      equal, which is how a wrong page is corrected; in
+///      <see cref="CitationUpsertMode.AddBeside"/> this step never runs;
+///   3. each remaining leftover becomes a new citation;
+///   4. in <see cref="CitationUpsertMode.CorrectPageInPlace"/>, a leftover that
+///      could pair with several existing citations is ambiguous and is rejected.
 /// Nothing is ever removed here; removal is deleteCitation's job.
 /// </summary>
 internal static class CitationReconciler
 {
-    public static List<string> Upsert(ApplyState state, GedRecord structure, IReadOnlyList<Citation> citations)
+    public static List<string> Upsert(
+        ApplyState state, GedRecord structure, IReadOnlyList<Citation> citations,
+        CitationUpsertMode mode = CitationUpsertMode.CorrectPageInPlace)
     {
         var changes = new List<string>();
         foreach (var group in citations.GroupBy(c => c.Source))
         {
             var swapped = group.Select(c => c.SwappedFrom).OfType<string>().ToHashSet(StringComparer.Ordinal);
             var existing = Resolve.CitationsOnStructure(structure, group.Key, swapped);
-            foreach (var (node, citation) in Plan(group.Key, existing, [.. group]))
+            foreach (var (node, citation) in Plan(group.Key, existing, [.. group], mode))
             {
                 string? change = node is null
                     ? NodeBuilder.AddCitation(state, structure, citation)
@@ -38,7 +51,7 @@ internal static class CitationReconciler
     }
 
     static List<(GedRecord? Node, Citation Citation)> Plan(
-        string source, IReadOnlyList<GedRecord> existing, IReadOnlyList<Citation> stated)
+        string source, IReadOnlyList<GedRecord> existing, IReadOnlyList<Citation> stated, CitationUpsertMode mode)
     {
         var plan = new List<(GedRecord? Node, Citation Citation)>();
         var unmatched = existing.ToList();
@@ -52,7 +65,7 @@ internal static class CitationReconciler
             plan.Add((match, citation));
         }
 
-        if (leftover.Count > 0 && unmatched.Count == 0)
+        if (mode == CitationUpsertMode.AddBeside || (leftover.Count > 0 && unmatched.Count == 0))
             plan.AddRange(leftover.Select(c => ((GedRecord?)null, c)));
         else if (leftover.Count > 0 && leftover.Count == unmatched.Count)
             plan.AddRange(leftover.Select((c, i) => ((GedRecord?)unmatched[i], c)));

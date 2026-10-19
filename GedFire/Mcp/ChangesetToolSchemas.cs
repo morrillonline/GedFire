@@ -36,6 +36,7 @@ static class ChangesetToolSchemas
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "type": "object",
           "additionalProperties": false,
+          "description": "The full result, or -- when reportPath was given without verbose -- a digest of its counts, with the full result in the report file.",
           "properties": {
             "success": {
               "type": "boolean",
@@ -44,12 +45,12 @@ static class ChangesetToolSchemas
             "log": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Human-readable trace of what was checked or applied, in order."
+              "description": "Human-readable trace of what was checked or applied, in order. Absent from the digest; the report file holds it."
             },
             "errors": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Validation or verification failures. Non-empty only when success is false."
+              "description": "Validation or verification failures. Non-empty only when success is false. Absent from the digest; the report file holds it."
             },
             "deltas": {
               "type": "object",
@@ -59,19 +60,27 @@ static class ChangesetToolSchemas
             "mintedXrefs": {
               "type": "object",
               "additionalProperties": { "type": "string" },
-              "description": "Placeholder token to real xref for every new record this run created, or for an existing source that is the same document as a new one described (reused, not created). Empty for validate_changeset."
+              "description": "Placeholder token to real xref for every new record this run created, or for an existing source that is the same document as a new one described (reused, not created). Empty for validate_changeset. Absent from the digest; the report file holds it."
             },
             "copiedSources": {
               "type": "object",
               "additionalProperties": { "type": "string" },
-              "description": "Original source xref to the source used in its place, for every shared source (cited by more than one structure) that an item updated: a new copy carrying the update, or an existing source that is exactly the updated one. The original is never changed. Empty when no shared source was updated, and for validate_changeset."
+              "description": "Original source xref to the source used in its place, for every shared source (cited by more than one structure) that an item updated: a new copy carrying the update, or an existing source that is exactly the updated one. The original is never changed. Empty when no shared source was updated, and for validate_changeset. Absent from the digest; the report file holds it."
             },
+            "items": {
+              "type": "array",
+              "items": { "type": "integer" },
+              "description": "Digest only: the changeset item numbers the run selected."
+            },
+            "errorCount": { "type": "integer", "description": "Digest only: how many errors the report file holds." },
+            "logCount": { "type": "integer", "description": "Digest only: how many log lines the report file holds." },
+            "mintedXrefCount": { "type": "integer", "description": "Digest only: how many records the run minted; the report file names them." },
             "reportWrittenTo": {
               "type": ["string", "null"],
               "description": "The full path the result was also written to when reportPath was given, else null. A report that could not be written is noted in log and does not change the outcome."
             }
           },
-          "required": ["success", "log", "errors", "deltas", "mintedXrefs", "copiedSources", "reportWrittenTo"]
+          "required": ["success", "reportWrittenTo"]
         }
         """;
 
@@ -85,13 +94,19 @@ static class ChangesetToolSchemas
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "Also write the result JSON, exactly as returned, to this file, so a script can read it without anyone retyping it. The folder must exist. Refused, before any work is done, when the file already exists unless overwrite is true."
+              "description": "Write the full result JSON to this file and return only a digest of counts inline (pass verbose: true for both), so a script can read the exact result without it also filling the caller's context. The folder must exist. Refused, before any work is done, when the file already exists unless overwrite is true."
             }
             """);
         schema["properties"]!["overwrite"] = JsonNode.Parse("""
             {
               "type": "boolean",
               "description": "Replace an existing file at reportPath. Default false."
+            }
+            """);
+        schema["properties"]!["verbose"] = JsonNode.Parse("""
+            {
+              "type": "boolean",
+              "description": "With reportPath, return the full result inline as well as writing the file, instead of the digest. Default false; ignored without reportPath."
             }
             """);
     }
@@ -153,7 +168,12 @@ static class ChangesetToolSchemas
 
     /// <summary>The output schema with the optional <c>pointsPreview</c> validate_changeset returns when cards are given.</summary>
     public static readonly string OutputSchemaWithPreviewJson = Compose(OutputSchemaJson, schema =>
-        schema["properties"]!["pointsPreview"] = JsonNode.Parse(PointsPreviewJson));
+    {
+        schema["properties"]!["pointsPreview"] = JsonNode.Parse(PointsPreviewJson);
+        schema["properties"]!["pointsPreviewTotal"] = JsonNode.Parse("""
+            { "type": "integer", "description": "Digest only, and only when cards were given: pointsPreview's total; the report file holds the full preview." }
+            """);
+    });
 
     static string Compose(string baseSchema, Action<JsonNode> addTo)
     {

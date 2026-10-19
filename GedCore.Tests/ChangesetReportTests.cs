@@ -7,7 +7,10 @@ using ModelContextProtocol.Protocol;
 
 namespace GedCore.Tests;
 
-/// <summary>The reportPath of apply_changeset, validate_changeset and draft_changeset: the result is also written, exactly as returned.</summary>
+/// <summary>
+/// The reportPath of apply_changeset, validate_changeset and draft_changeset: the full result is written to the file,
+/// exactly as a verbose call returns it, and the default response is a digest of that report.
+/// </summary>
 public class ChangesetReportTests : IDisposable
 {
     readonly TempDocumentSessions _sessions = new();
@@ -64,15 +67,38 @@ public class ChangesetReportTests : IDisposable
         Assert.True(JsonNode.DeepEquals(report, returned), "the report is not the result the tool returned");
     }
 
+    static JsonNode ReadReport(string reportPath) => JsonNode.Parse(File.ReadAllText(reportPath))!;
+
     // ---- validate_changeset ----
 
     [Fact]
-    public async Task Validate_WritesTheExactResultToTheReport()
+    public async Task Validate_WithAReportPath_ReturnsADigestOfTheFullReport()
     {
         var tool = new ValidateChangesetTool(WriteGed(), new ToolGate());
         string report = Report();
 
         var result = await tool.HandleAsync(new ValidateChangesetArguments(WriteChangeset(), "all", ReportPath: Json(report)), CancellationToken.None);
+
+        var digest = Structured(result);
+        Assert.True(digest.GetProperty("success").GetBoolean());
+        Assert.Equal(report, digest.GetProperty("reportWrittenTo").GetString());
+        Assert.False(digest.TryGetProperty("log", out _));
+        var file = ReadReport(report);
+        Assert.Equal(file["success"]!.GetValue<bool>(), digest.GetProperty("success").GetBoolean());
+        Assert.Equal(file["errors"]!.AsArray().Count, digest.GetProperty("errorCount").GetInt32());
+        Assert.Equal(file["log"]!.AsArray().Count, digest.GetProperty("logCount").GetInt32());
+        Assert.Equal(1, Assert.Single(digest.GetProperty("items").EnumerateArray()).GetInt32());
+        Assert.NotNull(file["log"]);
+    }
+
+    [Fact]
+    public async Task Validate_Verbose_ReturnsTheExactResultWrittenToTheReport()
+    {
+        var tool = new ValidateChangesetTool(WriteGed(), new ToolGate());
+        string report = Report();
+
+        var result = await tool.HandleAsync(
+            new ValidateChangesetArguments(WriteChangeset(), "all", ReportPath: Json(report), Verbose: Json(true)), CancellationToken.None);
 
         Assert.True(Structured(result).GetProperty("success").GetBoolean());
         Assert.Equal(report, Structured(result).GetProperty("reportWrittenTo").GetString());
@@ -99,8 +125,12 @@ public class ChangesetReportTests : IDisposable
 
         var result = await tool.HandleAsync(new ValidateChangesetArguments(WriteChangeset(bad), "all", ReportPath: Json(report)), CancellationToken.None);
 
-        Assert.False(Structured(result).GetProperty("success").GetBoolean());
-        AssertReportIsTheResult(report, result);
+        var digest = Structured(result);
+        Assert.False(digest.GetProperty("success").GetBoolean());
+        Assert.True(digest.GetProperty("errorCount").GetInt32() > 0);
+        var file = ReadReport(report);
+        Assert.False(file["success"]!.GetValue<bool>());
+        Assert.Equal(file["errors"]!.AsArray().Count, digest.GetProperty("errorCount").GetInt32());
     }
 
     [Fact]
@@ -118,7 +148,24 @@ public class ChangesetReportTests : IDisposable
         var replaced = await tool.HandleAsync(
             new ValidateChangesetArguments(WriteChangeset(), "all", ReportPath: Json(report), Overwrite: Json(true)), CancellationToken.None);
         Assert.True(Structured(replaced).GetProperty("success").GetBoolean());
-        AssertReportIsTheResult(report, replaced);
+        Assert.True(ReadReport(report)["success"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task Validate_WithCardsAndAReportPath_DigestCarriesThePointsTotal()
+    {
+        var tool = new ValidateChangesetTool(WriteGed(), new ToolGate());
+        string report = Report();
+        var cards = Json(new[] { new { xref = "@I00001@", @class = "enrich-person", gap = "enrich-death", points = 7 } });
+
+        var result = await tool.HandleAsync(
+            new ValidateChangesetArguments(WriteChangeset(), "all", Cards: cards, ReportPath: Json(report)), CancellationToken.None);
+
+        var digest = Structured(result);
+        Assert.False(digest.TryGetProperty("pointsPreview", out _));
+        Assert.Equal(
+            ReadReport(report)["pointsPreview"]!["total"]!.GetValue<int>(),
+            digest.GetProperty("pointsPreviewTotal").GetInt32());
     }
 
     [Theory]
@@ -157,11 +204,27 @@ public class ChangesetReportTests : IDisposable
 
         var result = await tool.HandleAsync(WriteChangeset(), "all", Json(report), default, CancellationToken.None);
 
-        Assert.True(Structured(result).GetProperty("success").GetBoolean());
-        AssertReportIsTheResult(report, result);
-        var minted = JsonNode.Parse(File.ReadAllText(report))!["mintedXrefs"]!.AsObject();
+        var digest = Structured(result);
+        Assert.True(digest.GetProperty("success").GetBoolean());
+        Assert.Equal(1, digest.GetProperty("mintedXrefCount").GetInt32());
+        Assert.Equal(1, digest.GetProperty("deltas").GetProperty("SOUR").GetInt32());
+        var minted = ReadReport(report)["mintedXrefs"]!.AsObject();
         Assert.Equal("@NewSource1@", Assert.Single(minted).Key);
         Assert.Contains("A register", File.ReadAllText(ged));
+    }
+
+    [Fact]
+    public async Task Apply_Verbose_ReturnsTheExactResultWrittenToTheReport()
+    {
+        string ged = WriteGed();
+        var tool = new ApplyChangesetTool(ged, new ToolGate(), readOnly: false);
+        string report = Report();
+
+        var result = await tool.HandleAsync(WriteChangeset(), "all", Json(report), default, Json(true), CancellationToken.None);
+
+        Assert.True(Structured(result).GetProperty("success").GetBoolean());
+        Assert.Equal("@NewSource1@", Structured(result).GetProperty("mintedXrefs").EnumerateObject().Single().Name);
+        AssertReportIsTheResult(report, result);
     }
 
     [Fact]
@@ -195,8 +258,10 @@ public class ChangesetReportTests : IDisposable
 
         var result = await tool.HandleAsync(WriteChangeset(withNote), "all", Json(report), default, CancellationToken.None);
 
-        Assert.False(Structured(result).GetProperty("success").GetBoolean());
-        AssertReportIsTheResult(report, result);
+        var digest = Structured(result);
+        Assert.False(digest.GetProperty("success").GetBoolean());
+        Assert.True(digest.GetProperty("errorCount").GetInt32() > 0);
+        Assert.False(ReadReport(report)["success"]!.GetValue<bool>());
         Assert.Equal(before, File.ReadAllBytes(ged));
     }
 
@@ -226,16 +291,62 @@ public class ChangesetReportTests : IDisposable
     static JsonElement Findings_() => JsonDocument.Parse(Findings).RootElement.Clone();
 
     [Fact]
-    public async Task Draft_WritesTheExactResultToTheReport()
+    public async Task Draft_WithAReportPath_ReturnsADigestOfTheFullReport()
     {
         string report = Report();
 
         var result = await Draft().HandleAsync(new DraftChangesetArguments(Findings_(), default, default, default, default, Json(report)), CancellationToken.None);
 
+        var digest = Structured(result);
+        Assert.True(digest.GetProperty("success").GetBoolean());
+        Assert.Equal(report, digest.GetProperty("reportWrittenTo").GetString());
+        Assert.False(digest.TryGetProperty("changeset", out _));
+        Assert.False(digest.TryGetProperty("decisions", out _));
+        var file = ReadReport(report);
+        Assert.NotNull(file["changeset"]);
+        var item = Assert.Single(digest.GetProperty("items").EnumerateArray());
+        var fileItem = Assert.Single(file["changeset"]!["items"]!.AsArray());
+        Assert.Equal(fileItem!["item"]!.GetValue<int>(), item.GetProperty("item").GetInt32());
+        Assert.Equal(fileItem["target"]!.GetValue<string>(), item.GetProperty("target").GetString());
+        Assert.Equal(fileItem["ops"]!.AsArray().Count, item.GetProperty("ops").GetInt32());
+        Assert.Contains($"{file["decisions"]!.AsArray().Count} decisions", digest.GetProperty("decisionsSummary").GetString());
+    }
+
+    [Fact]
+    public async Task Draft_Verbose_ReturnsTheExactResultWrittenToTheReport()
+    {
+        string report = Report();
+
+        var result = await Draft().HandleAsync(
+            new DraftChangesetArguments(Findings_(), default, default, default, default, Json(report), Json(true)), CancellationToken.None);
+
         Assert.True(Structured(result).GetProperty("success").GetBoolean());
         Assert.Equal(report, Structured(result).GetProperty("reportWrittenTo").GetString());
         AssertReportIsTheResult(report, result);
-        Assert.NotNull(JsonNode.Parse(File.ReadAllText(report))!["changeset"]);
+        Assert.NotNull(ReadReport(report)["changeset"]);
+    }
+
+    [Fact]
+    public async Task Draft_ATenOpItemWithAReportPath_ReturnsUnderAThousandCharacters()
+    {
+        string report = Report();
+        string facts = string.Join(", ", Enumerable.Range(1900, 10).Select(year =>
+            $$"""{ "record": "@I00001@", "fact": "RESI", "date": "{{year}}", "place": "Rugby", "quay": 2 }"""));
+        string findings = Findings.Replace(
+            """[ { "record": "@I00001@", "fact": "DEAT", "date": "26 Mar 2013", "place": "Rugby", "quay": 2 } ]""",
+            $"[ {facts} ]");
+
+        var result = await Draft().HandleAsync(
+            new DraftChangesetArguments(JsonDocument.Parse(findings).RootElement.Clone(), default, default, default, default, Json(report)),
+            CancellationToken.None);
+
+        var digest = Structured(result);
+        Assert.True(digest.GetProperty("success").GetBoolean(), digest.GetRawText());
+        Assert.True(digest.GetRawText().Length < 1000, $"digest is {digest.GetRawText().Length} characters");
+        var item = Assert.Single(digest.GetProperty("items").EnumerateArray());
+        Assert.Equal(
+            Assert.Single(ReadReport(report)["changeset"]!["items"]!.AsArray())!["ops"]!.AsArray().Count,
+            item.GetProperty("ops").GetInt32());
     }
 
     [Fact]
@@ -247,8 +358,10 @@ public class ChangesetReportTests : IDisposable
         var result = await Draft().HandleAsync(
             new DraftChangesetArguments(JsonDocument.Parse(tooHigh).RootElement.Clone(), default, default, default, default, Json(report)), CancellationToken.None);
 
-        Assert.False(Structured(result).GetProperty("success").GetBoolean());
-        AssertReportIsTheResult(report, result);
+        var digest = Structured(result);
+        Assert.False(digest.GetProperty("success").GetBoolean());
+        Assert.NotEmpty(digest.GetProperty("errors").EnumerateArray());
+        Assert.False(ReadReport(report)["success"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -262,7 +375,7 @@ public class ChangesetReportTests : IDisposable
 
         Assert.True(File.Exists(changeset));
         Assert.Equal(changeset, Structured(result).GetProperty("writtenTo").GetString());
-        AssertReportIsTheResult(report, result);
+        Assert.Equal(changeset, ReadReport(report)["writtenTo"]!.GetValue<string>());
     }
 
     [Fact]
@@ -289,7 +402,8 @@ public class ChangesetReportTests : IDisposable
         Assert.Equal("keep me", File.ReadAllText(report));
 
         var replaced = await Draft().HandleAsync(new DraftChangesetArguments(Findings_(), default, default, default, Json(true), Json(report)), CancellationToken.None);
-        AssertReportIsTheResult(report, replaced);
+        Assert.Equal(report, Structured(replaced).GetProperty("reportWrittenTo").GetString());
+        Assert.True(ReadReport(report)["success"]!.GetValue<bool>());
     }
 
     // ---- advertised schemas ----
@@ -298,7 +412,10 @@ public class ChangesetReportTests : IDisposable
     public void TheThreeToolsAdvertiseReportPathAndTheResultsNameTheReport()
     {
         foreach (string input in new[] { ApplyChangesetTool.InputSchemaJson, ValidateChangesetTool.InputSchemaJson, DraftChangesetTool.InputSchemaJson })
+        {
             Assert.Contains("\"reportPath\"", input);
+            Assert.Contains("\"verbose\"", input);
+        }
         Assert.DoesNotContain("\"reportPath\"", CheckPlausibilityTool.InputSchemaJson);
         foreach (string output in new[] { ApplyChangesetTool.OutputSchemaJson, ValidateChangesetTool.OutputSchemaJson, DraftChangesetTool.OutputSchemaJson })
             Assert.Contains("\"reportWrittenTo\"", output);
