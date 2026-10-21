@@ -22,7 +22,8 @@ public static class McpServerInstructions
         "in-memory verification both pass; call validate_changeset first with the same arguments to preview a " +
         "changeset without writing. check_plausibility runs that same preview and returns just the " +
         "chronological/biological plausibility findings it would introduce (a parent's age at a child's " +
-        "birth, an event out of order, a possible duplicate, an ancestor cycle), structured for a caller that " +
+        "birth, an event out of order, a possible duplicate, an ancestor cycle, a date or place replaced " +
+        "with a less specific form of the held value), structured for a caller that " +
         "wants to route on severity rather than parse validate_changeset's log lines -- call it alongside " +
         "validate_changeset, not instead of it. validate_document checks the document itself for GEDCOM 7 " +
         "conformance problems (bad tag charset, broken level hierarchy, dangling pointers) independent of any " +

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore.Validate;
 
 namespace GedCore.Apply;
 
@@ -119,20 +120,26 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
             ? FactSatisfyingRequest(target)   // add: create unless an identical instance is already present (re-run)
             : res.Fact ?? (Match is not null ? FactSatisfyingRequest(target) : null);
 
-        if (existingFact is null)
-        {
-            var fact = NodeBuilder.EventNode(1, Fact, Value, []);
-            foreach (var (sub, i) in Substructures.Select((s, i) => (s, i)))
-                NodeBuilder.Attach(fact, NodeBuilder.NewNode(2, sub.Tag, sub.Value), at: i);
-            foreach (var cit in citations)
-                NodeBuilder.Attach(fact, NodeBuilder.CitationNode(2, cit));
-            NodeBuilder.InsertFact(target, fact);
-            state.Mutated();
-            state.Touch(target);
-            log.Add($"{LogContext}: created" + string.Concat(citations.Select(c => $"; {NodeBuilder.DescribeCitation(c)}")));
-            return;
-        }
+        if (existingFact is null) CreateFact(state, target, citations, log);
+        else UpdateFact(state, target, existingFact, citations, log);
+    }
 
+    private void CreateFact(ApplyState state, GedRecord target, IReadOnlyList<Citation> citations, List<string> log)
+    {
+        var fact = NodeBuilder.EventNode(1, Fact, Value, []);
+        foreach (var (sub, i) in Substructures.Select((s, i) => (s, i)))
+            NodeBuilder.Attach(fact, NodeBuilder.NewNode(2, sub.Tag, sub.Value), at: i);
+        foreach (var cit in citations)
+            NodeBuilder.Attach(fact, NodeBuilder.CitationNode(2, cit));
+        NodeBuilder.InsertFact(target, fact);
+        state.Mutated();
+        state.Touch(target);
+        log.Add($"{LogContext}: created" + string.Concat(citations.Select(c => $"; {NodeBuilder.DescribeCitation(c)}")));
+    }
+
+    private void UpdateFact(ApplyState state, GedRecord target, GedRecord existingFact,
+                            IReadOnlyList<Citation> citations, List<string> log)
+    {
         var updates = PendingValueUpdates(existingFact);
         string? disposition = updates.Count > 0
             ? NodeBuilder.DisposeCitations(state, target, existingFact, Fact, ReplacedCitations)
@@ -142,6 +149,9 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
             update.Write();
             state.Mutated();
             state.Touch(target);
+            if (update.LessSpecific is not null)
+                state.Advisories.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, SpecificityLoss.Code,
+                    $"{update.LessSpecific}; {SpecificityLoss.Advice}", target.Xref, Fact));
         }
 
         var changes = updates.Select(u => u.Description).ToList();
@@ -161,7 +171,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
             : $"{LogContext}: no-op (already matches)");
     }
 
-    private sealed record ValueUpdate(string Description, bool Replaces, Action Write);
+    private sealed record ValueUpdate(string Description, bool Replaces, Action Write, string? LessSpecific = null);
 
     /// <summary>
     /// Compare each requested value field against the fact and return the
@@ -169,6 +179,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
     /// <c>Replaces</c> is true when the write overwrites an existing non-empty
     /// value (vs. filling a field the fact lacked) — the no-overwrite guard in
     /// <see cref="Validate"/> keys on it for repeatable facts.
+    /// <c>LessSpecific</c> carries the GEN201 advisory text when the
+    /// replacement loses specificity (see <see cref="SpecificityLoss"/>).
     /// </summary>
     private List<ValueUpdate> PendingValueUpdates(GedRecord fact)
     {
@@ -177,26 +189,33 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
             updates.Add(new($"value '{fact.PayloadValue}' → '{Value.Text}'",
                             !string.IsNullOrEmpty(fact.Value),
                             () => fact.SetValue(GedRecord.EscapeAtSign(Value.Text))));
-        if (Value.Date is not null)
-        {
-            string padded = NodeBuilder.PadDay(Value.Date);
-            var date = fact.FirstChild("DATE");
-            if (date is null)
-                updates.Add(new($"DATE added '{padded}'", false,
-                    () => NodeBuilder.InsertEventDetail(fact, NodeBuilder.NewNode(fact.Level + 1, "DATE", padded))));
-            else if (date.Value != padded)
-                updates.Add(new($"DATE '{date.Value}' → '{padded}'", true, () => date.SetValue(padded)));
-        }
-        if (Value.Place is not null)
-        {
-            var place = fact.FirstChild("PLAC");
-            if (place is null)
-                updates.Add(new($"PLAC added '{Value.Place}'", false,
-                    () => NodeBuilder.InsertEventDetail(fact, NodeBuilder.NewNode(fact.Level + 1, "PLAC", Value.Place))));
-            else if (place.Value != Value.Place)
-                updates.Add(new($"PLAC '{place.Value}' → '{Value.Place}'", true, () => place.SetValue(Value.Place)));
-        }
+        if (Value.Date is not null &&
+            DetailUpdate(fact, "DATE", NodeBuilder.PadDay(Value.Date), SpecificityLoss.IsLessSpecificDate) is { } date)
+            updates.Add(date);
+        if (Value.Place is not null &&
+            DetailUpdate(fact, "PLAC", Value.Place, SpecificityLoss.IsLessSpecificPlace) is { } place)
+            updates.Add(place);
         return updates;
+    }
+
+    /// <summary>
+    /// The write needed to bring one event-detail node (DATE or PLAC) to the
+    /// requested value: add when absent, replace when different (carrying the
+    /// GEN201 advisory when <paramref name="isLessSpecific"/> says the
+    /// replacement loses specificity), or null when already equal.
+    /// </summary>
+    private ValueUpdate? DetailUpdate(GedRecord fact, string tag, string requested,
+                                      Func<string?, string?, bool> isLessSpecific)
+    {
+        var node = fact.FirstChild(tag);
+        if (node is null)
+            return new($"{tag} added '{requested}'", false,
+                () => NodeBuilder.InsertEventDetail(fact, NodeBuilder.NewNode(fact.Level + 1, tag, requested)));
+        if (node.Value == requested) return null;
+        return new($"{tag} '{node.Value}' → '{requested}'", true, () => node.SetValue(requested),
+            isLessSpecific(node.Value, requested)
+                ? $"{Fact} {tag} '{node.Value}' replaced with less specific '{requested}'"
+                : null);
     }
 }
 
