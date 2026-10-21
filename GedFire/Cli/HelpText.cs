@@ -24,11 +24,13 @@ public static class HelpText
                         marriages with spouse and children xrefs).
 
           select-targets --input <ged> --output <wanted.json> --count <N> --surnames <list>
-                        Detect every research gap for the given surnames
+                        Detect eligible research gaps for the given surnames
                         (New parent/spouse/child, Enrich person), score each
                         by nominal points and GED-only difficulty, and draw
                         <N> of them uniformly at random (one Legendary-band
                         cap per pack) into a self-contained wanted.json.
+                        Unanchored relationship gaps wait for enrichment;
+                        suppressedCards lists the withheld cards and reasons.
 
           apply     --input <ged> --changes <json> --items all|1,3 [--dry-run]
                         Apply approved research-proposal changeset items to the

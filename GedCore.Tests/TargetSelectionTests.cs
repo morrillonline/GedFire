@@ -91,6 +91,199 @@ public class DifficultyScoreTests
 
 public class GapDetectorTests
 {
+    [Theory]
+    [InlineData(false, "")]
+    [InlineData(true, "")]
+    [InlineData(false, "ABT 1872")]
+    [InlineData(true, "ABT 1872")]
+    [InlineData(false, "EST 1850")]
+    [InlineData(true, "EST 1850")]
+    [InlineData(false, "BEF 1900")]
+    [InlineData(true, "BEF 1900")]
+    [InlineData(false, "1872")]
+    [InlineData(true, "1872")]
+    public void BareBonesSubject_OnlyOffersEnrichment(bool explicitPeople, string birthDate)
+    {
+        string ged = $"""
+            0 @I1@ INDI
+            1 NAME Ada /Ashworth/
+            1 BIRT
+            2 DATE {birthDate}
+            """;
+        var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
+        var suppressed = new List<SuppressedCard>();
+
+        var targets = explicitPeople
+            ? GapDetector.DetectForPeople(model.Individuals.Values, 2026, suppressed)
+            : GapDetector.Detect(model, ["Ashworth"], 2026, suppressed);
+
+        Assert.Equal("Enrich person", Assert.Single(targets).CardType);
+        Assert.Equal(["New parent", "New spouse"], suppressed.Select(card => card.CardType));
+        Assert.All(suppressed, card =>
+        {
+            Assert.Equal("@I1@", card.Xref);
+            Assert.Equal("Ada Ashworth", card.Name);
+            Assert.Equal("bare-bones subject \u2014 enrich first", card.Reason);
+        });
+    }
+
+    [Theory]
+    [InlineData("BIRT", "4 JUL 1872", "")]
+    [InlineData("BIRT", "ABT 1872", "Penobscot, Maine")]
+    [InlineData("BIRT", "ABT 1872", "Maine")]
+    [InlineData("CHR", "5 JUL 1872", "")]
+    [InlineData("BAPM", "5 JUL 1872", "")]
+    [InlineData("DEAT", "4 JUL 1900", "")]
+    [InlineData("BURI", "5 JUL 1900", "")]
+    [InlineData("CHR", "", "Maine")]
+    [InlineData("BAPM", "", "Maine")]
+    [InlineData("DEAT", "", "Maine")]
+    [InlineData("BURI", "", "Maine")]
+    public void OwnVitalAnchor_RetainsRelationshipCards(string tag, string date, string place)
+    {
+        string ged = $"""
+            0 @I1@ INDI
+            1 NAME Ada /Ashworth/
+            1 {tag}
+            2 DATE {date}
+            2 PLAC {place}
+            """;
+        var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
+        foreach (bool explicitPeople in new[] { false, true })
+        {
+            var suppressed = new List<SuppressedCard>();
+            var targets = explicitPeople
+                ? GapDetector.DetectForPeople(model.Individuals.Values, 2026, suppressed)
+                : GapDetector.Detect(model, ["Ashworth"], 2026, suppressed);
+
+            Assert.Contains(targets, card => card.CardType == "New parent");
+            Assert.Contains(targets, card => card.CardType == "New spouse");
+            Assert.Empty(suppressed);
+        }
+    }
+
+    [Theory]
+    [InlineData("", "", false, false)]
+    [InlineData("ABT 1874", "", false, false)]
+    [InlineData("1874", "", false, false)]
+    [InlineData("5 NOV 1874", "", false, true)]
+    [InlineData("", "Maine", false, true)]
+    [InlineData("", "", true, true)]
+    public void NewChild_UsesBothSpousesAndMarriageAnchors(string date, string place, bool spouseAnchored, bool expectedChild)
+    {
+        string ged = $"""
+            0 @I1@ INDI
+            1 NAME Adam /Ashworth/
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Ada /Ashworth/
+            1 BIRT
+            2 PLAC {(spouseAnchored ? "Maine" : "")}
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            1 MARR
+            2 DATE {date}
+            2 PLAC {place}
+            """;
+        var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
+        foreach (bool explicitPeople in new[] { false, true })
+        {
+            var suppressed = new List<SuppressedCard>();
+            var targets = explicitPeople
+                ? GapDetector.DetectForPeople(model.Individuals.Values, 2026, suppressed)
+                : GapDetector.Detect(model, ["Ashworth"], 2026, suppressed);
+
+            Assert.Equal(expectedChild ? 1 : 0, targets.Count(card => card.CardType == "New child"));
+            Assert.Equal(expectedChild ? 0 : 1, suppressed.Count(card => card.CardType == "New child"));
+            Assert.Contains(suppressed, card => card.Xref == "@I1@" && card.CardType == "New parent");
+            if (!expectedChild)
+                Assert.Contains("bare-bones family", Assert.Single(suppressed, card => card.CardType == "New child").Reason);
+        }
+    }
+
+    [Fact]
+    public void BareBonesGate_ReevaluatesAfterAnAnchorLands()
+    {
+        var person = new GedIndividual { Xref = "@I1@", FirstName = "Ada", LastNameRaw = "Ashworth" };
+        Assert.Equal("Enrich person", Assert.Single(GapDetector.DetectForPeople([person], 2026)).CardType);
+
+        person.Birth = new GedEvent { Date = "4 JUL 1872" };
+
+        var suppressed = new List<SuppressedCard>();
+        Assert.Equal(3, GapDetector.DetectForPeople([person], 2026, suppressed).Count);
+        Assert.Empty(suppressed);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NameOnlyChild_WithBothParents_OnlyOffersEnrichment(bool explicitPeople)
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Ada /Ashworth/
+            1 FAMC @F1@
+            0 @I2@ INDI
+            1 NAME Adam /Ashworth/
+            0 @I3@ INDI
+            1 NAME Amy /Other/
+            0 @F1@ FAM
+            1 HUSB @I2@
+            1 WIFE @I3@
+            1 CHIL @I1@
+            """;
+        var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
+        var suppressed = new List<SuppressedCard>();
+
+        var targets = explicitPeople
+            ? GapDetector.DetectForPeople([model.Individuals["@I1@"]], 2026, suppressed)
+            : GapDetector.Detect(model, ["Ashworth"], 2026, suppressed).Where(card => card.Xref == "@I1@");
+
+        Assert.Equal("Enrich person", Assert.Single(targets).CardType);
+        Assert.Equal("New spouse", Assert.Single(suppressed, card => card.Xref == "@I1@").CardType);
+    }
+
+    [Fact]
+    public void BareBonesGate_DoesNotReportIneligibleCardsOrUseRelativesAndOtherFactsAsAnchors()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Adam /Ashworth/
+            1 BIRT
+            2 DATE ABT 1850
+            1 DEAT
+            2 DATE BEF 1860
+            1 NOTE Known household
+            1 CENS
+            2 DATE 1 JUN 1855
+            2 PLAC Maine
+            1 FAMC @F1@
+            0 @I2@ INDI
+            1 NAME Ada /Ashworth/
+            1 BIRT
+            2 DATE 4 JUL 1820
+            0 @I3@ INDI
+            1 NAME Amy /Ashworth/
+            1 BIRT
+            2 DATE ABT 2000
+            0 @I4@ INDI
+            1 NAME Ann /Other/
+            0 @F1@ FAM
+            1 WIFE @I2@
+            1 CHIL @I1@
+            """;
+        var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
+        var suppressed = new List<SuppressedCard>();
+
+        GapDetector.Detect(model, ["Ashworth"], 2026, suppressed);
+
+        var card = Assert.Single(suppressed);
+        Assert.Equal("@I1@", card.Xref);
+        Assert.Equal("New parent", card.CardType);
+    }
+
     static List<SelectionTarget> Detect(string gedText, params string[] surnames) =>
         GapDetector.Detect(ModelBuilder.Build(Ged55Parser.Parse(gedText)), surnames);
 
@@ -121,6 +314,8 @@ public class GapDetectorTests
             0 @I1@ INDI
             1 NAME John /Morrill/
             1 SEX M
+            1 BIRT
+            2 PLAC Maine
             1 FAMC @F1@
             0 @I2@ INDI
             1 NAME Mary /Smith/
@@ -167,6 +362,7 @@ public class GapDetectorTests
             1 SEX F
             1 BIRT
             2 DATE 1852
+            2 PLAC Maine
             """;
         var targets = Detect(ged, "Morrill");
         var target = Assert.Single(targets, t => t.CardType == "New spouse");
@@ -198,6 +394,7 @@ public class GapDetectorTests
             1 SEX F
             1 BIRT
             2 DATE 1852
+            2 PLAC Maine
             1 DEAT
             2 DATE 1900
             """;
@@ -221,7 +418,7 @@ public class GapDetectorTests
             1 HUSB @I1@
             1 WIFE @I2@
             1 MARR
-            2 DATE 1820
+            2 DATE 5 NOV 1820
             """;
         // Both spouses carry the target surname, so both pass the filter —
         // the family-level gap must still surface exactly once.
@@ -271,6 +468,8 @@ public class GapDetectorTests
             0 @I1@ INDI
             1 NAME John /Morrill/
             1 SEX M
+            1 BIRT
+            2 PLAC Maine
             1 FAMS @F1@
             0 @I2@ INDI
             1 NAME Mary /Smith/
@@ -646,6 +845,8 @@ public class GapDetectorTests
             0 @I1@ INDI
             1 NAME John /Morrill/
             1 SEX M
+            1 BIRT
+            2 PLAC Maine
             1 FAMS @F1@
             0 @I2@ INDI
             1 NAME Mary /Smith/
@@ -830,6 +1031,7 @@ public class WantedFileWriterTests
             Targets = [target],
             Seed = 999,
             LegendaryDiscards = [],
+            SuppressedCards = [new SuppressedCard("@I2@", "Ada Ashworth", "New spouse", "bare-bones subject \u2014 enrich first")],
         };
 
         string json = WantedFileWriter.ToJson("data/Test.ged", ["Morrill", "Morrell"], totalCandidates: 42, draw);
@@ -852,6 +1054,9 @@ public class WantedFileWriterTests
         var drawLog = root.GetProperty("draw");
         Assert.Equal(999, drawLog.GetProperty("seed").GetInt64());
         Assert.Equal(0, drawLog.GetProperty("legendaryDiscards").GetArrayLength());
+        var suppressed = Assert.Single(root.GetProperty("suppressedCards").EnumerateArray());
+        Assert.Equal("@I2@", suppressed.GetProperty("xref").GetString());
+        Assert.Equal("New spouse", suppressed.GetProperty("cardType").GetString());
     }
 
     [Fact]
@@ -866,5 +1071,6 @@ public class WantedFileWriterTests
         Assert.False(root.TryGetProperty("source", out _));
         Assert.Equal(3, root.GetProperty("totalCandidates").GetInt32());
         Assert.Equal(7, root.GetProperty("draw").GetProperty("seed").GetInt64());
+        Assert.Equal(0, root.GetProperty("suppressedCards").GetArrayLength());
     }
 }

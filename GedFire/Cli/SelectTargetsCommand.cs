@@ -33,11 +33,13 @@ public sealed class SelectTargetsCommand : SynchronousOptionCommand
         if (context.FileMissing(input)) return 1;
 
         var model = ModelBuilder.Build(context.ReadDocument(input));
-        var candidates = GapDetector.Detect(model, surnames);
+        var suppressedCards = new List<SuppressedCard>();
+        var candidates = GapDetector.Detect(model, surnames, suppressedCards);
         ReportCandidates(candidates, surnames, context.Out);
 
         long seed = DateTime.UtcNow.Ticks;
-        var draw = DuplicateAnnotator.Annotate(TargetDrawer.Draw(candidates, count, seed), new MatchIndex(model));
+        var draw = DuplicateAnnotator.Annotate(
+            TargetDrawer.Draw(candidates, count, seed) with { SuppressedCards = suppressedCards }, new MatchIndex(model));
         if (draw.LegendaryDiscards.Count > 0)
             context.Out.WriteLine($"  {draw.LegendaryDiscards.Count:N0} extra Legendary-band candidate(s) discarded (one-per-pack cap)");
 

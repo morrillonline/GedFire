@@ -123,7 +123,7 @@ bound a missing vital. Missing kin, notes, or duplicates produce empty arrays.
 `select_targets` draws `count` gaps for study `surnames`, returning a
 `wanted.json`-shaped result without the GEDCOM path. The clock seeds the draw.
 Alternatively, pass `xrefs` instead of count and surnames to score specified
-people deterministically. This returns every gap, names people without gaps
+people deterministically. This returns every eligible gap, names people without cards
 in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error.
 
 - An `enrich-person` card covers all inexact birth, marriage, and death dates
@@ -132,7 +132,23 @@ in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error
   `score` adds a difficulty bonus once.
 - An exact burial date and place close a death gap when no exact death exists.
   The summary's `died` falls back to burial.
-- New-child cards require a husband with a study surname.
+- New-parent and new-spouse cards are withheld for bare-bones people: none of
+  their own birth, christening/baptism, death, or burial events has an exact date
+  (per `ExactnessRules.IsExactDate`) or a non-empty place. Qualified years such
+  as `ABT 1872`, unqualified years, notes, citations, and relatives do not anchor
+  them; any non-empty place does, even if it still needs enrichment.
+- New-child cards are withheld only if both spouses are bare-bones and the
+  marriage has neither an exact date nor a place. In surname mode they also
+  require a husband with a study surname; xrefs mode has no surname requirement.
+- `suppressedCards` lists `{xref, name, cardType, reason}` for otherwise eligible
+  cards withheld by this gate, once per childless family for New child. These
+  use the same subject xref, name, and card-type labels as the withheld card.
+  Personal reasons are `bare-bones subject — enrich first`; family reasons are
+  `bare-bones family (both spouses and marriage lack anchors) — enrich first`.
+  The list is empty when nothing was suppressed and is excluded from
+  `totalCandidates`. Enrich-person cards, points, privacy, died-young, and surname
+  rules are unchanged. No state is kept: landing an anchor restores relationship
+  cards on the next selection, without restricting extra-credit collection.
 - Duplicate hints use the GEN301 plausibility test. Results include up to
   three candidates plus `possibleDuplicateCount`; duplicates do not prevent a draw.
 - An `Unknown` name part needs an agreeing parent or spouse name for duplicate

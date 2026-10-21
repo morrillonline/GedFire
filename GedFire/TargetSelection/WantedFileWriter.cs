@@ -60,6 +60,7 @@ public static class WantedFileWriter
             TotalCandidates = totalCandidates,
             Count = draw.Targets.Count,
             Targets = [.. draw.Targets],
+            SuppressedCards = draw.SuppressedCards,
             XrefsWithoutGaps = xrefsWithoutGaps,
             Draw = new DrawLogEntry { Seed = draw.Seed, LegendaryDiscards = [.. draw.LegendaryDiscards] },
         };
@@ -74,6 +75,7 @@ public static class WantedFileWriter
         public required int TotalCandidates { get; init; }
         public required int Count { get; init; }
         public required List<SelectionTarget> Targets { get; init; }
+        public required IReadOnlyList<SuppressedCard> SuppressedCards { get; init; }
         public IReadOnlyList<string>? XrefsWithoutGaps { get; init; }
         public required DrawLogEntry Draw { get; init; }
     }
