@@ -45,6 +45,46 @@ public class SelectTargetsToolTests : IDisposable
 
     static string ErrorText(CallToolResult result) => ((TextContentBlock)result.Content[0]).Text;
 
+    [Theory]
+    [InlineData(false, "ABT 1872", "", 1, 2)]
+    [InlineData(true, "ABT 1872", "", 1, 2)]
+    [InlineData(false, "ABT 1872", "Penobscot, Maine", 3, 0)]
+    [InlineData(true, "ABT 1872", "Penobscot, Maine", 3, 0)]
+    [InlineData(false, "4 JUL 1872", "", 3, 0)]
+    [InlineData(true, "4 JUL 1872", "", 3, 0)]
+    [InlineData(false, "", "", 1, 2)]
+    [InlineData(true, "", "", 1, 2)]
+    public async Task BareBonesGate_ReportsSuppressedCards(bool explicitPeople, string date, string place, int count, int suppressedCount)
+    {
+        string ged = $"""
+            0 HEAD
+            1 GEDC
+            2 VERS 5.5.1
+            0 @I1@ INDI
+            1 NAME Ada /Ashworth/
+            1 BIRT
+            2 DATE {date}
+            2 PLAC {place}
+            """;
+        var tool = new SelectTargetsTool(_sessions.Open(ged), new ToolGate());
+
+        var result = explicitPeople ? await CallXrefs(tool, "[\"@I1@\"]") : await Call(tool, "50", "[\"Ashworth\"]");
+
+        Assert.NotEqual(true, result.IsError);
+        var root = result.StructuredContent!.Value;
+        Assert.Equal(count, root.GetProperty("count").GetInt32());
+        Assert.Equal(count, root.GetProperty("totalCandidates").GetInt32());
+        var suppressed = root.GetProperty("suppressedCards").EnumerateArray().ToList();
+        Assert.Equal(suppressedCount, suppressed.Count);
+        Assert.All(suppressed, card =>
+        {
+            Assert.Equal("@I1@", card.GetProperty("xref").GetString());
+            Assert.Equal("Ada Ashworth", card.GetProperty("name").GetString());
+            Assert.Contains(card.GetProperty("cardType").GetString(), new[] { "New parent", "New spouse" });
+            Assert.Equal("bare-bones subject \u2014 enrich first", card.GetProperty("reason").GetString());
+        });
+    }
+
     [Fact]
     public async Task SelectTargets_ReturnsTheWantedDocumentWithoutTheGedcomPath()
     {
@@ -57,6 +97,55 @@ public class SelectTargetsToolTests : IDisposable
         Assert.True(root.GetProperty("totalCandidates").GetInt32() >= 2);
         Assert.Equal(root.GetProperty("count").GetInt32(), root.GetProperty("targets").GetArrayLength());
         Assert.True(root.GetProperty("draw").TryGetProperty("seed", out _));
+        Assert.Empty(root.GetProperty("suppressedCards").EnumerateArray());
+    }
+
+    [Theory]
+    [InlineData(false, "", "", false)]
+    [InlineData(true, "", "", false)]
+    [InlineData(false, "5 NOV 1874", "", true)]
+    [InlineData(true, "5 NOV 1874", "", true)]
+    [InlineData(false, "", "Maine", true)]
+    [InlineData(true, "", "Maine", true)]
+    public async Task BareBonesFamily_ReportsSuppressionUnlessMarriageAnchored(bool explicitPeople, string date, string place, bool childExpected)
+    {
+        string ged = $"""
+            0 HEAD
+            1 GEDC
+            2 VERS 5.5.1
+            0 @I1@ INDI
+            1 NAME Adam /Ashworth/
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Ada /Ashworth/
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            1 MARR
+            2 DATE {date}
+            2 PLAC {place}
+            """;
+        var tool = new SelectTargetsTool(_sessions.Open(ged), new ToolGate());
+
+        var result = explicitPeople
+            ? await CallXrefs(tool, "[\"@I1@\", \"@I2@\"]")
+            : await Call(tool, "50", "[\"Ashworth\"]");
+
+        Assert.NotEqual(true, result.IsError);
+        var root = result.StructuredContent!.Value;
+        Assert.Equal(childExpected ? 1 : 0, root.GetProperty("targets").EnumerateArray()
+            .Count(card => card.GetProperty("cardType").GetString() == "New child"));
+        var suppressedChildren = root.GetProperty("suppressedCards").EnumerateArray()
+            .Where(card => card.GetProperty("cardType").GetString() == "New child").ToList();
+        Assert.Equal(childExpected ? 0 : 1, suppressedChildren.Count);
+        if (!childExpected)
+        {
+            var card = Assert.Single(suppressedChildren);
+            Assert.Equal("@I1@", card.GetProperty("xref").GetString());
+            Assert.Equal("Adam Ashworth", card.GetProperty("name").GetString());
+            Assert.Equal("bare-bones family (both spouses and marriage lack anchors) \u2014 enrich first", card.GetProperty("reason").GetString());
+        }
     }
 
     [Fact]
@@ -199,6 +288,7 @@ public class SelectTargetsToolTests : IDisposable
         1 SEX M
         1 BIRT
         2 DATE 1850
+        2 PLAC Maine
         1 FAMC @F2@
         0 @F1@ FAM
         1 HUSB @I11@

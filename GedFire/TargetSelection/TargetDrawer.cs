@@ -14,6 +14,7 @@ public sealed record DrawResult
     public required IReadOnlyList<SelectionTarget> Targets { get; init; }
     public required long? Seed { get; init; }
     public required IReadOnlyList<DiscardedTarget> LegendaryDiscards { get; init; }
+    public IReadOnlyList<SuppressedCard> SuppressedCards { get; init; } = [];
 }
 
 /// <summary>

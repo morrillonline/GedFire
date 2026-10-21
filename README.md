@@ -342,6 +342,12 @@ The CLI uses the same engine as the MCP server.
 Run `gedfire help` for command syntax. See the [MCP reference](docs/mcp-reference.md)
 for changeset semantics and date-arithmetic examples.
 
+Target selection withholds New parent and New spouse cards until the person's
+own birth, christening/baptism, death, or burial has an exact date or a non-empty
+place. New child cards need an anchor on either spouse or the marriage.
+Enrich person cards are unchanged; `suppressedCards` reports withheld cards and
+reasons in both CLI and MCP results. Enrichment re-enables cards on the next draw.
+
 ## Roadmap
 
 - **Interoperability audit:** a planned read-only `gedfire audit` command to

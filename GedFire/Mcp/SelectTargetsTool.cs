@@ -31,8 +31,11 @@ public sealed class SelectTargetsTool
         "draw keeps at most one Legendary-band target, so a pack can come up short. This is " +
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
         "never selected. Pass xrefs instead of count and surnames to skip the draw and score exactly those " +
-        "people: every gap each person has becomes a target (one person can yield several), the result is " +
-        "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that produced no target.";
+        "people: every eligible gap each person has becomes a target (one person can yield several), the result is " +
+        "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that produced no target. " +
+        "New parent and New spouse require an exact date or non-empty place on an own vital event " +
+        "(birth, christening/baptism, death, burial). New child requires an anchor on either spouse or " +
+        "the marriage. Otherwise enrich first; suppressedCards lists the withheld cards and reasons.";
 
     public const string InputSchemaJson = """
         {
@@ -55,7 +58,7 @@ public sealed class SelectTargetsTool
               "minItems": 1,
               "maxItems": 500,
               "items": { "type": "string", "pattern": "^@[^@]+@$", "minLength": 3 },
-              "description": "Person xrefs to score instead of drawing, e.g. [\"@I00006@\"]. Every gap each person has becomes a target. Cannot be combined with count or surnames."
+              "description": "Person xrefs to score instead of drawing, e.g. [\"@I00006@\"]. Every eligible gap becomes a target; suppressedCards reports relationship gaps needing enrichment first. Cannot be combined with count or surnames."
             }
           },
           "oneOf": [
@@ -72,9 +75,23 @@ public sealed class SelectTargetsTool
           "properties": {
             "generated": { "type": "string", "description": "UTC date of the draw, yyyy-MM-dd." },
             "surnames": { "type": "array", "items": { "type": "string" }, "description": "Empty when xrefs was given." },
-            "totalCandidates": { "type": "integer", "minimum": 0, "description": "Every gap found before the draw." },
+            "totalCandidates": { "type": "integer", "minimum": 0, "description": "Eligible gaps before the draw, excluding suppressedCards." },
             "count": { "type": "integer", "minimum": 0, "description": "Targets actually drawn; can be below the requested count." },
             "targets": { "type": "array", "items": { "type": "object" } },
+            "suppressedCards": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "xref": { "type": "string" },
+                  "name": { "type": "string" },
+                  "cardType": { "type": "string" },
+                  "reason": { "type": "string" }
+                },
+                "required": ["xref", "name", "cardType", "reason"]
+              },
+              "description": "Relationship cards withheld until the subject or family has an anchor; enrich first."
+            },
             "xrefsWithoutGaps": {
               "type": "array",
               "items": { "type": "string" },
@@ -89,7 +106,7 @@ public sealed class SelectTargetsTool
               "required": ["seed", "legendaryDiscards"]
             }
           },
-          "required": ["generated", "surnames", "totalCandidates", "count", "targets", "draw"]
+          "required": ["generated", "surnames", "totalCandidates", "count", "targets", "suppressedCards", "draw"]
         }
         """;
 
@@ -132,9 +149,10 @@ public sealed class SelectTargetsTool
             return CallToolResults.Error("surnames is required: an array with at least one surname such as [\"Ashworth\"].");
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        var candidates = GapDetector.Detect(snapshot.Model, surnameList);
+        var suppressedCards = new List<SuppressedCard>();
+        var candidates = GapDetector.Detect(snapshot.Model, surnameList, suppressedCards);
         var draw = DuplicateAnnotator.Annotate(
-            TargetDrawer.Draw(candidates, drawCount, DateTime.UtcNow.Ticks), snapshot.MatchIndex, cancellationToken);
+          TargetDrawer.Draw(candidates, drawCount, DateTime.UtcNow.Ticks) with { SuppressedCards = suppressedCards }, snapshot.MatchIndex, cancellationToken);
 
         string json = WantedFileWriter.ToJson(surnameList, candidates.Count, draw);
         return Success(json);
@@ -159,9 +177,10 @@ public sealed class SelectTargetsTool
             if (seen.Add(xref)) people.Add(person);
         }
 
-        var targets = GapDetector.DetectForPeople(people);
+        var suppressedCards = new List<SuppressedCard>();
+        var targets = GapDetector.DetectForPeople(people, suppressedCards);
         var scored = DuplicateAnnotator.Annotate(
-            new DrawResult { Targets = targets, Seed = null, LegendaryDiscards = [] },
+          new DrawResult { Targets = targets, Seed = null, LegendaryDiscards = [], SuppressedCards = suppressedCards },
             snapshot.MatchIndex, cancellationToken);
         var produced = scored.Targets.Select(t => t.Xref).ToHashSet(StringComparer.Ordinal);
         var withoutGaps = people.Select(p => p.Xref).Where(x => !produced.Contains(x)).ToList();
