@@ -208,48 +208,7 @@ public static class ChangesetApplier
 
         if (!dryRun) StampChangeDates(state, result.Log);
 
-        // Post-apply conformance/plausibility gate (Subproject D2, extended by
-        // the plausibility-checker design): the mutation is already on doc in
-        // memory, before serialization — no need to reparse to check the
-        // *after* state. Only *new* findings (occurrence count higher than the
-        // baseline) count; a pre-existing Warning the file already carried is
-        // not this changeset's problem, and a changeset that removes a
-        // diagnostic is always welcome.
-        //
-        // GEN301 (possible duplicate) is the one rule here expensive enough to
-        // matter: an all-pairs sweep of a large same-surname bucket is
-        // O(bucket^2), which on a real family study's own most common surname
-        // is minutes of work -- run twice (before and after) on every call,
-        // regardless of what the changeset touches. duplicateCheckScope
-        // restricts it to the people this run actually created or modified
-        // (TouchedRoots), queried one at a time against their full bucket --
-        // the same shape find_person already uses, fast for the same reason.
-        // A pair where neither member is in scope can't newly appear in this
-        // diff either way (see PlausibilityChecker.CheckPossibleDuplicates),
-        // so omitting it costs nothing. This does mean a fresh reparse of
-        // originalBytes for the "before" side, since doc is already mutated by
-        // now -- one O(n) parse is negligible next to the O(bucket^2) sweep it
-        // replaces.
-        var touchedIndiXrefs = state.TouchedRoots
-            .Where(r => r.Tag == "INDI" && r.Xref is not null)
-            .Select(r => r.Xref!)
-            .ToHashSet(StringComparer.Ordinal);
-        cancellationToken.ThrowIfCancellationRequested();
-        var beforeDoc = Ged70Parser.Read(new MemoryStream(originalBytes));
-        result.Changes = TreeChanges.Between(beforeDoc, doc, state.TouchedRoots);
-        var beforeDiags = AllDiagnostics(beforeDoc, touchedIndiXrefs, cancellationToken);
-        var afterDiags = AllDiagnostics(doc, touchedIndiXrefs, cancellationToken);
-        var newDiags = ConformanceChecker.DiffDiagnostics(beforeDiags, afterDiags);
-        result.NewDiagnostics = newDiags;
-        var newErrors = newDiags.Where(d => d.Severity == GedDiagnosticSeverity.Error).ToList();
-        if (newErrors.Count > 0)
-        {
-            foreach (var d in newErrors)
-                result.Errors.Add($"conformance regression: {d.Code} {d.Xref} {d.Tag}: {d.Message}");
-            return result;
-        }
-        foreach (var d in newDiags.Where(d => d.Severity != GedDiagnosticSeverity.Error))
-            result.Log.Add($"conformance note: {d.Code} {d.Xref} {d.Tag}: {d.Message}");
+        if (!PostApplyGatePasses(originalBytes, state, result, cancellationToken)) return result;
 
         if (dryRun) { result.Success = true; return result; }
 
@@ -432,6 +391,64 @@ public static class ChangesetApplier
         foreach (var rec in doc.Records)
             counts[rec.Tag] = counts.GetValueOrDefault(rec.Tag) + 1;
         return counts;
+    }
+
+    /// <summary>
+    /// Post-apply conformance/plausibility gate (Subproject D2, extended by
+    /// the plausibility-checker design): the mutation is already on
+    /// <see cref="ApplyState.Doc"/> in memory, before serialization — no need
+    /// to reparse to check the *after* state. Only *new* findings (occurrence
+    /// count higher than the baseline) count; a pre-existing Warning the file
+    /// already carried is not this changeset's problem, and a changeset that
+    /// removes a diagnostic is always welcome. Fills
+    /// <see cref="ApplyResult.Changes"/> and <see cref="ApplyResult.NewDiagnostics"/>,
+    /// logs non-Error findings as conformance notes, and returns false when
+    /// the changeset introduces an Error-severity finding.
+    ///
+    /// GEN301 (possible duplicate) is the one rule here expensive enough to
+    /// matter: an all-pairs sweep of a large same-surname bucket is
+    /// O(bucket^2), which on a real family study's own most common surname
+    /// is minutes of work -- run twice (before and after) on every call,
+    /// regardless of what the changeset touches. The duplicate-check scope
+    /// restricts it to the people this run actually created or modified
+    /// (TouchedRoots), queried one at a time against their full bucket --
+    /// the same shape find_person already uses, fast for the same reason.
+    /// A pair where neither member is in scope can't newly appear in this
+    /// diff either way (see PlausibilityChecker.CheckPossibleDuplicates),
+    /// so omitting it costs nothing. This does mean a fresh reparse of
+    /// <paramref name="originalBytes"/> for the "before" side, since Doc is
+    /// already mutated by now -- one O(n) parse is negligible next to the
+    /// O(bucket^2) sweep it replaces.
+    /// </summary>
+    private static bool PostApplyGatePasses(
+        byte[] originalBytes, ApplyState state, ApplyResult result, CancellationToken cancellationToken)
+    {
+        var touchedIndiXrefs = state.TouchedRoots
+            .Where(r => r.Tag == "INDI" && r.Xref is not null)
+            .Select(r => r.Xref!)
+            .ToHashSet(StringComparer.Ordinal);
+        cancellationToken.ThrowIfCancellationRequested();
+        var beforeDoc = Ged70Parser.Read(new MemoryStream(originalBytes));
+        result.Changes = TreeChanges.Between(beforeDoc, state.Doc, state.TouchedRoots);
+        var beforeDiags = AllDiagnostics(beforeDoc, touchedIndiXrefs, cancellationToken);
+        var afterDiags = AllDiagnostics(state.Doc, touchedIndiXrefs, cancellationToken);
+        var newDiags = ConformanceChecker.DiffDiagnostics(beforeDiags, afterDiags);
+        // Apply-time advisories (GEN201 specificity loss) are new by
+        // construction — they exist only because this run replaced a value —
+        // so they join the diff directly instead of a before/after compare.
+        newDiags.AddRange(state.Advisories);
+        result.NewDiagnostics = newDiags;
+
+        var newErrors = newDiags.Where(d => d.Severity == GedDiagnosticSeverity.Error).ToList();
+        if (newErrors.Count > 0)
+        {
+            foreach (var d in newErrors)
+                result.Errors.Add($"conformance regression: {d.Code} {d.Xref} {d.Tag}: {d.Message}");
+            return false;
+        }
+        foreach (var d in newDiags.Where(d => d.Severity != GedDiagnosticSeverity.Error))
+            result.Log.Add($"conformance note: {d.Code} {d.Xref} {d.Tag}: {d.Message}");
+        return true;
     }
 
     /// <summary>

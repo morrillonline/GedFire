@@ -25,7 +25,9 @@ public sealed class CheckPlausibilityTool
         "validate_changeset uses) and return just the plausibility findings the changeset would newly " +
         "introduce -- a chronological or biological implausibility (e.g. a parent's age at a child's birth, " +
         "an event recorded out of canonical order, a possible duplicate person, an ancestor cycle) that the " +
-        "combination of the changeset's new facts and the target's existing facts creates. Structured " +
+        "combination of the changeset's new facts and the target's existing facts creates, or a replacement " +
+        "that loses specificity (GEN201: a date or place replaced with a less specific form of the value the " +
+        "file holds -- a warning only, never a block). Structured " +
         "{code, severity, message, xref} records, for a caller that wants to route on severity directly " +
         "rather than parsing validate_changeset's log lines. Writes nothing. Always requires a changeset -- " +
         "there is no whole-document plausibility sweep.";

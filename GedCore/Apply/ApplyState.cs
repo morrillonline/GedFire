@@ -1,3 +1,5 @@
+using GedCore.Validate;
+
 namespace GedCore.Apply;
 
 /// <summary>
@@ -31,6 +33,13 @@ internal sealed class ApplyState(GedDocument doc)
 
     /// <summary>Injectable clock for CHAN stamping; defaults to the real time, fixed for tests.</summary>
     public DateTime UtcNow { get; init; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Warning diagnostics raised by ops during apply (e.g. GEN201 specificity
+    /// loss), merged into <see cref="ChangesetApplier"/>'s new-diagnostics diff.
+    /// Advisory only: never blocks the run.
+    /// </summary>
+    public List<GedDiagnostic> Advisories { get; } = [];
 
     /// <summary>Mark the level-0 record containing <paramref name="node"/> as touched this run.</summary>
     public void Touch(GedRecord node)

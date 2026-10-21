@@ -374,7 +374,13 @@ Points measure changes, not evidentiary reliability.
 `validate_changeset(changesetPath, items)` previews the selected operations.
 `apply_changeset` validates and verifies them before writing. Use
 `check_plausibility` alongside validation to inspect introduced chronological,
-biological, name, and duplicate issues. `validate_document` checks whole-file
+biological, name, and duplicate issues. It also reports GEN201 when an
+operation replaces a date or place with a less specific form of the value the
+file holds (a place that is a suffix of the held hierarchy; a year, or a month
+and year, for a fuller date inside it) — a warning only, since losing
+specificity is not recommended except when correcting an error. A conflicting
+or more detailed replacement is not flagged, and nothing is blocked.
+`validate_document` checks whole-file
 GEDCOM 7 conformance separately; `warningsAsErrors` promotes warnings.
 
 New records use reserved `@New<token>@` placeholders. Tokens contain letters,
