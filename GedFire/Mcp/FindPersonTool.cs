@@ -21,7 +21,9 @@ public sealed class FindPersonTool
         "Resolve a name the user mentioned to a person in this server's GEDCOM. Call this whenever a person is " +
         "known by name but not by xref. A single result includes the person's identity, their child-family xref, " +
         "and the xref of every marriage — childless marriages included — with marriage date and spouse name; " +
-        "pass those xrefs to future family detail or research tools when needed. When candidates are returned, " +
+        "pass those xrefs to future family detail or research tools when needed. Single requires a match score " +
+        "of at least 90, even for a lone candidate, and a lead of at least 10 points when alternatives exist. " +
+        "Lower-scoring matches remain candidates. When candidates are returned, " +
         "ask the user which person they mean and call again with any new birth or death year/place, father or " +
         "mother name, spouse name, or marriage year/place. Hints rank only people already recalled by name.";
 

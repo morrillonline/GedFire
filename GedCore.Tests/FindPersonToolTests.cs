@@ -352,6 +352,50 @@ public class FindPersonToolTests : IDisposable
     // Hints flow through to the matcher
     // -------------------------------------------------------------------
 
+    [Theory]
+    [InlineData(1881, 93.333333333333, "single", 1)]
+    [InlineData(1882, 86.666666666667, "candidates", 1)]
+    [InlineData(1882, 86.666666666667, "candidates", 20)]
+    public async Task HandleAsync_LoneCandidate_UsesTheScoreFloorWithoutDiscardingTheMatch(
+        int birthYear, double expectedScore, string expectedType, int maxResults)
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Frederick /Ashcombe/
+            1 BIRT
+            2 DATE 1880
+            """;
+        var tool = ToolOver(ged, out _, _dir);
+
+        var result = await tool.HandleAsync(
+            "Frederick Ashcombe",
+            new FindPersonHintsArgs { Birth = new FindPersonEventHintArgs { Year = birthYear } },
+            CancellationToken.None, maxResults);
+
+        Assert.False(result.IsError);
+        var root = StructuredContent(result);
+        Assert.Equal(expectedType, root.GetProperty("matchType").GetString());
+        Assert.Equal(1, root.GetProperty("totalMatches").GetInt32());
+        Assert.False(root.GetProperty("truncated").GetBoolean());
+        Assert.Empty(root.GetProperty("suggestions").EnumerateArray());
+        var candidate = Assert.Single(root.GetProperty("candidates").EnumerateArray());
+        Assert.Equal("@I1@", candidate.GetProperty("xref").GetString());
+        Assert.Equal(1880, candidate.GetProperty("birth").GetProperty("year").GetInt32());
+        Assert.Equal(expectedScore, candidate.GetProperty("matchScore").GetDouble(), 6);
+        if (expectedType == "single")
+        {
+            Assert.Equal("@I1@", root.GetProperty("confidentMatchXref").GetString());
+            Assert.Equal(expectedScore, root.GetProperty("confidentMatchScore").GetDouble(), 6);
+            Assert.Equal("@I1@", root.GetProperty("person").GetProperty("xref").GetString());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, root.GetProperty("confidentMatchXref").ValueKind);
+            Assert.Equal(JsonValueKind.Null, root.GetProperty("confidentMatchScore").ValueKind);
+            Assert.Equal(JsonValueKind.Null, root.GetProperty("person").ValueKind);
+        }
+    }
+
     [Fact]
     public async Task HandleAsync_HintsArePassedThroughToTheMatcher()
     {

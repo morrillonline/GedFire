@@ -193,18 +193,10 @@ public sealed class PersonMatchCore
         var ordered = Order(scored);
         int totalMatches = ordered.Count;
 
-        bool isSingle;
-        if (ordered.Count == 1)
-        {
-            isSingle = true;
-        }
-        else
-        {
-            var top = ordered[0];
-            var runnerUp = ordered[1];
-            isSingle = top.Hinted.FinalScore >= SingleMatchMinScore &&
-                       top.Hinted.FinalScore - runnerUp.Hinted.FinalScore >= SingleMatchMargin;
-        }
+        var top = ordered[0];
+        bool isSingle = top.Hinted.FinalScore >= SingleMatchMinScore &&
+                        (ordered.Count == 1 ||
+                         top.Hinted.FinalScore - ordered[1].Hinted.FinalScore >= SingleMatchMargin);
 
         var capped = maxResults.HasValue ? ordered.Take(maxResults.Value).ToList() : ordered;
         bool truncated = capped.Count < totalMatches;

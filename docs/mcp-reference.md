@@ -45,7 +45,12 @@ Results carry `matchType`, `confidentMatchXref`, `confidentMatchScore`, `person`
 `candidates`, `suggestions`, `totalMatches`, and `truncated`. Candidates and
 suggestions include `matchScore`. Scores are not statistical probabilities.
 Use `matchType` and `confidentMatchXref` to inspect whether the tool resolved
-one person.
+one person. `single` requires a `matchScore` of at least 90, including when
+only one candidate is recalled. With multiple candidates, the leader must
+also score at least 10 points above the runner-up. Otherwise the result is
+`candidates`, with the recalled matches retained and `confidentMatchXref`,
+`confidentMatchScore`, and `person` all null. Classification uses the full
+recall set before `maxResults` is applied.
 
 `find_family` searches through a named relative. `relation` is `spouse`
 (find the named person's partner), `child` (find their parents), or `parent`
@@ -97,7 +102,9 @@ Results rank candidates by name, lifespan, kin overlap, and place. Each
 person's `sameNameSurvey` lists the same-name candidates considered and the
 reason each non-leader lost: incompatible dates, wrong spouse, impossible age,
 or a lower score. The verdict is `single`, `candidates`, or `none`.
-`single` uses the same confidence floors as `find_person`.
+Unlike `find_person`, `match_record` still returns `single` for a lone viable
+candidate; with multiple viable candidates it requires a composite score of
+at least 90 and a lead of at least 10 points.
 
 A person matching nobody receives `potentialNewPerson` and any near-miss
 `possibleDuplicates`, not a forced match. The same inputs yield the same
