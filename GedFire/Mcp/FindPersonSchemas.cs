@@ -147,7 +147,7 @@ public static class FindPersonSchemas
             "matchType": {
               "type": "string",
               "enum": ["none", "single", "candidates"],
-              "description": "The matcher's confidence classification: none means no name-recalled person, single means one decisive winner, and candidates means the recalled people remain ambiguous."
+              "description": "The matcher's confidence classification: none means no name-recalled person; single requires a matchScore of at least 90, even for a lone candidate, and a lead of at least 10 points when alternatives exist; otherwise the recalled people remain candidates."
             },
             "confidentMatchXref": {
               "type": ["string", "null"],

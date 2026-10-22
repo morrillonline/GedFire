@@ -28,7 +28,8 @@ public sealed class MatchRecordTool
         "composite score and name/lifespan/kinOverlap/place subscores, a closed sameNameSurvey naming every " +
         "same-name person considered with an exclusion reason for each non-leader (died before the event, " +
         "wrong spouse, wrong parents, impossible age, or simply outscored — nobody is silently dropped), and " +
-        "a verdict of single (the same confidence floors as find_person), candidates, or none. A record " +
+        "a verdict of single (a lone viable candidate, or a composite score of at least 90 with a lead of at least 10), " +
+        "candidates, or none. A record " +
         "person matching no tree person comes back with potentialNewPerson true and any near-miss " +
         "possibleDuplicates, never force-matched to the nearest name. Deterministic: the same input always " +
         "returns the same result.";
@@ -103,7 +104,7 @@ public sealed class MatchRecordTool
                   "index": { "type": "integer", "description": "Index into the request's persons." },
                   "role": { "type": ["string", "null"] },
                   "name": { "type": "string" },
-                  "verdict": { "type": "string", "enum": ["single", "candidates", "none"], "description": "single uses find_person's confidence floors: a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10." },
+                  "verdict": { "type": "string", "enum": ["single", "candidates", "none"], "description": "single means a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10." },
                   "confidentMatchXref": { "type": ["string", "null"] },
                   "confidentMatchScore": { "type": ["number", "null"] },
                   "candidates": {

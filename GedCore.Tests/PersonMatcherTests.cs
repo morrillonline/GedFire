@@ -381,17 +381,18 @@ public class PersonMatcherTests
         """;
 
     [Theory]
-    [InlineData(1841, 75.0, 100.0)]              // exact year: +15 of 15 available
-    [InlineData(1842, 70.0, 93.333333333333)]     // 1 year off: +10
-    [InlineData(1843, 65.0, 86.666666666666)]     // 2 years off: +5
-    [InlineData(1900, 60.0, 80.0)]                // far off: +0, but never excluded
-    public void BirthYearHint_AwardsGradedPoints(int hintYear, double expectedRaw, double expectedFinal)
+    [InlineData(1841, 75.0, 100.0, PersonMatchType.Single)]
+    [InlineData(1842, 70.0, 93.333333333333, PersonMatchType.Single)]
+    [InlineData(1843, 65.0, 86.666666666666, PersonMatchType.Candidates)]
+    [InlineData(1900, 60.0, 80.0, PersonMatchType.Candidates)]
+    public void BirthYearHint_AwardsGradedPoints(
+        int hintYear, double expectedRaw, double expectedFinal, PersonMatchType expectedType)
     {
         var outcome = Matcher().Match(IndexOf(SingleBirthGed), "Frederick Morrill",
             new MatchHints(Birth: new EventHint(Year: hintYear)));
 
-        Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
-        var match = outcome.Matches[0];
+        Assert.Equal(expectedType, outcome.PersonMatchType);
+        var match = Assert.Single(outcome.Matches);
         // Name weight 60 + birth-year weight 15 = 75 available throughout;
         // only the awarded points vary with the year difference.
         Assert.Equal(expectedRaw, match.RawScore, 6);
@@ -458,8 +459,8 @@ public class PersonMatcherTests
         double billWilliamSim = JaroWinkler.Similarity("BILL", "WILLIAM");
         double expectedRaw = 35.0 + billWilliamSim * 25.0;
 
-        Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
-        Assert.Equal(expectedRaw, outcome.Matches[0].RawScore, 6);
+        Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
+        Assert.Equal(expectedRaw, Assert.Single(outcome.Matches).RawScore, 6);
     }
 
     [Fact]
@@ -497,8 +498,8 @@ public class PersonMatcherTests
         double hintSim = JaroWinkler.Similarity("BILL BLAKE", "WILLIAM BLAKE");
         double expectedRaw = 60.0 + (hintSim >= 0.85 ? 20.0 : 0.0);
 
-        Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
-        Assert.Equal(expectedRaw, outcome.Matches[0].RawScore, 6);
+        Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
+        Assert.Equal(expectedRaw, Assert.Single(outcome.Matches).RawScore, 6);
     }
 
     // -------------------------------------------------------------------

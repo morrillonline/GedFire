@@ -50,6 +50,68 @@ public class PersonMatchCoreTests
         Assert.Equal(1, outcome.TotalMatches);
     }
 
+    [Theory]
+    [InlineData(1880, 100.0, PersonMatchType.Single)]
+    [InlineData(1881, 93.333333333333, PersonMatchType.Single)]
+    [InlineData(1882, 86.666666666667, PersonMatchType.Candidates)]
+    [InlineData(1883, 80.0, PersonMatchType.Candidates)]
+    public void LoneCandidate_RequiresTheSingleMatchScoreFloor(
+        int birthYear, double expectedScore, PersonMatchType expectedType)
+    {
+        var candidate = Candidate("synthetic", "Ashcombe", "Frederick", birthYear: 1880);
+
+        var outcome = new PersonMatchCore().Match(
+            [candidate], "Frederick Ashcombe", new MatchHints(Birth: new EventHint(birthYear)), Nicknames());
+
+        Assert.Equal(expectedType, outcome.PersonMatchType);
+        Assert.Equal(expectedScore, Assert.Single(outcome.Matches).FinalScore, 6);
+        Assert.Equal("synthetic", outcome.Matches[0].Id);
+        Assert.Equal(1, outcome.TotalMatches);
+        Assert.False(outcome.Truncated);
+        Assert.Empty(outcome.Suggestions);
+    }
+
+    [Fact]
+    public void LoneCandidate_ExactlyAtTheScoreFloor_ReturnsSingle()
+    {
+        var candidate = Candidate("synthetic", "Ashcombe", "Frederick") with
+        {
+            Marriages = [new PersonMatchMarriage("CLARA BELLWICK", 1900, "MAPLEFORD")],
+        };
+        var hints = new MatchHints(Spouse: new SpouseHint("Clara Bellwick", new EventHint(1903, "Mapleford")));
+
+        var outcome = new PersonMatchCore().Match([candidate], "Frederick Ashcombe", hints, Nicknames());
+
+        Assert.Equal(90.0, Assert.Single(outcome.Matches).FinalScore);
+        Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
+    }
+
+    [Fact]
+    public void LoneUndocumentedNickname_RemainsAvailableAsACandidate()
+    {
+        var candidate = Candidate("synthetic", "Ashcombe", "William");
+
+        var outcome = new PersonMatchCore().Match([candidate], "Bill Ashcombe", null, Nicknames());
+
+        Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
+        Assert.Equal("synthetic", Assert.Single(outcome.Matches).Id);
+        Assert.True(outcome.Matches[0].FinalScore < PersonMatchCore.SingleMatchMinScore);
+    }
+
+    [Fact]
+    public void CappingTwoTiedCandidatesToOne_DoesNotProduceASingleMatch()
+    {
+        var candidate = Candidate("synthetic", "Ashcombe", "Frederick");
+
+        var outcome = new PersonMatchCore().Match(
+            [candidate, candidate with { Id = "other" }], "Frederick Ashcombe", null, Nicknames(), maxResults: 1);
+
+        Assert.Equal(PersonMatchType.Candidates, outcome.PersonMatchType);
+        Assert.Single(outcome.Matches);
+        Assert.Equal(2, outcome.TotalMatches);
+        Assert.True(outcome.Truncated);
+    }
+
     [Fact]
     public void ExactTie_ReturnsCandidates()
     {

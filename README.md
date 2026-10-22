@@ -195,7 +195,10 @@ Keep conflicting findings instead of flattening them into one conclusion.
 **Correlation identifies the person.** Use `find_person` for a hinted name
 lookup or `match_record` for a household, obituary, or other multi-person
 record. Inspect the candidates and exclusions. A deterministic match score is
-not a probability or a substitute for a proof argument.
+not a probability or a substitute for a proof argument. `find_person` returns
+`single` only at a score of at least 90, even for a lone candidate, and requires
+a lead of at least 10 points when alternatives exist. Lower-scoring matches
+remain available as `candidates`.
 
 **A changeset specifies the edits.** `draft_changeset` compiles findings into
 typed operations. It reconciles compatible facts, preserves their citations,
