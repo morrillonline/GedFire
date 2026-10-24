@@ -9,6 +9,60 @@ All xrefs belong to the server's bound GEDCOM. Never carry them into another
 document. Only `apply_changeset` modifies that GEDCOM. Draft and report tools
 can write separate files, including when the server uses `--read-only`.
 
+## Connection mode
+
+GedFire supports local MCP mode only, over stdio. The MCP client launches
+`gedfire mcp` as a local child process and communicates through its standard
+input/output. Select the client's local/stdio server type and provide a
+command and arguments, not a URL. GedFire does not expose an HTTP, Streamable
+HTTP or SSE transport and does not listen on a network port. The client may
+still use a cloud-hosted AI model; local mode describes the MCP transport.
+
+## Command-line tool interface
+
+All MCP tools can also run as one-shot CLI calls. The names, input/output
+schemas, argument validation, handlers and document safety checks are shared:
+
+```text
+gedfire tools list
+gedfire tools describe match_record
+gedfire tools call match_record --input family.ged --args request.json --out result.json
+```
+
+`list` returns a JSON object with a `tools` array containing MCP tool metadata,
+including input/output schemas and behavior annotations. `describe` returns
+one tool's metadata. Neither opens a GEDCOM file.
+
+`call` accepts the tool's unchanged MCP arguments object from `--args <file>`
+or stdin with `--args -`; omitting `--args` supplies `{}`. All tools require
+`--input` except `date_calc` and `describe_changeset_ops`. Tool names and JSON
+field names are case-sensitive. Relative paths, including paths inside the
+arguments object, resolve against the process's working directory.
+
+`--policy <file>`, `--read-only` and `--enforce-privacy` use the same policy,
+apply gate and privacy filtering as the MCP server. Read-only does not prevent
+separate draft, proposal or report files. No resident MCP server, protocol
+handshake or network connection is needed.
+
+Successful invocations return the MCP `structuredContent` payload as JSON,
+without the protocol envelope or duplicate text fallback. Tool errors return
+the MCP error result with `isError` and `content`. JSON goes to stdout, or to
+a UTF-8 file without a BOM when `--out <file>` is supplied; `--out -` explicitly
+selects stdout. Existing output files are refused before the tool executes.
+CLI setup, argument-file or file-access failures may produce no JSON result.
+Diagnostics go to stderr.
+
+Exit code 0 means success. Exit code 1 means a CLI/tool error or a result with
+`success: false` or `passed: false`; failed-check results remain available as
+JSON. Warnings alone do not change the exit code unless the tool's own options
+make them fail the check.
+
+CLI `--out` saves the returned result, not the changeset or proposal itself.
+Tool arguments such as `outPath`, `reportPath`, `overwrite` and `verbose` retain
+their MCP meanings. For example, when a tool writes a report and returns a
+digest, CLI `--out` receives that digest; request `verbose: true` when the tool
+supports it to return the complete result too.
+
 ## Lookups
 
 ### Hinted lookups

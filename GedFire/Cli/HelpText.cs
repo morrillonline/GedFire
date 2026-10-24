@@ -53,8 +53,11 @@ public static class HelpText
                         into a directory.
 
           mcp       --input <ged> [--policy <json>] [--read-only] [--enforce-privacy]
-                        Start a stdio Model Context Protocol server exposing
-                        this GEDCOM to MCP-compatible agent clients. Resident
+                        Start a local-only stdio Model Context Protocol server
+                        exposing this GEDCOM to MCP-compatible agent clients.
+                        The client launches GedFire as a local child process.
+                        No HTTP, Streamable HTTP or SSE transport is supported;
+                        there is no server URL or listening network port. Resident
                         process: stays running until stdin closes. Every tool
                         except apply_changeset is read-only; apply_changeset
                         is the only one that writes, after validation and
@@ -72,6 +75,20 @@ public static class HelpText
                                               plausibly-living individuals
                                               are reduced to a placeholder
                                               in every tool's output.
+
+          tools list
+          tools describe <tool>
+          tools call <tool> [--input <ged>] [--args <json|->] [--out <json|->]
+                        Run any MCP tool once without a server, using the same
+                        name, JSON argument schema, handler and result schema.
+                        list/describe return the MCP tool metadata and schemas.
+                        --args - reads stdin; omitted --args supplies {}.
+                        Results go to stdout unless --out names a new file;
+                        existing output files are refused. Diagnostics go to stderr.
+                        Exit 1 on errors or failed checks; 0 on success.
+                        Also accepts --policy <json>, --read-only and
+                        --enforce-privacy with the same meaning as mcp.
+                        date_calc and describe_changeset_ops need no --input.
 
           date-calc --op normalize|add|sub|diff
                         Genealogical date arithmetic using GedCore's GEDCOM

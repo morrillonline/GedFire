@@ -16,7 +16,7 @@ public sealed class CliApplication(IEnumerable<ICliCommand> commands, CommandCon
     [
         new CreateCommand(), new UpgradeCommand(), new DowngradeCommand(), new GenerateCommand(),
         new ExportIndexCommand(), new SelectTargetsCommand(), new ApplyCommand(), new ValidateCommand(),
-        new PackCommand(), new UnpackCommand(), new McpCommand(), new DateCalcCommand(),
+        new PackCommand(), new UnpackCommand(), new McpCommand(), new ToolsCommand(), new DateCalcCommand(),
         new FindPersonCommand(), new GetRecordCommand(), new GetDocumentStatsCommand(),
     ], context);
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -15,9 +16,27 @@ namespace GedFire.Mcp;
 public sealed record ToolDefinition(
     string Name, string Description, string InputSchemaJson, string OutputSchemaJson, ToolBehavior Behavior)
 {
+    public Tool Describe() => new()
+    {
+        Name = Name,
+        Description = Description,
+        InputSchema = ReadSchema(InputSchemaJson),
+        OutputSchema = ReadSchema(OutputSchemaJson),
+        Annotations = new ToolAnnotations
+        {
+            ReadOnlyHint = Behavior.ReadOnly,
+            DestructiveHint = Behavior.Destructive,
+            IdempotentHint = Behavior.Idempotent,
+        },
+    };
+
     public McpServerTool CreateTool(Delegate invoke)
     {
-        var tool = McpServerTool.Create(invoke, new McpServerToolCreateOptions
+        var function = AIFunctionFactory.Create(invoke, new AIFunctionFactoryOptions
+        {
+            MarshalResult = (result, resultType, cancellationToken) => ValueTask.FromResult(result),
+        });
+        var tool = McpServerTool.Create(function, new McpServerToolCreateOptions
         {
             Name = Name,
             Description = Description,
@@ -25,15 +44,17 @@ public sealed record ToolDefinition(
             Destructive = Behavior.Destructive,
             Idempotent = Behavior.Idempotent,
         });
-        tool.ProtocolTool.Description = Description;
-        tool.ProtocolTool.InputSchema = JsonDocument.Parse(InputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.OutputSchema = JsonDocument.Parse(OutputSchemaJson).RootElement.Clone();
-        tool.ProtocolTool.Annotations = new ToolAnnotations
-        {
-            ReadOnlyHint = Behavior.ReadOnly,
-            DestructiveHint = Behavior.Destructive,
-            IdempotentHint = Behavior.Idempotent,
-        };
-        return tool;
+        var description = Describe();
+        tool.ProtocolTool.Description = description.Description;
+        tool.ProtocolTool.InputSchema = description.InputSchema;
+        tool.ProtocolTool.OutputSchema = description.OutputSchema;
+        tool.ProtocolTool.Annotations = description.Annotations;
+        return new CallableTool(tool, function);
+    }
+
+    static JsonElement ReadSchema(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
     }
 }

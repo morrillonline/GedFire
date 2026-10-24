@@ -41,7 +41,11 @@ public class CliApplicationTests
         var (app, output, _) = Build();
 
         Assert.Equal(0, await app.RunAsync([flag]));
-        Assert.Contains("Commands:", output.ToString());
+        string help = output.ToString();
+        Assert.Contains("Commands:", help);
+        Assert.Contains("local-only stdio Model Context Protocol server", help);
+        Assert.Contains("No HTTP, Streamable HTTP or SSE transport is supported", help);
+        Assert.Contains("there is no server URL or listening network port", help);
     }
 
     [Theory]
@@ -87,6 +91,7 @@ public class CliApplicationTests
     [InlineData("pack")]
     [InlineData("unpack")]
     [InlineData("mcp")]
+    [InlineData("tools")]
     [InlineData("date-calc")]
     [InlineData("find-person")]
     [InlineData("get-record")]
