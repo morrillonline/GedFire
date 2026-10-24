@@ -106,3 +106,7 @@ Run this procedure only when explicitly requested by the repository maintainer.
 - Pushing a `v*` tag triggers CI's `release` job: retest, verify tag == computed project version, publish self-contained binaries (win-x64, linux-x64, osx-x64, osx-arm64), pack + push the NuGet tool, create the GitHub release with auto-generated notes.
 - Never push a `v*` tag unless the maintainer explicitly requests a release.
 
+**Local install / update:**
+- `dotnet tool update --global gedfire` is the install path after a release.
+- An access-denied failure on `.dotnet\tools\.store\gedfire\<old-version>` is normal: running `gedfire` MCP server processes hold the tool files. The expected fix is to find them (`Get-Process gedfire`), stop them by PID (`Stop-Process -Id <pid>`), and re-run the update. MCP clients respawn the server on their next tool call, picking up the new version.
+

@@ -183,6 +183,70 @@ public class McpServerIntegrationTests : IDisposable
     // -------------------------------------------------------------------
 
     [Fact]
+    public async Task ToolsCli_DiscoveryUsesTheLiveMcpSchemas()
+    {
+        await using var client = McpStdioTestClient.Start(WriteGed("Mara /Example/"));
+        await client.InitializeAsync(ShortTimeout);
+        var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
+        var (exit, stdout, stderr) = await McpStdioTestClient.RunToCompletionAsync(ShortTimeout, "tools", "list");
+
+        Assert.Equal(0, exit);
+        Assert.Empty(stderr);
+        using var actual = JsonDocument.Parse(stdout);
+        var descriptions = actual.RootElement.GetProperty("tools").EnumerateArray().ToDictionary(t => t.GetProperty("name").GetString()!);
+        var tools = response.GetProperty("result").GetProperty("tools");
+        Assert.Equal(tools.GetArrayLength(), descriptions.Count);
+        foreach (var tool in tools.EnumerateArray())
+        {
+            var description = descriptions[tool.GetProperty("name").GetString()!];
+            foreach (string property in new[] { "description", "inputSchema", "outputSchema", "annotations" })
+                Assert.True(JsonElement.DeepEquals(tool.GetProperty(property), description.GetProperty(property)));
+        }
+    }
+
+    [Fact]
+    public async Task ToolsCli_SchemaRefusalMatchesMcp()
+    {
+        string document = WriteGed("Mara /Example/");
+        string argumentsPath = Path.Combine(_dir, "arguments.json");
+        File.WriteAllText(argumentsPath, "{\"unknown\":true}");
+        await using var client = McpStdioTestClient.Start(document);
+        await client.InitializeAsync(ShortTimeout);
+        var response = await client.SendRequestAsync("tools/call", new { name = "date_calc", arguments = new { unknown = true } }, ShortTimeout);
+        var (exit, stdout, stderr) = await McpStdioTestClient.RunToCompletionAsync(ShortTimeout,
+            "tools", "call", "date_calc", "--args", argumentsPath);
+
+        Assert.Equal(1, exit);
+        Assert.NotEmpty(stderr);
+        using var actual = JsonDocument.Parse(stdout);
+        Assert.True(JsonElement.DeepEquals(response.GetProperty("result"), actual.RootElement));
+    }
+
+    [Theory]
+    [InlineData("date_calc", """{"operation":"normalize","date":"1 JAN 1800"}""")]
+    [InlineData("find_person", """{"query":"Mara Example"}""")]
+    [InlineData("get_records", """{"xrefs":["@I1@"]}""")]
+    [InlineData("describe_changeset_ops", "{}")]
+    public async Task ToolsCli_ReturnsTheSameStructuredResultAsMcp(string name, string arguments)
+    {
+        string document = WriteGed("Mara /Example/");
+        string argumentsPath = Path.Combine(_dir, "arguments.json");
+        File.WriteAllText(argumentsPath, arguments);
+        await using var client = McpStdioTestClient.Start(document);
+        await client.InitializeAsync(ShortTimeout);
+        using var parsed = JsonDocument.Parse(arguments);
+
+        var response = await client.SendRequestAsync("tools/call", new { name, arguments = parsed.RootElement }, ShortTimeout);
+        var (exit, stdout, stderr) = await McpStdioTestClient.RunToCompletionAsync(ShortTimeout,
+            "tools", "call", name, "--input", document, "--args", argumentsPath);
+
+        Assert.Equal(0, exit);
+        Assert.Empty(stderr);
+        using var actual = JsonDocument.Parse(stdout);
+        Assert.True(JsonElement.DeepEquals(response.GetProperty("result").GetProperty("structuredContent"), actual.RootElement));
+    }
+
+    [Fact]
     public async Task ToolsCall_DateCalc_ReturnsCanonicalStructuredResult()
     {
         await using var client = McpStdioTestClient.Start(WriteGed());

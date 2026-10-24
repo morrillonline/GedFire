@@ -1,7 +1,5 @@
-using GedCore;
 using GedCore.Matching;
 using GedCore.Policy;
-using GedFire.Gen;
 using GedFire.Mcp;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -32,11 +30,11 @@ public sealed class McpCommand : OptionCommand
 
         string absoluteInput = Path.GetFullPath(input);
         NicknameDirectory nicknames;
-        DocumentSnapshot initialSnapshot;
+        DocumentSession session;
         try
         {
             nicknames = NicknameDirectory.LoadEmbedded();
-            initialSnapshot = LoadSnapshot(absoluteInput, enforcePrivacy);
+            session = DocumentSession.Open(absoluteInput, enforcePrivacy);
         }
         catch (Exception ex)
         {
@@ -57,23 +55,16 @@ public sealed class McpCommand : OptionCommand
             }
         }
 
-        var session = new DocumentSession(absoluteInput, initialSnapshot, enforcePrivacy);
         await using var watcher = new DocumentFileWatcher(session, absoluteInput);
-        var tools = McpToolCollectionFactory.Create(
-            session, new ToolGate(), nicknames, absoluteInput, MediaDirectory.For(absoluteInput), readOnly, policy);
+        var tools = McpToolCollectionFactory.Create(new ToolContext(session, absoluteInput)
+        {
+            Nicknames = nicknames,
+            ReadOnly = readOnly,
+            Policy = policy,
+        });
 
         await RunServerAsync(tools, McpServerInstructions.Build(readOnly, enforcePrivacy, policy is not null)).ConfigureAwait(false);
         return 0;
-    }
-
-    static DocumentSnapshot LoadSnapshot(string absoluteInput, bool enforcePrivacy)
-    {
-        var document = GedReader.ReadFile(absoluteInput);
-        var model = ModelBuilder.Build(document);
-        if (enforcePrivacy)
-            PrivacyFilter.Apply(model, DateTime.UtcNow.Year);
-        return new DocumentSnapshot(
-            model, document.Version, File.GetLastWriteTimeUtc(absoluteInput), new FileInfo(absoluteInput).Length);
     }
 
     static async Task RunServerAsync(McpServerPrimitiveCollection<McpServerTool> tools, string instructions)

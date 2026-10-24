@@ -13,6 +13,11 @@ GedFire is a local [Model Context Protocol](https://modelcontextprotocol.io/)
 records, draft cited changes, and validate them before writing your family
 history. It also generates static family-page websites from the same data.
 
+GedFire supports **local MCP mode only**, using stdio (standard input/output).
+Your MCP client launches the installed executable as a local process. There
+is no remote HTTP, Streamable HTTP or SSE transport, server URL, or listening
+port. This describes the MCP connection, not where your client's AI model runs.
+
 ```text
 historical records -> findings -> changesets -> review -> GEDCOM -> website
 ```
@@ -41,9 +46,9 @@ Start with a copy of your GEDCOM. Configure your
 gedfire mcp --input "C:\Genealogy\family.ged" --read-only --enforce-privacy
 ```
 
-Replace the input path with your file's absolute path. The server uses stdio;
-it waits silently for a client connection. Let the client launch it rather
-than running a second copy in a terminal.
+Replace the input path with your file's absolute path. Let the client launch
+the local stdio server rather than running a second copy in a terminal; it
+communicates through the process streams, not a network connection.
 
 Ask your agent: **"How many people and families are in this file?"**
 It should call `get_document_stats` and report both counts.
@@ -102,6 +107,9 @@ service. It cannot establish that a quotation is genuine or an identification
 is correct.
 
 ## Connect an AI client
+
+Choose **local** or **stdio** if your client asks for the MCP server type.
+Configure an executable command and arguments, not a remote server URL.
 
 ### VS Code / GitHub Copilot
 
@@ -340,26 +348,38 @@ The CLI uses the same engine as the MCP server.
 | `date-calc` | Normalize dual dates or calculate dates and ages. |
 | `find-person` / `get-record` / `get-document-stats` | Run one lookup and print JSON without starting a server. |
 | `pack` / `unpack` | Create or extract a GEDZIP archive. |
-| `mcp` | Start the stdio MCP server. |
+| `mcp` | Start the local-only stdio MCP server; no HTTP or remote transport. |
+| `tools list` / `tools describe` / `tools call` | Discover or invoke any MCP tool directly using the same JSON schemas and handlers. |
 
 Run `gedfire help` for command syntax. See the [MCP reference](docs/mcp-reference.md)
 for changeset semantics and date-arithmetic examples.
 
-Target selection withholds New parent and New spouse cards until the person's
-own birth, christening/baptism, death, or burial has an exact date or a non-empty
-place. New child cards need an anchor on either spouse or the marriage.
-Enrich person cards are unchanged; `suppressedCards` reports withheld cards and
-reasons in both CLI and MCP results. Enrichment re-enables cards on the next draw.
+### Use tools from scripts
 
-## Roadmap
+Every MCP tool is also available as a one-shot command, without a server or AI client:
 
-- **Interoperability audit:** a planned read-only `gedfire audit` command to
-  report conformance, extensions, unresolved pointers, and media readiness.
-- **Companion research skills:** the working skills need packaging,
-  portability, and documentation cleanup before a standalone release.
-  GedFire does not require them; they are not yet a published companion package.
-- **`GedCore` on NuGet:** a possible parser/apply library package, if there is
-  interest.
+```text
+gedfire tools list
+gedfire tools describe find_person
+gedfire tools call find_person --input family.ged --args request.json --out result.json --enforce-privacy
+```
+
+The arguments file contains exactly the MCP tool's arguments object, for example:
+
+```json
+{"query":"Mara Example","maxResults":8}
+```
+
+Use `--args -` to read JSON from stdin, or omit `--args` for `{}`. Results are
+JSON on stdout unless `--out` names a new file; existing output files are
+refused. Diagnostics go to stderr. The exit code is 0 on success and 1 on
+errors or failed validation/plausibility checks.
+
+`--policy`, `--read-only`, and `--enforce-privacy` have the same meaning as on
+`mcp`. Read-only prevents GEDCOM changes, not separate draft or report files.
+Discovery needs no GEDCOM, and calls to `date_calc` and `describe_changeset_ops`
+need no `--input`. Existing convenience commands remain unchanged. See the
+[script interface](docs/mcp-reference.md#command-line-tool-interface) for output details.
 
 ## Building from source
 

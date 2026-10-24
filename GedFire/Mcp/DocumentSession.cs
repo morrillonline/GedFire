@@ -58,6 +58,22 @@ public sealed class DocumentSession
         _snapshot = initialSnapshot ?? throw new ArgumentNullException(nameof(initialSnapshot));
     }
 
+    public static DocumentSession Open(string path, bool enforcePrivacy = false)
+    {
+        using var stream = File.OpenRead(path);
+        return FromStream(path, stream, File.GetLastWriteTimeUtc(path), enforcePrivacy);
+    }
+
+    public static DocumentSession FromStream(string path, Stream source, DateTime lastWriteTimeUtc, bool enforcePrivacy = false)
+    {
+        using var buffer = new MemoryStream();
+        source.CopyTo(buffer);
+        var document = GedReader.Read(buffer.ToArray());
+        var model = ModelBuilder.Build(document);
+        if (enforcePrivacy) PrivacyFilter.Apply(model, DateTime.UtcNow.Year);
+        return new DocumentSession(path, new DocumentSnapshot(model, document.Version, lastWriteTimeUtc, buffer.Length), enforcePrivacy);
+    }
+
     /// <summary>
     /// The current snapshot, reloading first if the source file's metadata
     /// has moved since the snapshot was taken. Concurrent callers share one

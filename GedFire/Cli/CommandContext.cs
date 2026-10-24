@@ -8,10 +8,11 @@ namespace GedFire.Cli;
 // in-process against string writers.
 // ---------------------------------------------------------------------------
 
-public sealed class CommandContext(TextWriter output, TextWriter error)
+public sealed class CommandContext(TextWriter output, TextWriter error, TextReader? input = null)
 {
     public TextWriter Out { get; } = output;
     public TextWriter Error { get; } = error;
+    public TextReader In { get; } = input ?? Console.In;
 
     /// <summary>Writes <paramref name="message"/> to the error writer and returns the failure exit code.</summary>
     public int Fail(string message)
