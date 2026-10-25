@@ -58,7 +58,8 @@ internal static class Kin
     }
 
     public static string? SexOf(ResolutionContext ctx, string xref, PersonRef? inline) =>
-        ctx.Existing(xref)?.FirstChild("SEX")?.Value
+        ctx.PlannedSex.GetValueOrDefault(xref)
+        ?? ctx.Existing(xref)?.FirstChild("SEX")?.Value
         ?? (inline?.Xref == xref ? inline.Sex : null);
 
     /// <summary>

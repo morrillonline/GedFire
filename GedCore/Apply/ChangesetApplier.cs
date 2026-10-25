@@ -148,6 +148,9 @@ public static class ChangesetApplier
         {
             cancellationToken.ThrowIfCancellationRequested();
             op.Validate(ctx, result.Errors);
+            if (result.Errors.Count == 0
+                && op is CreateOrUpdateVitalOp { Fact: "SEX", Mode: "upsert", Value.Text: { } sex } vital)
+                ctx.PlannedSex[vital.Record] = sex;
         }
         foreach (var item in selectedItems)
             SharedSourceCopier.ValidateItem(doc, item, result.Errors);

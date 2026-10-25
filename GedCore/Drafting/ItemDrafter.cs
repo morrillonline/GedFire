@@ -44,10 +44,14 @@ internal sealed class ItemDrafter(
         var citations = BuildCitations(claims, decisions, errors);
 
         var ops = new JsonArray();
+        var vitals = VitalOps([.. asserted.Where(a => !a.Fact.CiteOnly)], citations, decisions).ToList();
+        var sexCorrections = vitals.Where(op => (string?)op["fact"] == "SEX"
+            && !Placeholder.IsPlaceholder((string)op["record"]!)).ToHashSet();
+        foreach (var correction in vitals.Where(sexCorrections.Contains)) ops.Add(correction);
         foreach (var link in relations.GroupBy(r => (r.Relation.Kind, r.Relation.Person, r.Relation.Other, r.Relation.Family, r.Relation.Role)))
             ops.Add(RelationOp([.. link], citations, decisions));
         foreach (var removal in RemovalOps(group, decisions)) ops.Add(removal);
-        foreach (var vital in VitalOps([.. asserted.Where(a => !a.Fact.CiteOnly)], citations, decisions)) ops.Add(vital);
+        foreach (var vital in vitals.Where(op => !sexCorrections.Contains(op))) ops.Add(vital);
         foreach (var citation in CitationOps([.. asserted.Where(a => a.Fact.CiteOnly)], citations)) ops.Add(citation);
         foreach (var finding in group)
             foreach (var note in finding.Notes) ops.Add(NoteOp(note, group, finding, citations));

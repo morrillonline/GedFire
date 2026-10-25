@@ -74,6 +74,25 @@ public class ChangesetDrafterRelationTests
     }
 
     [Fact]
+    public void ASexCorrection_PrecedesRelationshipsThatNeedTheCorrectedValue()
+    {
+        var finding = Finding(
+            [Person("@NewI1@", "Mary /Test/", "F"), Person("@NewI2@", "Ann /Test/")],
+            [Spouse("@I1@", "@NewI1@", "@NewF1@"),
+             Child("@NewF1@", "@NewI2@", husb: "@I1@", wife: "@NewI1@")],
+            [Fact("@I1@", "SEX", null, null) with { Value = "M" }]);
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([finding]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var applied = ChangesetApplier.Run(
+            Encoding.UTF8.GetBytes(Document.Replace("1 SEX M", "1 SEX F")),
+            Changeset.Parse(result.Changeset!.ToJsonString()), [1], dryRun: true);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        Assert.Equal("SEX", Ops(result)[0].GetProperty("fact").GetString());
+    }
+
+    [Fact]
     public void ARelation_IsCitedWithTheFindingsSourceAtItsOwnQuay()
     {
         var result = new ChangesetDrafter(new FakeLookup()).Draft(
@@ -173,6 +192,19 @@ public class ChangesetDrafterRelationTests
             [Fact("@NewI1@", "BIRT", "1807", "Maine")])]);
 
         Assert.Equal(["createOrUpdateSpouse", "createOrUpdateVital"], Ops(result).Select(Verb));
+    }
+
+    [Fact]
+    public void ASexFactOnANewPerson_FollowsTheRelationThatCreatesThem()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([Finding(
+            [Person("@NewI1@", "Mary /Test/", "F")], [Spouse("@I1@", "@NewI1@", "@NewF1@")],
+            [Fact("@NewI1@", "SEX", null, null) with { Value = "F" }])]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Equal(["createOrUpdateSpouse", "createOrUpdateVital"], Ops(result).Select(Verb));
+        var applied = DryRun(result);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
     }
 
     [Fact]

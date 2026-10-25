@@ -106,6 +106,11 @@ also score at least 10 points above the runner-up. Otherwise the result is
 `confidentMatchScore`, and `person` all null. Classification uses the full
 recall set before `maxResults` is applied.
 
+When the query or candidate has an unknown surname, `matchScore` is capped at
+89 unless a birth, death, or marriage year/place hint agrees with recorded
+data. Names and sex alone cannot produce `single`; missing event data and
+disagreeing event hints do not lift the cap.
+
 `find_family` searches through a named relative. `relation` is `spouse`
 (find the named person's partner), `child` (find their parents), or `parent`
 (find their children). Optional birth and death hints describe the person
@@ -213,7 +218,8 @@ in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error
 - Duplicate hints use the GEN301 plausibility test. Results include up to
   three candidates plus `possibleDuplicateCount`; duplicates do not prevent a draw.
 - An `Unknown` name part needs an agreeing parent or spouse name for duplicate
-  pairing.
+  pairing. An agreeing relative can support the match without dates; the
+  person's own name and sex alone cannot.
 - GEN301 never pairs two people whose recorded births (or recorded deaths) sit
   more than twenty years apart, or whose given names share no token, initial,
   or documented nickname.
@@ -311,6 +317,11 @@ Relations cite the finding at their own `quay`:
 `husb` and `wife` seed a new family only. Later relations omit those seeds;
 the compiler reports `dropped-seed` when it removes them. Marriage facts use
 the family placeholder as `record`.
+
+An existing person's `SEX` fact uses a string `value`, such as `"M"` or `"F"`.
+Within each item, the compiler places these corrections before relationships,
+so role validation uses the corrected sex. Facts on new people follow the
+relationships that create them.
 
 - `spouse` and `child` relations accept `notDuplicateOf`: existing people
   the author has confirmed are not the new person.
