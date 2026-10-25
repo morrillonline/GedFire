@@ -191,6 +191,30 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         Assert.Contains(result.Errors, e => e.Contains("@New1@") && e.Contains("high-confidence match"));
     }
 
+      [Theory]
+      [InlineData(false)]
+      [InlineData(true)]
+      public void UnknownSurnameDuplicate_WithAgreeingSpouse_IsRejectedWithOrWithoutBirth(bool includeBirth)
+      {
+        var document = string.Join("\r\n", RichFixtureLines)
+          .Replace("Frederick /Morrill/", "Frederick /____/");
+        var birth = includeBirth
+          ? """, "facts": [{ "fact": "BIRT", "value": { "date": "12 MAR 1841", "place": "Gorham, Maine" } }]"""
+          : "";
+        var changeset = Apply.Changeset.Parse($$"""
+          { "items": [{ "item": 1, "ops": [
+            { "op": "createOrUpdateSpouse", "person": "@I00002@",
+            "spouse": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M"{{birth}} },
+            "family": "@New2@" } ] }] }
+          """);
+
+        var result = Apply.ChangesetApplier.Run(
+          System.Text.Encoding.UTF8.GetBytes(document), changeset, [1], dryRun: true);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, error => error.Contains("high-confidence match"));
+      }
+
       [Fact]
       public void FatherEvidence_DoesNotMatchCandidatesMother_Succeeds()
       {

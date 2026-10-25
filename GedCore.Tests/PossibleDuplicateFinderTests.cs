@@ -74,6 +74,18 @@ public class PossibleDuplicateFinderTests
     }
 
     [Fact]
+    public void Find_UnknownSurnameWithAgreeingFatherAndNoDates_ReportsThePair()
+    {
+        var people = new[]
+        {
+            Person("@I1@", "Mary", "Unknown", birthYear: null, isMale: false, father: "John Test"),
+            Person("@I2@", "Mary", "Smith", birthYear: null, isMale: false, father: "John Test"),
+        };
+
+        Assert.Single(PossibleDuplicateFinder.Find(people));
+    }
+
+    [Fact]
     public void Find_UnknownSurnameWithAgreeingFather_IsPairedWithTheKnownNameAcrossSurnameGroups()
     {
         var pairs = PossibleDuplicateFinder.Find(
@@ -104,10 +116,22 @@ public class PossibleDuplicateFinderTests
             [Person("@I1@", "Unknown", "Unknown", father: "John Smith"), Person("@I2@", "Unknown", "Unknown", father: "John Smith")]));
     }
 
-    static PersonMatchCandidate MarriedWoman(string id, string surname, string spouse, int birthYear) => new(
+    static PersonMatchCandidate MarriedWoman(string id, string surname, string spouse, int? birthYear) => new(
         id, $"Mary {surname}", PersonNameNormalizer.Normalize(surname), "MARY", false,
-        new PersonMatchEvent(birthYear, null), null, null,
+        birthYear is null ? null : new PersonMatchEvent(birthYear, null), null, null,
         [new PersonMatchMarriage(PersonNameNormalizer.Normalize(spouse), null, null)]);
+
+    [Fact]
+    public void Find_UnknownSurnameWithNoDates_PairsOnlyWithTheAgreeingSpouse()
+    {
+        var pairs = PossibleDuplicateFinder.Find(
+            [MarriedWoman("@I1@", "Unknown", "John Smith", null),
+             MarriedWoman("@I2@", "McDonald", "John Smith", null),
+             MarriedWoman("@I3@", "Jones", "Ben Simmons", null)]);
+
+        var pair = Assert.Single(pairs);
+        Assert.Equal(("@I1@", "@I2@"), (pair.FirstId, pair.SecondId));
+    }
 
     [Fact]
     public void Find_UnknownSurnameWhoseSpouseHasADifferentGivenName_IsNotPaired()

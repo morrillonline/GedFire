@@ -23,6 +23,7 @@ public sealed class FindPersonTool
         "and the xref of every marriage — childless marriages included — with marriage date and spouse name; " +
         "pass those xrefs to future family detail or research tools when needed. Single requires a match score " +
         "of at least 90, even for a lone candidate, and a lead of at least 10 points when alternatives exist. " +
+        "Unknown surnames cap the score at 89 unless a birth, death, or marriage year/place hint agrees. " +
         "Lower-scoring matches remain candidates. When candidates are returned, " +
         "ask the user which person they mean and call again with any new birth or death year/place, father or " +
         "mother name, spouse name, or marriage year/place. Hints rank only people already recalled by name.";

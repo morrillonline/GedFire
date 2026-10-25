@@ -838,6 +838,39 @@ public class FindPersonToolTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_UnknownSurname_WithSpouseNameOnly_RemainsACandidate()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Mary /____/
+            1 SEX F
+            1 BIRT
+            2 DATE 1850
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Robert /Test/
+            1 SEX M
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I2@
+            1 WIFE @I1@
+            """;
+        var tool = ToolOver(ged, out _, _dir);
+        var hints = new FindPersonHintsArgs { Spouse = new() { Name = "Robert Test" } };
+
+        var result = await tool.HandleAsync("Mary Smith", hints, CancellationToken.None);
+
+        var root = StructuredContent(result);
+        Assert.Equal("candidates", root.GetProperty("matchType").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("confidentMatchXref").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("confidentMatchScore").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("person").ValueKind);
+        var candidate = Assert.Single(root.GetProperty("candidates").EnumerateArray());
+        Assert.True(candidate.GetProperty("surnameUnknown").GetBoolean());
+        Assert.Equal(89.0, candidate.GetProperty("matchScore").GetDouble());
+    }
+
+    [Fact]
     public async Task HandleAsync_PersonRecordedWithUnknownSurname_RanksBelowTheExactNameAndIsMarked()
     {
         var tool = ToolOver(UnknownSurnameGed, out _, _dir);

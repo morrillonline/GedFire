@@ -13,6 +13,8 @@ internal sealed class ResolutionContext(GedDocument doc)
     /// <summary>Xrefs that earlier ops in this run will create.</summary>
     public HashSet<string> Planned { get; } = new(StringComparer.Ordinal);
 
+    public Dictionary<string, string> PlannedSex { get; } = new(StringComparer.Ordinal);
+
     /// <summary>
     /// The changeset-wide placeholder registry, shared by every op's
     /// validation within one selected changeset.

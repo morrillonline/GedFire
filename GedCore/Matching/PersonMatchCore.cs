@@ -172,7 +172,9 @@ public sealed class PersonMatchCore
             return NoMatchOutcome(nameScored);
 
         var scored = recall
-            .Select(x => new CandidateScore(x.Candidate, x.Score, ApplyHints(x.Score, x.Candidate, hints, nicknames)))
+            .Select(x => new CandidateScore(x.Candidate, x.Score, ApplyHints(x.Score, x.Candidate, hints, nicknames,
+                requireEventAgreement: !forDuplicateDetection && (UnknownName.IsPlaceholder(querySurname)
+                    || UnknownName.IsPlaceholder(x.Candidate.NormalizedSurname)))))
             .ToList();
 
         if (forDuplicateDetection)
@@ -313,13 +315,14 @@ public sealed class PersonMatchCore
     readonly record struct HintedScore(double Raw, double AvailableWeight, double FinalScore, bool RelationalAgreement);
 
     static HintedScore ApplyHints(
-        NameOnlyScore nameOnly, PersonMatchCandidate candidate, MatchHints hints, NicknameDirectory nicknames)
+        NameOnlyScore nameOnly, PersonMatchCandidate candidate, MatchHints hints, NicknameDirectory nicknames,
+        bool requireEventAgreement)
     {
         double raw = nameOnly.Points;
         double available = nameOnly.Weight;
 
-        AddEventHint(hints.Birth, candidate.Birth, ref raw, ref available);
-        AddEventHint(hints.Death, candidate.Death, ref raw, ref available);
+        bool eventAgreement = AddEventHint(hints.Birth, candidate.Birth, ref raw, ref available);
+        eventAgreement |= AddEventHint(hints.Death, candidate.Death, ref raw, ref available);
 
         bool relational = false;
         if (hints.Parents is { } parentHints && candidate.Parents is { } parents)
@@ -330,7 +333,9 @@ public sealed class PersonMatchCore
                 parentHints.Mother, parents.NormalizedMotherName, ParentNameWeight, nicknames, isMale: false, ref raw, ref available);
         }
 
-        relational |= AddSpouseHint(hints.Spouse, candidate.Marriages, nicknames, ref raw, ref available);
+        relational |= AddSpouseHint(hints.Spouse, candidate.Marriages, nicknames, ref raw, ref available,
+            out bool marriageAgreement);
+        eventAgreement |= marriageAgreement;
 
         // Sex scores but stays out of AvailableWeight: duplicate detection needs evidence beyond
         // the name, and a bare sex agreement is not that.
@@ -339,6 +344,8 @@ public sealed class PersonMatchCore
         AddSexHint(hints.IsMale, candidate.IsMale, ref scoredRaw, ref scoredAvailable);
 
         double finalScore = scoredAvailable > 0 ? scoredRaw * 100.0 / scoredAvailable : 0.0;
+        if (requireEventAgreement && !eventAgreement)
+            finalScore = Math.Min(finalScore, SingleMatchMinScore - 1.0);
         return new HintedScore(scoredRaw, available, finalScore, relational);
     }
 
@@ -351,20 +358,23 @@ public sealed class PersonMatchCore
         if (expected == actual) raw += SexWeight;
     }
 
-    static void AddEventHint(
+    static bool AddEventHint(
         EventHint? hint, PersonMatchEvent? candidate, ref double raw, ref double available)
     {
-        if (hint is null || candidate is null) return;
+        if (hint is null || candidate is null) return false;
 
+        double before = raw;
         AddYearHint(hint.Year, candidate.Year, EventYearWeight, ref raw, ref available);
         AddPlaceHint(hint.Place, candidate.NormalizedPlace, EventPlaceWeight, ref raw, ref available);
+        return raw > before;
     }
 
     // True when the spouse name of the best-scoring marriage agrees.
     static bool AddSpouseHint(
         SpouseHint? hint, IReadOnlyList<PersonMatchMarriage> marriages, NicknameDirectory nicknames,
-        ref double raw, ref double available)
+        ref double raw, ref double available, out bool eventAgreement)
     {
+        eventAgreement = false;
         if (hint is null || marriages.Count == 0) return false;
 
         double bestRaw = 0.0;
@@ -381,6 +391,7 @@ public sealed class PersonMatchCore
             bool agreed = AddNameHint(
                 hint.Name, marriage.NormalizedSpouseName, SpouseNameWeight, nicknames, isMale: null,
                 ref marriageRaw, ref marriageAvailable);
+            double namePoints = marriageRaw;
             AddYearHint(
                 hint.Marriage?.Year, marriage.Year, MarriageYearWeight,
                 ref marriageRaw, ref marriageAvailable);
@@ -399,6 +410,7 @@ public sealed class PersonMatchCore
                 bestAvailable = marriageAvailable;
                 bestNormalized = normalized;
                 bestAgreed = agreed;
+                eventAgreement = marriageRaw > namePoints;
             }
         }
 

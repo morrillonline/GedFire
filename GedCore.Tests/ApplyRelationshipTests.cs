@@ -1,3 +1,7 @@
+using System.Text;
+using GedCore.Apply;
+using GedCore.Ged70;
+
 namespace GedCore.Tests;
 
 /// <summary>
@@ -7,6 +11,51 @@ namespace GedCore.Tests;
 /// </summary>
 public class ApplyRelationshipTests : ApplyTestBase
 {
+  [Theory]
+  [InlineData(true)]
+  [InlineData(false)]
+  public void Spouse_UsesOnlyPrecedingSexCorrections(bool correctionFirst)
+  {
+    const string document = """
+      0 HEAD
+      1 GEDC
+      2 VERS 7.0
+      0 @I1@ INDI
+      1 NAME Hiram /Test/
+      1 SEX F
+      0 @I2@ INDI
+      1 NAME Mary /Test/
+      1 SEX F
+      0 TRLR
+      """;
+    const string correction = """
+      { "op": "createOrUpdateVital", "record": "@I1@", "fact": "SEX", "value": "M" }
+      """;
+    const string spouse = """
+      { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": "@I2@", "family": "@NewF1@" }
+      """;
+    var ops = correctionFirst ? $"{correction},{spouse}" : $"{spouse},{correction}";
+    var changeset = Changeset.Parse($$"""
+      { "items": [{ "item": 1, "ops": [{{ops}}] }] }
+      """);
+
+    var result = ChangesetApplier.Run(Encoding.UTF8.GetBytes(document), changeset, [1], dryRun: false);
+
+    Assert.Equal(correctionFirst, result.Success);
+    if (!correctionFirst)
+    {
+      Assert.Contains(result.Errors, error => error.Contains("cannot assign HUSB/WIFE roles"));
+      Assert.Null(result.OutputBytes);
+      return;
+    }
+
+    var applied = Ged70Parser.Read(new MemoryStream(result.OutputBytes!));
+    Assert.Equal("M", applied.ByXref["@I1@"].FirstChild("SEX")!.Value);
+    var family = applied.ByXref[result.MintedXrefs["@NewF1@"]];
+    Assert.Equal("@I1@", family.FirstChild("HUSB")!.Value);
+    Assert.Equal("@I2@", family.FirstChild("WIFE")!.Value);
+  }
+
     // -------------------------------------------------------------------------
     // Spouse
     // -------------------------------------------------------------------------

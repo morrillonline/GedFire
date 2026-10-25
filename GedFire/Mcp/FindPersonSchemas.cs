@@ -254,7 +254,7 @@ public static class FindPersonSchemas
                 },
                 "surnameUnknown": {
                   "type": "boolean",
-                  "description": "True when the person's surname is recorded as Unknown. The surname then added no evidence to matchScore."
+                  "description": "True when the person's surname is recorded as Unknown. The surname adds no evidence; matchScore is capped at 89 unless a birth, death, or marriage year/place hint agrees."
                 }
               },
               "required": ["xref", "name", "birth", "death", "parents", "spouses", "matchScore", "surnameUnknown"]
