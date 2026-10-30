@@ -84,7 +84,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
         if (!bothAlreadyPlaced && !family.Planned
             && !Kin.RolesResolvable(ctx, family.Family, Person, Spouse))
             errors.Add($"{Context}: cannot assign HUSB/WIFE roles — " +
-                       "the partners' SEX values are missing or equal");
+                       "the recorded SEX values do not determine default partner slots");
 
         if (Marriage is not null)
         {

@@ -327,6 +327,16 @@ Within each item, the compiler places these corrections before relationships,
 so role validation uses the corrected sex. Facts on new people follow the
 relationships that create them.
 
+Same-sex spouses are supported without changing either person's recorded
+`SEX`. Existing `HUSB`/`WIFE` placements are preserved; those legacy tags
+identify partner slots, not constraints on the couple's sexes. `GEN403`
+warns when a marriage links two people with the same recorded `M` or `F`,
+with additional historical-review wording for dates before 2001, the year
+of the [first national legalization](https://en.wikipedia.org/wiki/Same-sex_marriage_in_the_Netherlands)
+of same-sex civil marriage (Netherlands; effective 1 April 2001). This is a
+historical milestone, not a universal legalization date: local law varies.
+The warning requests source review, is not an error, and does not block application.
+
 - `spouse` and `child` relations accept `notDuplicateOf`: existing people
   the author has confirmed are not the new person.
 - A child relation with `from` moves the child from that existing family into

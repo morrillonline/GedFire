@@ -642,7 +642,7 @@ public class PlausibilityCheckerTests
     }
 
     [Fact]
-    public void GEN403_HusbandRecordedFemale_IsFlagged()
+    public void GEN403_HusbandSlotRecordedFemale_AloneIsNotFlagged()
     {
         var doc = Parse("""
             0 HEAD
@@ -655,14 +655,11 @@ public class PlausibilityCheckerTests
             0 TRLR
             """);
 
-        var diag = Single(doc, "GEN403");
-        Assert.Equal(GedDiagnosticSeverity.Warning, diag.Severity);
-        Assert.Equal("@F1@", diag.Xref);
-        Assert.Equal("HUSB", diag.Tag);
+        Assert.DoesNotContain(PlausibilityChecker.Check(doc), diag => diag.Code == "GEN403");
     }
 
     [Fact]
-    public void GEN403_WifeRecordedMale_IsFlagged()
+    public void GEN403_WifeSlotRecordedMale_AloneIsNotFlagged()
     {
         var doc = Parse("""
             0 HEAD
@@ -675,10 +672,70 @@ public class PlausibilityCheckerTests
             0 TRLR
             """);
 
-        var diag = Single(doc, "GEN403");
-        Assert.Equal(GedDiagnosticSeverity.Warning, diag.Severity);
-        Assert.Equal("@F1@", diag.Xref);
-        Assert.Equal("WIFE", diag.Tag);
+        Assert.DoesNotContain(PlausibilityChecker.Check(doc), diag => diag.Code == "GEN403");
+    }
+
+    [Theory]
+    [InlineData("M", "M", "2015", true, false)]
+    [InlineData("F", "F", "2015", true, false)]
+    [InlineData("M", "M", "1899", true, true)]
+    [InlineData("F", "F", "1899", true, true)]
+    [InlineData("F", "F", "1900", true, true)]
+    [InlineData("M", "M", "2000", true, true)]
+    [InlineData("F", "F", "2001", true, false)]
+    [InlineData("M", "M", "2002", true, false)]
+    [InlineData("M", "M", null, true, false)]
+    [InlineData("F", "F", "ABT 1850", true, true)]
+    [InlineData("M", "M", "BEF 1850", true, true)]
+    [InlineData("F", "F", "BET 1850 AND 1890", true, true)]
+    [InlineData("M", "M", "BET 1850 AND 1950", true, true)]
+    [InlineData("M", "M", "BET 1850 AND 2015", true, false)]
+    [InlineData("F", "F", "AFT 1850", true, false)]
+    [InlineData("M", "M", "FROM 1850", true, false)]
+    [InlineData("F", "F", "FROM 1850 TO 1890", true, true)]
+    [InlineData("M", "M", "TO 1890", true, true)]
+    [InlineData("M", "F", "1850", false, false)]
+    [InlineData("F", "M", "1850", false, false)]
+    [InlineData("U", "U", "1850", false, false)]
+    [InlineData("X", "X", "1850", false, false)]
+    [InlineData(null, "F", "1850", false, false)]
+    public void GEN403_SameSexMarriage_IsAContextualWarning(
+        string? firstSex, string secondSex, string? date, bool expectedWarning, bool expectedHistoricalContext)
+    {
+        var doc = Parse($$"""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            {{(firstSex is null ? "" : $"1 SEX {firstSex}")}}
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 SEX {{secondSex}}
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            1 MARR Y
+            {{(date is null ? "" : $"2 DATE {date}")}}
+            0 TRLR
+            """);
+
+        var warnings = PlausibilityChecker.Check(doc).Where(diag => diag.Code == "GEN403").ToList();
+
+        if (!expectedWarning)
+        {
+            Assert.Empty(warnings);
+            return;
+        }
+        var warning = Assert.Single(warnings);
+        Assert.Equal(GedDiagnosticSeverity.Warning, warning.Severity);
+        Assert.Equal("@F1@", warning.Xref);
+        Assert.Equal("MARR", warning.Tag);
+        Assert.Contains("same-sex marriage", warning.Message);
+        Assert.Contains("not inherently", warning.Message);
+        Assert.Equal(expectedHistoricalContext, warning.Message.Contains("predates the first national legalization"));
+        if (expectedHistoricalContext)
+            Assert.Contains("Netherlands, 2001", warning.Message);
     }
 
     private static GedDocument SpousesWithNames(string husbName, string wifeName) => Parse($"""
