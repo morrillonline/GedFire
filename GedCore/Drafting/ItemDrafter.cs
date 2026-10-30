@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using GedCore.Apply;
-using GedCore.Policy;
 
 namespace GedCore.Drafting;
 
@@ -8,10 +7,10 @@ namespace GedCore.Drafting;
 /// Compiles the findings aimed at one target into a changeset item: one citation per
 /// (source, page, grade) with every extract merged into its dataText, the relationship ops that
 /// create new people and families, one vital op per distinct fact value, and a verification
-/// note on each record holding a low-graded fact.
+/// note on each fact still graded low.
 /// </summary>
 internal sealed class ItemDrafter(
-    SourcePlan sources, IPersonNames names, IRecordHistory history, VerificationNoteRule verification,
+    SourcePlan sources, IRecordHistory history, VerificationNotePlanner verificationNotes,
     IReadOnlyDictionary<string, DraftPerson> newPeople)
 {
     sealed record CiteKey(string Source, string Locator, int Quay);
@@ -55,7 +54,8 @@ internal sealed class ItemDrafter(
         foreach (var citation in CitationOps([.. asserted.Where(a => a.Fact.CiteOnly)], citations)) ops.Add(citation);
         foreach (var finding in group)
             foreach (var note in finding.Notes) ops.Add(NoteOp(note, group, finding, citations));
-        foreach (var note in VerificationNotes([.. asserted.Where(a => !_excluded.Contains(a))], group.SelectMany(f => f.Notes).ToList(), decisions)) ops.Add(note);
+        var noted = asserted.Where(a => !_excluded.Contains(a)).Select(a => new CitedFact(a.Finding, a.Fact, a.Cite.Source)).ToList();
+        foreach (var note in verificationNotes.Plan(noted, [.. group.SelectMany(f => f.Notes)], decisions)) ops.Add(note);
 
         return new JsonObject { ["item"] = number, ["target"] = Label(group[0].Target), ["ops"] = ops };
     }
@@ -422,93 +422,4 @@ internal sealed class ItemDrafter(
             yield return restated;
         }
     }
-
-    IEnumerable<JsonObject> VerificationNotes(List<Asserted> asserted, List<DraftNote> authorNotes, List<DraftDecision> decisions)
-    {
-        foreach (var record in asserted.GroupBy(a => a.Fact.Record))
-        {
-            var findings = record.Select(a => a.Finding.Id).Distinct().ToList();
-            var low = record.Where(a => a.Fact.Quay <= verification.MaxQuay).ToList();
-            var target = record.First().Finding.Target;
-            string? name = names.PersonName(record.Key)
-                ?? (newPeople.TryGetValue(record.Key, out var created) ? PlainName(created.Name) : null)
-                ?? (record.Key == target.Xref ? target.Name : null);
-
-            var unjudged = new List<string>();
-            foreach (var op in BringNotesUpToDate(record.Key, name, [.. record], authorNotes, low.Count > 0, findings, decisions, unjudged))
-                yield return op;
-            if (low.Count == 0) continue;
-
-            if (authorNotes.Any(n => n.Record == record.Key && n.Text.Contains(verification.NotePrefix, StringComparison.OrdinalIgnoreCase)))
-            {
-                decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote, $"the author's own note on {record.Key} already names the low-graded facts", findings));
-                continue;
-            }
-
-            foreach (string existing in unjudged)
-                decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
-                    $"{record.Key} already has a verification note (\"{existing}\"); a new one beside it may contradict it, so rewrite it with createOrUpdateNote and match if it is stale",
-                    findings));
-
-            string text = VerificationNote.Text(
-                verification.NotePrefix, low.Select(a => a.Fact.Tag), name,
-                low.Select(a => a.Finding.Source.Name), low.Select(a => a.Fact.Information ?? a.Finding.Source.Information));
-            decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote, $"{record.Key}: {string.Join(", ", low.Select(a => a.Fact.Tag).Distinct())} graded {verification.MaxQuay} or lower", findings));
-            yield return new JsonObject { ["op"] = "createOrUpdateNote", ["record"] = record.Key, ["text"] = text };
-        }
-    }
-
-    // A verification note the compiler wrote earlier says which facts rest on one source. Once this draft (or the record) grades
-    // one of them higher the claim is stale: the note is rewritten without it, or removed when none is left. Any other
-    // verification note is only the author's to judge, so it is handed back in unjudged.
-    IEnumerable<JsonObject> BringNotesUpToDate(
-        string record, string? name, List<Asserted> facts, List<DraftNote> authorNotes, bool newNoteFollows,
-        List<string> findings, List<DraftDecision> decisions, List<string> unjudged)
-    {
-        foreach (string text in history.NotesOn(record).Where(n => n.Contains(verification.NotePrefix, StringComparison.OrdinalIgnoreCase)))
-        {
-            if (authorNotes.Any(n => n.Record == record && n.Match == text)) continue;
-            if (VerificationNote.TryParse(text, verification.NotePrefix, name) is not { } parsed)
-            {
-                unjudged.Add(text);
-                continue;
-            }
-
-            var remaining = parsed.Tags.Where(t => !IsGradedAboveCeiling(record, t, facts)).ToList();
-            var improved = parsed.Tags.Except(remaining).ToList();
-            if (improved.Count == 0)
-            {
-                if (newNoteFollows)
-                    decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
-                        $"{record} keeps its verification note (\"{text}\"): {string.Join(", ", parsed.Tags)} are still graded {verification.MaxQuay} or lower, so a new note beside it does not contradict it",
-                        findings));
-                continue;
-            }
-
-            if (remaining.Count == 0)
-            {
-                decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
-                    $"{record}: its verification note (\"{text}\") no longer applies, since {string.Join(", ", improved)} are now graded above {verification.MaxQuay}; removed", findings));
-                yield return new JsonObject { ["op"] = "deleteNote", ["record"] = record, ["text"] = text };
-                continue;
-            }
-
-            decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
-                $"{record}: {string.Join(", ", improved)} are now graded above {verification.MaxQuay}, so its verification note (\"{text}\") now names only {string.Join(", ", remaining)}", findings));
-            yield return new JsonObject
-            {
-                ["op"] = "createOrUpdateNote", ["record"] = record, ["match"] = text,
-                ["text"] = VerificationNote.Rewrite(verification.NotePrefix, parsed, remaining, name),
-            };
-        }
-    }
-
-    // The best grade the draft or the record gives the fact; unknown when nothing says.
-    bool IsGradedAboveCeiling(string record, string tag, List<Asserted> facts) =>
-        facts.Where(a => a.Fact.Tag == tag).Select(a => a.Fact.Quay)
-            .Concat(history.FactsOn(record, tag).SelectMany(f => f.Citations).Select(c => c.Quay).OfType<int>())
-            .DefaultIfEmpty(-1).Max() > verification.MaxQuay;
-
-    // GEDCOM marks the surname with slashes; prose does not.
-    static string PlainName(string name) => string.Join(' ', name.Replace("/", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries));
 }

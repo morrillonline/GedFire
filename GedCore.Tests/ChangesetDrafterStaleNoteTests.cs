@@ -99,7 +99,7 @@ public class ChangesetDrafterStaleNoteTests
     public void ANoteThatIsNotTheCompilersOwn_IsStillLeftToTheAuthor()
     {
         var result = Draft(
-            new FakeLookup(["Needs independent verification: no birth has been seen."]),
+            new FakeLookup(["Needs independent verification: the parents are unproven."]),
             Finding("BIRT", "1 JAN 1850", 1, info: "secondary"));
 
         Assert.Single(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("already has a verification note"));
@@ -111,7 +111,7 @@ public class ChangesetDrafterStaleNoteTests
     {
         var result = Draft(
             new FakeLookup([BirthNote.Replace("Gladys Giedd", "Someone Else")]),
-            Finding("BIRT", "1 JAN 1850", 1, info: "secondary"));
+            Finding("DEAT", "1 JAN 1900", 1, info: "secondary"));
 
         Assert.Single(result.Decisions, d => d.Kind == "open");
         Assert.Empty(OpsNamed(result, "deleteNote"));

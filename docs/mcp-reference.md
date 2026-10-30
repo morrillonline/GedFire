@@ -296,7 +296,11 @@ assigns each fact's grade. Policy can require verification notes for low grades.
 - Name reconciliation only expands documented nicknames with matching surname,
   suffix, and given-name count. Other disagreements stay `open`.
 
-The compiler maintains its own standard verification notes. Once stronger
+The compiler maintains its own standard verification notes, one per fact. A
+fact gets a note only when its best citation, in the item or already in the
+document, is at or below the policy ceiling; the note names every record the
+fact rests on. No note is added when a note on the record already says the fact
+awaits verification, however worded. Once stronger
 citations lift a named fact above the policy ceiling, it removes that fact
 from the note or deletes the note when no low-grade facts remain. It preserves
 sources. It leaves other verification-note wording to the author and raises an
@@ -399,7 +403,7 @@ unknown keys stop startup. See the [complete example](policy.example.json).
 |---|---|
 | `bannedPhrases` | Reject case-insensitive phrases in note text or citation pages. |
 | `bannedPatterns` | Reject regular-expression matches in note text or citation pages. |
-| `verificationNote` | Require a note with `notePrefix` for records receiving facts at or below `maxQuay`. |
+| `verificationNote` | Require a note with `notePrefix` for records receiving facts whose strongest citation is at or below `maxQuay`. |
 | `deathPlaceEvidence` | Require a death-place citation whose page or `dataText` matches this regular expression. |
 
 For example, `{"maxQuay": 1, "notePrefix": "needs independent verification:"}`

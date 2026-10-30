@@ -139,6 +139,22 @@ public class ChangesetPolicyTests
             """)));
 
     [Fact]
+    public void LowQuayCitation_BesideAStrongerOneOnTheSameFact_NeedsNoNote() =>
+        Assert.Empty(Load(Verification).Check(Changeset(
+            """
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1900" },
+                 "citations": [ { "source": "@S1@", "quay": 1 }, { "source": "@S2@", "quay": 2 } ] }
+            """)));
+
+    [Fact]
+    public void LowQuayCitation_BesideAnUngradedOne_IsReported() =>
+        Assert.Single(Load(Verification).Check(Changeset(
+            """
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1900" },
+                 "citations": [ { "source": "@S1@", "quay": 1 }, { "source": "@S2@" } ] }
+            """)));
+
+    [Fact]
     public void LowQuayInlineChildFact_IsNamedByANoteMentioningTheGivenName()
     {
         string op = """

@@ -22,7 +22,8 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
     static ExistingCitation[] CitationsOf(GedEvent fact) =>
         [.. fact.Sources
             .Where(s => s.GlobalSource is not null)
-            .Select(s => new ExistingCitation(s.GlobalSource!.Xref, NullIfEmpty(s.Page), NullIfEmpty(s.DataText), s.Quay))];
+            .Select(s => new ExistingCitation(
+                s.GlobalSource!.Xref, NullIfEmpty(s.Page), NullIfEmpty(s.DataText), s.Quay, NullIfEmpty(s.GlobalSource.Title)))];
 
     public IReadOnlyList<string> NotesOn(string record) =>
         model.Individuals.TryGetValue(record, out var person) ? [.. person.NarrativeNotes.Select(n => n.Text)] : [];

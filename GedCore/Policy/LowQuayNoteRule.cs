@@ -3,9 +3,9 @@ using System.Text.Json;
 namespace GedCore.Policy;
 
 /// <summary>
-/// Every record that receives a fact graded at or below the QUAY ceiling must be
-/// named by a note containing the verification prefix: on that record, naming the
-/// person's given name, or (for a marriage) mentioning marriage.
+/// Every record that receives a fact whose strongest citation is graded at or below the
+/// QUAY ceiling must be named by a note containing the verification prefix: on that record,
+/// naming the person's given name, or (for a marriage) mentioning marriage.
 /// </summary>
 internal sealed class LowQuayNoteRule(int maxQuay, string notePrefix) : IPolicyRule
 {
@@ -68,6 +68,8 @@ internal sealed class LowQuayNoteRule(int maxQuay, string notePrefix) : IPolicyR
             yield return new Owner($"{OpJson.String(fact, "fact")} of {name}", GivenName: given);
     }
 
+    // A stronger citation beside a weak one lifts the fact; ungraded citations say nothing either way.
     bool LowGrade(JsonElement node) =>
-        OpJson.CitationsOf(node).Any(c => OpJson.String(c, "source") is not null && OpJson.Quay(c) <= maxQuay);
+        OpJson.CitationsOf(node).Where(c => OpJson.String(c, "source") is not null).Select(OpJson.Quay).OfType<int>()
+            .DefaultIfEmpty(int.MaxValue).Max() <= maxQuay;
 }
