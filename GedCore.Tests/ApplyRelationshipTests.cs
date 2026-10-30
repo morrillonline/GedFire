@@ -1,6 +1,7 @@
 using System.Text;
 using GedCore.Apply;
 using GedCore.Ged70;
+using GedCore.Validate;
 
 namespace GedCore.Tests;
 
@@ -41,24 +42,83 @@ public class ApplyRelationshipTests : ApplyTestBase
 
     var result = ChangesetApplier.Run(Encoding.UTF8.GetBytes(document), changeset, [1], dryRun: false);
 
-    Assert.Equal(correctionFirst, result.Success);
-    if (!correctionFirst)
-    {
-      Assert.Contains(result.Errors, error => error.Contains("cannot assign HUSB/WIFE roles"));
-      Assert.Null(result.OutputBytes);
-      return;
-    }
+    Assert.True(result.Success, string.Join("; ", result.Errors));
 
     var applied = Ged70Parser.Read(new MemoryStream(result.OutputBytes!));
     Assert.Equal("M", applied.ByXref["@I1@"].FirstChild("SEX")!.Value);
     var family = applied.ByXref[result.MintedXrefs["@NewF1@"]];
-    Assert.Equal("@I1@", family.FirstChild("HUSB")!.Value);
-    Assert.Equal("@I2@", family.FirstChild("WIFE")!.Value);
+    Assert.Equal(correctionFirst ? "@I1@" : "@I2@", family.FirstChild("HUSB")!.Value);
+    Assert.Equal(correctionFirst ? "@I2@" : "@I1@", family.FirstChild("WIFE")!.Value);
   }
 
     // -------------------------------------------------------------------------
     // Spouse
     // -------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("M", false, "2015")]
+    [InlineData("F", false, "2015")]
+    [InlineData("M", true, "2015")]
+    [InlineData("F", true, "2015")]
+    [InlineData("M", false, "1850")]
+    [InlineData("F", false, "1850")]
+    [InlineData("M", true, "1850")]
+    [InlineData("F", true, "1850")]
+    public void Spouse_SameSexPartners_PreserveSexAndReciprocalLinks(string sex, bool inlineSpouse, string year)
+    {
+      var document = $$"""
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        1 NAME Alex /Test/
+        1 SEX {{sex}}
+        0 @I2@ INDI
+        1 NAME Robin /Example/
+        1 SEX {{sex}}
+        0 @S1@ SOUR
+        1 TITL Synthetic marriage register
+        0 TRLR
+        """;
+      var spouse = inlineSpouse
+        ? $$"""{ "xref": "@NewI1@", "name": "Casey /Synthetic/", "sex": "{{sex}}" }"""
+        : "\"@I2@\"";
+      var changeset = Changeset.Parse($$"""
+        { "items": [{ "item": 1, "ops": [
+          { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": {{spouse}},
+                "family": "@NewF1@", "marriage": { "date": "{{year}}",
+                  "citation": { "source": "@S1@", "page": "entry 1" } } }
+        ] }] }
+        """);
+
+      byte[] original = Encoding.UTF8.GetBytes(document);
+      var preview = ChangesetApplier.Run(original, changeset, [1], dryRun: true);
+      Assert.True(preview.Success, string.Join("; ", preview.Errors));
+      Assert.Contains(preview.NewDiagnostics, diag => diag.Code == "GEN403"
+        && diag.Severity == GedDiagnosticSeverity.Warning);
+
+      var result = ChangesetApplier.Run(original, changeset, [1], dryRun: false);
+
+      Assert.True(result.Success, string.Join("; ", result.Errors));
+      var warning = Assert.Single(result.NewDiagnostics.Where(diag => diag.Code == "GEN403"));
+      Assert.Equal(GedDiagnosticSeverity.Warning, warning.Severity);
+      Assert.Equal(year == "1850", warning.Message.Contains("predates the first national legalization"));
+      var applied = Ged70Parser.Read(new MemoryStream(result.OutputBytes!));
+      string spouseXref = inlineSpouse ? result.MintedXrefs["@NewI1@"] : "@I2@";
+      string familyXref = result.MintedXrefs["@NewF1@"];
+      var family = applied.ByXref[familyXref];
+      var marriage = family.FirstChild("MARR")!;
+      Assert.Equal(year, marriage.FirstChild("DATE")!.Value);
+      Assert.Equal("@S1@", marriage.FirstChild("SOUR")!.Value);
+      Assert.Equal(new[] { "@I1@", spouseXref }.Order(),
+        family.Children.Where(child => child.Tag is "HUSB" or "WIFE").Select(child => child.Value).Order());
+      foreach (string partnerXref in new[] { "@I1@", spouseXref })
+      {
+        var partner = applied.ByXref[partnerXref];
+        Assert.Equal(sex, partner.FirstChild("SEX")!.Value);
+        Assert.Equal(familyXref, partner.ChildrenByTag("FAMS").Single().Value);
+      }
+    }
 
     [Fact]
     public void Spouse_ExistingSharedFamily_AddsMarriageOnly()

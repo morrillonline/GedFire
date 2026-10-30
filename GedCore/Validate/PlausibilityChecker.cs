@@ -77,7 +77,7 @@ public static class PlausibilityChecker
         cancellationToken.ThrowIfCancellationRequested();
         CheckMissingSex(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
-        CheckHusbandWifeSexMismatch(doc, diags);
+        CheckSameSexMarriage(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
         CheckSpousesShareSurname(doc, diags);
 
@@ -680,38 +680,42 @@ public static class PlausibilityChecker
         }
     }
 
-    // -------------------------------------------------------------------
-    // GEN403 — HUSB/WIFE role doesn't match the linked person's own SEX
-    // -------------------------------------------------------------------
+    private const int FirstNationalSameSexMarriageYear = 2001;
 
-    // Gramps FemaleHusband/MaleWife, as one combined rule -- but as a soft
-    // Warning, not a claim that the record is wrong: GEDCOM 7 explicitly
-    // decouples the HUSB/WIFE role tags from sex (they're legacy
-    // partner-1/partner-2 labels, kept for compatibility), so a same-sex
-    // couple or a role recorded to match a study's own convention is not an
-    // error. It's still worth a look -- often the sign of a swapped role or
-    // a stale SEX value -- which is exactly the "flag, don't reject" posture
-    // every other rule here already takes.
-    private static void CheckHusbandWifeSexMismatch(GedDocument doc, List<GedDiagnostic> diags)
+    private static void CheckSameSexMarriage(GedDocument doc, List<GedDiagnostic> diags)
     {
         foreach (var fam in doc.Records.Where(r => r.Tag == "FAM"))
         {
-            CheckRoleSex(doc, diags, fam, "HUSB", mismatchedSex: "F");
-            CheckRoleSex(doc, diags, fam, "WIFE", mismatchedSex: "M");
+            var marriages = fam.ChildrenByTag("MARR").ToList();
+            if (marriages.Count == 0) continue;
+            if (!doc.ByXref.TryGetValue(fam.FirstChild("HUSB")?.Value ?? "", out var first)
+                || first.Tag != "INDI") continue;
+            if (!doc.ByXref.TryGetValue(fam.FirstChild("WIFE")?.Value ?? "", out var second)
+                || second.Tag != "INDI") continue;
+            string? sex = first.FirstChild("SEX")?.Value;
+            if (sex is not ("M" or "F") || second.FirstChild("SEX")?.Value != sex) continue;
+
+            var historicalMarriage = marriages.FirstOrDefault(marriage =>
+                PredatesFirstNationalLegalization(GedDate.ParseValue(marriage.FirstChild("DATE")?.Value)));
+            string context = historicalMarriage is null
+                ? "Review supporting evidence and applicable local law; same-sex marriages are supported and are not inherently errors."
+                : $"The recorded marriage date ({historicalMarriage.FirstChild("DATE")!.Value}) predates the first national legalization " +
+                  $"of same-sex civil marriage (Netherlands, {FirstNationalSameSexMarriageYear}); " +
+                  "review the historical context, local law, date, identities, and relationship in the sources. " +
+                  "This is not inherently an error.";
+            diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, "GEN403",
+                $"{fam.Xref} records a same-sex marriage: {first.Xref} and {second.Xref} both have SEX {sex}. {context}",
+                fam.Xref, "MARR"));
         }
     }
 
-    private static void CheckRoleSex(
-        GedDocument doc, List<GedDiagnostic> diags, GedRecord fam, string roleTag, string mismatchedSex)
+    private static bool PredatesFirstNationalLegalization(GedDateValue? date) => date switch
     {
-        string? xref = fam.FirstChild(roleTag)?.Value;
-        if (xref is null || xref == GedRecord.VoidPointer) return;
-        if (!doc.ByXref.TryGetValue(xref, out var indi) || indi.Tag != "INDI") return;
-        if (indi.FirstChild("SEX")?.Value != mismatchedSex) return;
-
-        diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, "GEN403",
-            $"{fam.Xref} {roleTag} {xref} has SEX {mismatchedSex}", fam.Xref, roleTag));
-    }
+        { Kind: GedDateKind.Between or GedDateKind.Period } => date.ToYear is not 0 and < FirstNationalSameSexMarriageYear,
+        { Kind: GedDateKind.After } => false,
+        { FromYear: not 0 and < FirstNationalSameSexMarriageYear } => true,
+        _ => false,
+    };
 
     // -------------------------------------------------------------------
     // Shared helpers

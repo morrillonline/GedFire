@@ -63,15 +63,13 @@ internal static class Kin
         ?? (inline?.Xref == xref ? inline.Sex : null);
 
     /// <summary>
-    /// Assign HUSB/WIFE roles from the sexes of the two partners. One known
-    /// sex determines both roles; missing both, or equal sexes, fails (the
-    /// caller reports the ambiguity as a validation error).
+    /// Choose legacy partner slots using recorded sex as a layout hint,
+    /// not a constraint on the other partner's sex.
     /// </summary>
     public static bool TryRoles(string? personSex, string? spouseSex,
                                 out string personTag, out string spouseTag)
     {
         personTag = spouseTag = "";
-        if (personSex is not null && personSex == spouseSex) return false;
         string? effective = personSex
             ?? spouseSex switch { "M" => "F", "F" => "M", _ => null };
         if (effective is not ("M" or "F")) return false;
@@ -86,7 +84,7 @@ internal static class Kin
 
     /// <summary>
     /// Can HUSB/WIFE roles be assigned for this pair? Existing placement in
-    /// the family wins; otherwise the sexes must determine the roles.
+    /// the family wins; otherwise recorded sex supplies a layout hint.
     /// </summary>
     public static bool RolesResolvable(ResolutionContext ctx, GedRecord? fam,
                                        string person, PersonRef spouse)
