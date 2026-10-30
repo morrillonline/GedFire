@@ -114,11 +114,12 @@ public class ChangesetDrafterReconcileTests
     }
 
     [Fact]
-    public void AnAttachedLowGradedFact_StillGetsItsVerificationNote()
+    public void AnAttachedLowGradedFactBesideAStrongerOne_GetsNoVerificationNote()
     {
         var result = Draft(Finding("F-1", "1855", null, 1, "secondary"), Finding("F-2", "1 DEC 1855", null));
 
-        Assert.Contains(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+        Assert.DoesNotContain(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+        Assert.Contains(result.Decisions, d => d.Kind == "verification-note" && d.Detail.Contains("BIRT is cited at QUAY 2"));
     }
 
     [Fact]

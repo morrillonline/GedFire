@@ -35,5 +35,5 @@ public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory
 /// <summary>One fact instance the document already holds, with the citations on it.</summary>
 public sealed record ExistingFact(string? Date, string? Place, IReadOnlyList<ExistingCitation> Citations);
 
-/// <summary>A citation the document already holds on a fact.</summary>
-public sealed record ExistingCitation(string Source, string? Page, string? DataText, int? Quay);
+/// <summary>A citation the document already holds on a fact; <paramref name="Title"/> names the source in prose.</summary>
+public sealed record ExistingCitation(string Source, string? Page, string? DataText, int? Quay, string? Title = null);

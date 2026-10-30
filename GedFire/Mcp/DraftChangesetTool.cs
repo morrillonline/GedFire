@@ -25,8 +25,8 @@ public sealed class DraftChangesetTool
         "time: one source record per collection (an existing source with the same title and author is cited instead " +
                 "of minted; titles match ignoring case and punctuation, and a trailing \" - <person name>\" is dropped, so " +
                 "record-specific text belongs in the locator), one merged extract per (source, page, grade) in each item, the locator copied verbatim into the " +
-        "citation page, a verification note on every record holding a fact graded at or below the policy ceiling " +
-        "(QUAY 1 without a policy file), and a refusal, naming the field, for a QUAY the source and information " +
+        "citation page, a verification note for each fact whose best citation (in the item or already in the document) is at or below the policy ceiling " +
+        "(QUAY 1 without a policy file), naming every record the fact rests on and skipped when a note on the record already says so, and a refusal, naming the field, for a QUAY the source and information " +
         "class cannot support, a target name that differs from the person's recorded name, or prose the server's " +
         "policy bans. You supply the judgement: each fact's record, tag, date, place (or a text value such as a NAME " +
         "change) and QUAY, and any note text. A repeatable tag (CENS, RESI, ...) is added beside the instances the " +

@@ -64,7 +64,7 @@ public class ModelDraftLookupTests
         var death = Assert.Single(lookup.FactsOn("@I1@", "DEAT"));
         Assert.Null(death.Date);
         var citation = Assert.Single(death.Citations);
-        Assert.Equal(new GedCore.Drafting.ExistingCitation("@S1@", "Memorial #0", null, 2), citation);
+        Assert.Equal(new GedCore.Drafting.ExistingCitation("@S1@", "Memorial #0", null, 2, "Find a Grave"), citation);
         Assert.Empty(lookup.FactsOn("@I1@", "BIRT"));
         Assert.Empty(lookup.FactsOn("@I9@", "DEAT"));
     }

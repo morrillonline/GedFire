@@ -454,7 +454,7 @@ public class ChangesetDrafterTests
     [Fact]
     public void AnExistingVerificationNote_IsFlaggedOpenBesideTheNewOne()
     {
-        var lookup = new FakeLookup(notes: new() { ["@I1@"] = ["Needs independent verification: no birth has been seen."] });
+        var lookup = new FakeLookup(notes: new() { ["@I1@"] = ["Needs independent verification: the parents are unproven."] });
 
         var result = new ChangesetDrafter(lookup).Draft(
             [Finding("F-1", Memorial(info: "secondary"), "x", [Fact("BIRT", "1924", null, 1)])]);

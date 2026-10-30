@@ -26,7 +26,8 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         var sources = SourcePlan.Build(findings, lookup, decisions);
         var newPeople = findings.SelectMany(f => f.People).DistinctBy(p => p.Xref).ToDictionary(p => p.Xref);
         decisions.AddRange(MintedPeople(findings));
-        var itemDrafter = new ItemDrafter(sources, lookup, lookup, policy?.VerificationNote ?? new VerificationNoteRule(1, DefaultNotePrefix), newPeople);
+        var verificationNotes = new VerificationNotePlanner(lookup, lookup, policy?.VerificationNote ?? new VerificationNoteRule(1, DefaultNotePrefix), newPeople);
+        var itemDrafter = new ItemDrafter(sources, lookup, verificationNotes, newPeople);
 
         var items = new JsonArray();
         var evidence = new JsonArray();
