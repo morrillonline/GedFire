@@ -156,6 +156,14 @@ record against tree family subgraphs. Supply:
   `parent-of`, or `sibling-of`.
 - `event`: the record's date and place.
 - Optional `focus`: the person whose result you want.
+- Optional `maxCandidates` (1-20, default 5): candidates returned per person;
+  `candidatesOmitted` counts the rest.
+- Optional `compact: true`: candidates become `{xref, name, lifespan, score,
+  matchedKin}` and survey rows `{xref, name, reason}`.
+
+The verdict, confident match, `runnerUpXref`/`runnerUpScore`,
+`potentialNewPerson`, and `possibleDuplicates` are decided before the cap, and
+the survey is never capped.
 
 Results rank candidates by name, lifespan, kin overlap, and place. Each
 person's `sameNameSurvey` lists the same-name candidates considered and the
@@ -209,11 +217,15 @@ in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error
 - New-child cards are withheld only if both spouses are bare-bones and the
   marriage has neither an exact date nor a place. In surname mode they also
   require a husband with a study surname; xrefs mode has no surname requirement.
+- New-child cards are also withheld when every known child of the wife was born
+  before this marriage (its date, or else the first census recording the couple).
+  An undatable child keeps the card.
 - `suppressedCards` lists `{xref, name, cardType, reason}` for otherwise eligible
   cards withheld by this gate, once per childless family for New child. These
   use the same subject xref, name, and card-type labels as the withheld card.
   Personal reasons are `bare-bones subject — enrich first`; family reasons are
-  `bare-bones family (both spouses and marriage lack anchors) — enrich first`.
+  `bare-bones family (both spouses and marriage lack anchors) — enrich first`
+  or `the wife's known children were all born before this marriage`.
   The list is empty when nothing was suppressed and is excluded from
   `totalCandidates`. Enrich-person cards, points, privacy, died-young, and surname
   rules are unchanged. No state is kept: landing an anchor restores relationship
@@ -297,6 +309,10 @@ assigns each fact's grade. Policy can require verification notes for low grades.
   findings or one is already on the record.
 - A less specific finding adds a citation, not a downgrade. The compiler
   reports a `resolved` decision with `no improvement`.
+- Places compare by jurisdiction, ignoring case, hyphens, spacing, trailing
+  periods, and a trailing `County`, `Co.`, or `Parish`. A finding that differs
+  from the record only this way is cited, not written; the record's spelling is
+  kept. The same rule applies to points scoring and GEN301 place matching.
 - Precision decides only between dates that can both be true. When a bound
   excludes the record's date (or the record's bound excludes the finding's
   date), the record's value gives way if it is uncited or graded below the

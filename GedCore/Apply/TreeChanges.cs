@@ -1,3 +1,5 @@
+using GedCore.Drafting;
+
 namespace GedCore.Apply;
 
 /// <summary>
@@ -87,11 +89,13 @@ public sealed class TreeChanges
     {
         if (sameTag.Count == 0) return new FactWrite(xref, fact.Tag, fact.Date, fact.Place) { CitationImproved = fact.Cited };
 
-        var prior = sameTag.FirstOrDefault(r => r.Date == fact.Date || r.Place == fact.Place) ?? sameTag[0];
+        var prior = sameTag.FirstOrDefault(r => r.Date == fact.Date || SamePlace(r.Place, fact.Place)) ?? sameTag[0];
         return new FactWrite(xref, fact.Tag, fact.Date, fact.Place,
             fact.Date is null ? DateImprovement.None : DateImprovements.Classify(prior.Date, fact.Date),
-            fact.Place is not null && fact.Place != prior.Place, fact.Cited && !prior.Cited);
+            fact.Place is not null && !SamePlace(prior.Place, fact.Place), fact.Cited && !prior.Cited);
     }
+
+    static bool SamePlace(string? a, string? b) => a is null || b is null ? a == b : Specificity.SamePlace(a, b);
 
     static IEnumerable<FactSignature> FactSignatures(GedRecord record) =>
         record.Children

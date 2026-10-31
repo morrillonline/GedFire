@@ -1,4 +1,5 @@
 using GedCore.Apply;
+using GedCore.Points;
 
 namespace GedCore.Tests;
 
@@ -156,6 +157,28 @@ public class TreeChangesTests : ApplyTestBase
     public void ALessSpecificBirthDate_IsNotAWrite()
     {
         Assert.Empty(DryRunChanges(BirthDate("ABT 1928")).Facts);
+    }
+
+    [Fact]
+    public void APlaceDifferingOnlyByCounty_IsNotAnImprovedPlace()
+    {
+        var lines = BaseLines.ToList();
+        lines[lines.IndexOf("2 PLAC Minnesota")] = "2 PLAC Duluth, St. Louis County, Minnesota";
+        WriteFile(lines);
+
+        var result = Run("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
+                "value": { "date": "1928", "place": "Duluth, St. Louis, Minnesota" },
+                "citation": { "source": "@S00001@", "page": "p. 2", "quay": 2 } } ] } ] }
+            """, dryRun: true);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var write = Assert.Single(result.Changes.Facts);
+        Assert.False(write.PlaceImproved);
+        Assert.True(write.CitationImproved);
+        var preview = CardScorer.Preview([new PointsCard("@I00001@", "enrich-person", "enrich-birth-place", null, 1)], result.Changes);
+        Assert.Empty(preview.Closed);
     }
 
     [Fact]

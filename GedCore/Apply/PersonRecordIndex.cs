@@ -83,7 +83,7 @@ internal static class PersonRecordIndex
     {
         var (given, surname) = SplitName(evidence.Name);
         bool? isMale = evidence.Sex switch { "M" => true, "F" => false, _ => null };
-        string? birthPlace = NormalizeOrNull(evidence.BirthPlace);
+        string? birthPlace = PlaceNormalizer.ForMatching(evidence.BirthPlace) is { Length: > 0 } p ? p : null;
         PersonMatchEvent? birth = evidence.BirthYear is not null || birthPlace is not null
             ? new PersonMatchEvent(evidence.BirthYear, birthPlace)
             : null;
@@ -129,7 +129,7 @@ internal static class PersonRecordIndex
         if (gedEvent is null) return null;
         int parsedYear = GedDate.ParseYear(gedEvent.ChildrenByTag("DATE").LastOrDefault()?.FullValue());
         int? year = parsedYear != 0 ? parsedYear : null;
-        string? place = NormalizeOrNull(gedEvent.ChildrenByTag("PLAC").LastOrDefault()?.FullValue());
+        string? place = PlaceNormalizer.ForMatching(gedEvent.ChildrenByTag("PLAC").LastOrDefault()?.FullValue()) is { Length: > 0 } p ? p : null;
         return year is null && place is null ? null : new PersonMatchEvent(year, place);
     }
 

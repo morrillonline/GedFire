@@ -314,6 +314,27 @@ public class PersonMatcherTests
     }
 
     [Fact]
+    public void PlaceHint_IgnoresCountyAndHyphenNoise()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Frederick /Morrill/
+            1 BIRT
+            2 PLAC Edinburg, Christian County, Illinois
+            0 @I2@ INDI
+            1 NAME Frederick /Morrill/
+            1 BIRT
+            2 PLAC Springfield, Sangamon, Illinois
+            """;
+
+        var outcome = Matcher().Match(IndexOf(ged), "Frederick Morrill",
+            new MatchHints(Birth: new EventHint(Place: "Edinburg, Christian, Illinois")));
+
+        Assert.Equal(PersonMatchType.Single, outcome.PersonMatchType);
+        Assert.Equal("@I1@", outcome.Matches[0].Individual.Xref);
+    }
+
+    [Fact]
     public void PlaceHint_NoContainmentEitherWay_AddsAvailableWeightButNoPoints()
     {
         var outcome = Matcher().Match(IndexOf(MorrillGed), "Frederick Morrill",

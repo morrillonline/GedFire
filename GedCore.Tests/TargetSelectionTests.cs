@@ -506,6 +506,83 @@ public class GapDetectorTests
         Assert.DoesNotContain(targets, t => t.CardType == "New child");
     }
 
+    // Mary's daughter Ruth is from her earlier Smith marriage; F1 is her childless marriage to John Morrill.
+    static string RemarriedWife(string childBirth, string marriage = "2 DATE 1912") => $"""
+        0 @I1@ INDI
+        1 NAME John /Morrill/
+        1 SEX M
+        1 BIRT
+        2 PLAC Duluth, Minnesota
+        1 CENS
+        2 DATE 1920
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Mary /Smith/
+        1 SEX F
+        1 CENS
+        2 DATE 1920
+        1 FAMS @F1@
+        1 FAMS @F2@
+        0 @I3@ INDI
+        1 NAME Ruth /Smith/
+        1 SEX F
+        {childBirth}
+        1 FAMC @F2@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        1 MARR
+        {marriage}
+        0 @F2@ FAM
+        1 WIFE @I2@
+        1 CHIL @I3@
+        """;
+
+    static (List<SelectionTarget> Targets, List<SuppressedCard> Suppressed) DetectWithSuppressed(string ged)
+    {
+        var suppressed = new List<SuppressedCard>();
+        var targets = GapDetector.Detect(ModelBuilder.Build(Ged55Parser.Parse(ged)), ["Morrill"], 2026, suppressed);
+        return (targets, suppressed);
+    }
+
+    [Theory]
+    [InlineData("2 DATE 1912")]
+    [InlineData("2 PLAC Duluth, Minnesota")]
+    public void NewChild_SuppressedWhenTheWifesOnlyChildPredatesTheMarriage(string marriage)
+    {
+        var (targets, suppressed) = DetectWithSuppressed(RemarriedWife("1 BIRT\n2 DATE ABT 1909", marriage));
+
+        Assert.DoesNotContain(targets, t => t.CardType == "New child");
+        var card = Assert.Single(suppressed, s => s.CardType == "New child");
+        Assert.Equal("the wife's known children were all born before this marriage", card.Reason);
+    }
+
+    [Fact]
+    public void NewChild_KeptWhenAChildWasBornAfterTheMarriage()
+    {
+        var (targets, suppressed) = DetectWithSuppressed(RemarriedWife("1 BIRT\n2 DATE 1914"));
+
+        Assert.Single(targets, t => t.CardType == "New child");
+        Assert.DoesNotContain(suppressed, s => s.CardType == "New child");
+    }
+
+    [Fact]
+    public void NewChild_KeptWhenTheChildCannotBeDated()
+    {
+        var (targets, _) = DetectWithSuppressed(RemarriedWife("1 BIRT\n2 PLAC Duluth, Minnesota"));
+
+        Assert.Single(targets, t => t.CardType == "New child");
+    }
+
+    [Fact]
+    public void NewChild_KeptWhenTheCoupleCannotBeDated()
+    {
+        var (targets, _) = DetectWithSuppressed(RemarriedWife("1 BIRT\n2 DATE 1909", marriage: "2 PLAC Duluth, Minnesota")
+            .Replace("1 CENS", "1 NOTE"));
+
+        Assert.Single(targets, t => t.CardType == "New child");
+    }
+
     [Fact]
     public void EnrichPerson_InexactBirth_ReportsMissingDateAndPlace()
     {

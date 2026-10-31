@@ -215,20 +215,18 @@ internal static partial class Specificity
     /// <summary>True when the two places are the same, or <paramref name="a"/> names every jurisdiction of <paramref name="b"/>, in the same order, and more: "Oakland, Kennebec, Maine" supersedes "Oakland, Maine" and "Maine".</summary>
     public static bool PlaceSupersedes(string a, string b)
     {
-        var pa = Jurisdictions(a);
-        var pb = Jurisdictions(b);
-        if (pb.Length > pa.Length) return false;
+        var pa = PlaceNormalizer.Jurisdictions(a);
+        var pb = PlaceNormalizer.Jurisdictions(b);
+        if (pb.Count > pa.Count) return false;
 
         int next = 0;
         foreach (string jurisdiction in pa)
-            if (next < pb.Length && string.Equals(jurisdiction, pb[next], StringComparison.OrdinalIgnoreCase)) next++;
-        return next == pb.Length;
+            if (next < pb.Count && jurisdiction == pb[next]) next++;
+        return next == pb.Count;
     }
 
-    public static bool SamePlace(string a, string b) => Jurisdictions(a).SequenceEqual(Jurisdictions(b), StringComparer.OrdinalIgnoreCase);
-
-    static string[] Jurisdictions(string place) =>
-        [.. place.Split(',').Select(p => p.Trim()).Where(p => p.Length > 0)];
+    /// <summary>The same jurisdictions, ignoring case, hyphens, spacing, trailing periods and a trailing County, Co. or Parish.</summary>
+    public static bool SamePlace(string a, string b) => PlaceNormalizer.Jurisdictions(a).SequenceEqual(PlaceNormalizer.Jurisdictions(b));
 
     static bool Agrees(Parsed specific, Parsed general) =>
         specific.Year == general.Year
