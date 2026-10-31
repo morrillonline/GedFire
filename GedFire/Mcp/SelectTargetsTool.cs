@@ -27,7 +27,7 @@ public sealed class SelectTargetsTool
         "targets drawn at random, each with its gap type, difficulty band, points, and the facts needed to " +
         "start work (an Enrich person target is one card per person: \"enrichments\" lists every birth, " +
         "marriage and death with an inexact date or place, or an exact one lacking a citation, nominalPoints is one per missing date, place or citation, and " +
-        "the difficulty bonus is added once), including possibleDuplicateOf (the best few people the duplicate test pairs with the target) and possibleDuplicateCount; the " +
+        "the difficulty bonus is added once; a BET range of 12 months or less cited at QUAY 2 or higher is not a missing date), including possibleDuplicateOf (the best few people the duplicate test pairs with the target) and possibleDuplicateCount; the " +
         "draw keeps at most one Legendary-band target, so a pack can come up short. This is " +
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
         "never selected. Pass xrefs instead of count and surnames to skip the draw and score exactly those " +

@@ -24,7 +24,7 @@ public class CardScorerTests
         var closed = Assert.Single(preview.Closed);
         Assert.Equal("@I1@|enrich-person|enrich-death", closed.CardKey);
         Assert.Equal(7, closed.Points);
-        Assert.Equal("DEAT @I1@", closed.Wrote);
+        Assert.Equal("DEAT @I1@ (first date)", closed.Wrote);
         Assert.Equal(7, preview.Total);
     }
 
@@ -66,7 +66,7 @@ public class CardScorerTests
 
         var preview = CardScorer.Preview([Enrich("enrich-marriage")], changes);
 
-        Assert.Equal("MARR @F1@", Assert.Single(preview.Closed).Wrote);
+        Assert.Equal("MARR @F1@ (first date)", Assert.Single(preview.Closed).Wrote);
     }
 
     [Fact]
@@ -85,14 +85,14 @@ public class CardScorerTests
         var card = new PointsCard("@I1@", "enrich-person", gap, null, 1);
         var changes = Facts(
             new FactWrite("@I1@", "DEAT", "1 JAN 1900", "Salem"),
-            new FactWrite("@I1@", "BIRT", null, "Duluth", DateImproved: false, PlaceImproved: true),
+            new FactWrite("@I1@", "BIRT", null, "Duluth", DateImprovement.None, PlaceImproved: true),
             new FactWrite("@I2@", "DEAT", "1901", null));
 
         var preview = CardScorer.Preview([card], changes);
 
         var closed = Assert.Single(preview.Closed);
         Assert.Equal(3, closed.Points);
-        Assert.Equal("DEAT @I1@ (date and place); BIRT @I1@ (place)", closed.Wrote);
+        Assert.Equal("DEAT @I1@ (first date and place); BIRT @I1@ (place)", closed.Wrote);
         Assert.Equal(3, preview.Total);
     }
 
@@ -100,7 +100,7 @@ public class CardScorerTests
     public void AGenericEnrichCard_PricesANewCitationAsOneImprovement()
     {
         var card = new PointsCard("@I1@", "enrich-person", "enrich-fact", null, 1);
-        var changes = Facts(new FactWrite("@I1@", "BIRT", "1850", "Duluth", DateImproved: false, PlaceImproved: false, CitationImproved: true));
+        var changes = Facts(new FactWrite("@I1@", "BIRT", "1850", "Duluth", DateImprovement.None, PlaceImproved: false, CitationImproved: true));
 
         var closed = Assert.Single(CardScorer.Preview([card], changes).Closed);
 
@@ -111,7 +111,7 @@ public class CardScorerTests
     [Fact]
     public void ANamedDatePlaceGap_IsNotClosedByACitationAlone()
     {
-        var changes = Facts(new FactWrite("@I1@", "BIRT", "1850", "Duluth", DateImproved: false, PlaceImproved: false, CitationImproved: true));
+        var changes = Facts(new FactWrite("@I1@", "BIRT", "1850", "Duluth", DateImprovement.None, PlaceImproved: false, CitationImproved: true));
 
         Assert.Single(CardScorer.Preview([Enrich("enrich-birth-date")], changes).NotClosed);
         Assert.Single(CardScorer.Preview([Enrich("enrich-birth-place")], changes).NotClosed);
@@ -161,7 +161,28 @@ public class CardScorerTests
     {
         var preview = CardScorer.Preview([Enrich("enrich-burial-place")], Facts(new FactWrite("@I1@", "BURI", null, "Salem Cemetery")));
 
-        Assert.Equal("BURI @I1@", Assert.Single(preview.Closed).Wrote);
+        Assert.Equal("BURI @I1@ (place)", Assert.Single(preview.Closed).Wrote);
+    }
+
+    [Theory]
+    [InlineData(DateImprovement.First, "DEAT @I1@ (first date)")]
+    [InlineData(DateImprovement.Refined, "DEAT @I1@ (refined date)")]
+    [InlineData(DateImprovement.Narrowed, "DEAT @I1@ (narrowed date)")]
+    [InlineData(DateImprovement.Corrected, "DEAT @I1@ (corrected date)")]
+    public void AClosedCard_NamesTheKindOfDateImprovementThatPaid(DateImprovement kind, string wrote)
+    {
+        var changes = Facts(new FactWrite("@I1@", "DEAT", "BEF 1797", null, kind, PlaceImproved: false));
+
+        Assert.Equal(wrote, Assert.Single(CardScorer.Preview([Enrich("enrich-death-date")], changes).Closed).Wrote);
+    }
+
+    [Fact]
+    public void ADateThatDoesNotImprove_LeavesADateCardOpenAndEarnsNothing()
+    {
+        var changes = Facts(new FactWrite("@I1@", "DEAT", "1877", null, DateImprovement.None, PlaceImproved: false, CitationImproved: true));
+
+        Assert.Single(CardScorer.Preview([Enrich("enrich-death-date")], changes).NotClosed);
+        Assert.Equal(1, CardScorer.Preview([new PointsCard("@I1@", "enrich-person", "enrich-fact", null, 1)], changes).Total);
     }
 
     [Fact]

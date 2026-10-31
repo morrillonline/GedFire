@@ -111,7 +111,7 @@ public static class CardScorer
 
         var onSubject = changes.Facts.Where(f => WrittenOnSubject(f, card.Xref, changes)).ToList();
         var match = onSubject.FirstOrDefault(f => f.Tag == tag && Carries(f, part));
-        if (match is not null) return Closure.Closes($"{tag} {match.Record}");
+        if (match is not null) return Closure.Closes($"{tag} {match.Record} ({Improved(match)})");
 
         string others = string.Join(", ", onSubject.Select(f => f.Tag).Distinct());
         return Closure.Open(others.Length == 0
@@ -136,7 +136,8 @@ public static class CardScorer
     static string Improved(FactWrite fact) =>
         string.Join(" and ", new[]
         {
-            fact.DateImproved ? "date" : null, fact.PlaceImproved ? "place" : null, fact.CitationImproved ? "citation" : null,
+            fact.DateImproved ? $"{fact.DateImprovement.ToString().ToLowerInvariant()} date" : null,
+            fact.PlaceImproved ? "place" : null, fact.CitationImproved ? "citation" : null,
         }.OfType<string>());
 
     static bool WroteOnSubject(PointsCard card, TreeChanges changes) =>

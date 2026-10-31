@@ -718,6 +718,58 @@ public class GapDetectorTests
         Assert.Single(target.Enrichments!, e => e.Fact == "Death");
     }
 
+    static string DeathOn(string date, int quay) => $"""
+        0 @I1@ INDI
+        1 NAME William /Morrill/
+        1 SEX M
+        1 BIRT
+        2 DATE 1 JAN 1750
+        2 PLAC Boston, Massachusetts
+        2 SOUR @S1@
+        1 DEAT
+        2 DATE {date}
+        2 PLAC Boston, Massachusetts
+        2 SOUR @S1@
+        3 QUAY {quay}
+        """;
+
+    static bool DeathDateIsAGap(string ged, HonestRange? honestRange = null)
+    {
+        var targets = GapDetector.Detect(ModelBuilder.Build(Ged55Parser.Parse(ged)), ["Morrill"], 2026, honestRange: honestRange);
+        return targets.Any(t => t.Enrichments?.Any(e => e.Fact == "Death" && e.MissingDate) == true);
+    }
+
+    [Theory]
+    [InlineData("BET 18 AUG 1796 AND 27 SEP 1796")]
+    [InlineData("BET 1 JAN 1796 AND 1 JAN 1797")]
+    [InlineData("BET JAN 1796 AND DEC 1796")]
+    public void EnrichPerson_ACitedRangeWithinTheSpan_IsNotADateGap(string date) =>
+        Assert.False(DeathDateIsAGap(DeathOn(date, quay: 2)));
+
+    [Theory]
+    [InlineData("BET 1 JAN 1796 AND 2 JAN 1797")]
+    [InlineData("BET 1796 AND 1797")]
+    [InlineData("BEF 27 SEP 1796")]
+    [InlineData("AFT 18 AUG 1796")]
+    [InlineData("ABT 1796")]
+    [InlineData("CAL 1796")]
+    [InlineData("EST 1796")]
+    public void EnrichPerson_AWiderRangeOrASoftOrOpenDate_IsStillADateGap(string date) =>
+        Assert.True(DeathDateIsAGap(DeathOn(date, quay: 3)));
+
+    [Fact]
+    public void EnrichPerson_ANarrowRangeCitedBelowTheQuay_IsStillADateGap() =>
+        Assert.True(DeathDateIsAGap(DeathOn("BET 18 AUG 1796 AND 27 SEP 1796", quay: 1)));
+
+    [Fact]
+    public void EnrichPerson_TheRangeSpanAndQuayAreConfigurable()
+    {
+        string ged = DeathOn("BET 1796 AND 1797", quay: 1);
+
+        Assert.True(DeathDateIsAGap(ged));
+        Assert.False(DeathDateIsAGap(ged, new HonestRange(MaxSpanMonths: 24, MinQuay: 1)));
+    }
+
     [Fact]
     public void Died_FallsBackToTheBurialWhenThereIsNoDeath()
     {

@@ -18,6 +18,7 @@ internal static class OpSummary
             "createOrUpdateNote" => $"{(Has(op, "match") ? "Rewrite a note" : "Add a note")} on {Text(op, "record")}: \"{OneLine(Text(op, "text"))}\"",
             "deleteChild" => $"Remove child {Text(op, "child")} from {Text(op, "family")}",
             "deleteParent" => $"Remove the {Text(op, "role")} of {Text(op, "person")}",
+            "deleteVital" => $"Withdraw {Text(op, "fact")} on {Text(op, "record")}{MatchOf(op)}",
             "deleteNote" => $"Delete a note on {Text(op, "record")}: \"{OneLine(Text(op, "text"))}\"",
             _ => $"{kind} on {Text(op, "record") ?? Text(op, "person") ?? Text(op, "xref") ?? "the document"}",
         };

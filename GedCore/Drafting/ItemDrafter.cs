@@ -33,7 +33,8 @@ internal sealed class ItemDrafter(
 
     public JsonObject Draft(int number, IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions, List<string> errors)
     {
-        var asserted = group.SelectMany(f => f.Facts.Select(x => new Asserted(f, x, new CiteKey(sources.RefFor(f), f.Source.Locator, x.Quay)))).ToList();
+        var withdrawals = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is not null).Select(x => (Finding: f, Fact: x))).ToList();
+        var asserted = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is null).Select(x => new Asserted(f, x, new CiteKey(sources.RefFor(f), f.Source.Locator, x.Quay)))).ToList();
         var noteCites = group.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => NoteClaim(group, f, c)))).ToList();
         var relations = group.SelectMany(f => f.Relations.Where(r => !r.IsRemoval).Select(r => new AssertedRelation(f, r, new CiteKey(sources.RefFor(f), f.Source.Locator, r.Quay)))).ToList();
         var claims = asserted.Select(a => new Claim(a.Finding, a.Cite, a.Fact.Excerpt ?? a.Finding.Extract))
@@ -50,6 +51,7 @@ internal sealed class ItemDrafter(
         foreach (var link in relations.GroupBy(r => (r.Relation.Kind, r.Relation.Person, r.Relation.Other, r.Relation.Family, r.Relation.Role)))
             ops.Add(RelationOp([.. link], citations, decisions));
         foreach (var removal in RemovalOps(group, decisions)) ops.Add(removal);
+        foreach (var withdrawal in WithdrawalOps(withdrawals, group, decisions)) ops.Add(withdrawal);
         foreach (var vital in vitals.Where(op => !sexCorrections.Contains(op))) ops.Add(vital);
         foreach (var citation in CitationOps([.. asserted.Where(a => a.Fact.CiteOnly)], citations)) ops.Add(citation);
         foreach (var finding in group)
@@ -154,6 +156,47 @@ internal sealed class ItemDrafter(
         ? $"removing the {relation.Role} of {relation.Person}"
         : $"removing {relation.Other} from {relation.Family}";
 
+    // A withdrawn fact is deleted with its citations kept in a note; like a removal, its evidence belongs in a cited note.
+    IEnumerable<JsonObject> WithdrawalOps(
+        List<(DraftFinding Finding, DraftFact Fact)> withdrawals, IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions)
+    {
+        foreach (var byFact in withdrawals.GroupBy(w => (w.Fact.Record, w.Fact.Tag, Date: w.Fact.Date?.ToUpperInvariant(), w.Fact.Place)))
+        {
+            var (record, tag, date, place) = byFact.Key;
+            List<string> findingIds = [.. byFact.Select(w => w.Finding.Id).Distinct()];
+            string selector = date is null && place is null ? "" : $" ({Describe(date, place, null)})";
+            var held = history.FactsOn(record, tag)
+                .Where(e => (date is null || e.Date is not null && Specificity.SameDate(e.Date, date))
+                         && (place is null || e.Place is not null && Specificity.SamePlace(e.Place, place)))
+                .ToList();
+            if (held.Count != 1)
+            {
+                decisions.Add(new DraftDecision(DraftDecisionKinds.Open, held.Count == 0
+                    ? $"{record} holds no {tag}{selector} to withdraw; nothing was drafted for it"
+                    : $"{held.Count} {tag} facts on {record} match{selector}; give the date or place of the one to withdraw", findingIds));
+                continue;
+            }
+
+            var op = new JsonObject { ["op"] = "deleteVital", ["record"] = record, ["fact"] = tag };
+            if (held[0].Date is not null || held[0].Place is not null)
+            {
+                var match = new JsonObject();
+                if (held[0].Date is not null) match["date"] = held[0].Date;
+                if (held[0].Place is not null) match["place"] = held[0].Place;
+                op["match"] = match;
+            }
+            op["deletedCitations"] = "moveToNote";
+
+            string reasons = string.Join("; ", byFact.Select(w => w.Fact.Withdraw).Distinct());
+            decisions.Add(new DraftDecision(DraftDecisionKinds.Resolved,
+                $"withdrawn: {tag} on {record} ({Describe(held[0].Date, held[0].Place, null)}), {reasons}", findingIds));
+            if (!group.Any(f => f.Notes.Any(n => n.Record == record)))
+                decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
+                    $"withdrawing {tag} on {record} is not cited; record the evidence in a note that cites the finding", findingIds));
+            yield return Backed(op, findingIds);
+        }
+    }
+
     // Findings that state the same link share one op, citing each of them.
     JsonObject RelationOp(List<AssertedRelation> link, Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
     {
@@ -225,6 +268,10 @@ internal sealed class ItemDrafter(
             }
 
             var values = byTag.GroupBy(a => FactKeyOf(a.Fact)).ToList();
+            if (byTag.Any(a => a.Fact.ReplaceHeld is not null))
+                decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
+                    $"replaceHeld applies to single-valued facts; {byTag.Key.Tag} on {byTag.Key.Record} may occur more than once, so it was ignored",
+                    [.. byTag.Select(a => a.Finding.Id).Distinct()]));
             foreach (var value in values)
             {
                 var placement = Place(repeatable, values.Count, existing, value.Key);
@@ -264,14 +311,28 @@ internal sealed class ItemDrafter(
             return null;
         }
 
-        string? date = resolution.DateFrom is { } d ? claims[d].Date : null;
+        string? date = resolution.CombinedDate ?? (resolution.DateFrom is { } d ? claims[d].Date : null);
         string? place = resolution.PlaceFrom is { } p ? claims[p].Place : null;
         string? name = resolution.ValueFrom is { } v ? claims[v].Value : null;
         var held = existing.FirstOrDefault();
-        bool writesDate = date is not null && !HeldIsMoreSpecific(held?.Date, date, Specificity.DateSupersedes, Specificity.SameDate);
-        bool writesPlace = place is not null && !HeldIsMoreSpecific(held?.Place, place, Specificity.PlaceSupersedes, Specificity.SamePlace);
-
         var attached = facts.Where((_, i) => !resolution.Excluded.Contains(i)).ToList();
+        string? replaceReason = attached.Select(a => a.Fact.ReplaceHeld).FirstOrDefault(r => r is not null);
+
+        var judged = date is null ? null : JudgeHeldDate(record, tag, held, date, attached.Max(a => a.Fact.Quay), replaceReason);
+        if (judged?.Decision is { } judgement)
+            decisions.Add(judgement with { Findings = [.. attached.Select(a => a.Finding.Id).Distinct()] });
+        if (judged?.Outcome == HeldOutcome.Skip)
+        {
+            foreach (var skipped in facts) _excluded.Add(skipped);
+            return null;
+        }
+
+        bool writesDate = judged?.Outcome == HeldOutcome.Write;
+        date = judged?.Date ?? date;
+        bool writesPlace = place is not null
+            && (replaceReason is not null || !HeldIsMoreSpecific(held?.Place, place, Specificity.PlaceSupersedes, Specificity.SamePlace));
+        bool replacesHeld = judged?.Replaces == true;
+
         foreach (int i in resolution.Excluded)
             decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
                 $"{claims[i].FindingId}'s {claims[i].Date} for {tag} on {record} does not fit the chosen date {date}, so its citation was not attached; check it",
@@ -284,9 +345,77 @@ internal sealed class ItemDrafter(
 
         if (!writesDate && !writesPlace && name is null) return CitationOnlyOp(record, tag, held, attached, citations, decisions);
 
-        var key = keys[0] with { Date = writesDate ? date!.ToUpperInvariant() : null, Place = writesPlace ? place : null, Value = name };
-        return VitalOp(key, attached, new Placement(null, false, held), citations, decisions);
+        var key = keys[0] with
+        {
+            Date = writesDate ? date!.ToUpperInvariant() : null, Place = writesPlace ? place : null, Value = name,
+            ReplacedCitations = keys[0].ReplacedCitations ?? (replacesHeld ? "moveToNote" : null),
+        };
+        // The citations of a contradicted value are not restated onto the value that replaces it.
+        return VitalOp(key, attached, new Placement(null, false, replacesHeld ? null : held), citations, decisions);
     }
+
+    enum HeldOutcome { Write, Keep, Skip }
+
+    // Date is what to write when it differs from the finding's (a combined bound); Replaces marks a contradicted value being replaced.
+    sealed record HeldDate(HeldOutcome Outcome, string? Date = null, bool Replaces = false, DraftDecision? Decision = null);
+
+    // Whether the finding's date is written over the date the record holds. Precision decides only between dates that can
+    // both be true; a contradiction is settled by the evidence (an uncited or lower-graded value gives way) or left open.
+    static HeldDate JudgeHeldDate(string record, string tag, ExistingFact? heldFact, string date, int quay, string? replaceReason)
+    {
+        string? held = heldFact?.Date;
+        if (held is null || Specificity.SameDate(held, date)) return new HeldDate(HeldOutcome.Write);
+        string fact = $"{tag} on {record}";
+
+        if (replaceReason is not null)
+            return new HeldDate(HeldOutcome.Write, Replaces: !Specificity.Consistent(held, date),
+                Decision: Resolved($"{fact}: the record's {held} replaced with {date} as the author directs, {replaceReason}"));
+
+        if (Specificity.IsBound(held) && Specificity.IsBound(date))
+            return Specificity.CombineBounds(held, date, out var combined) switch
+            {
+                Specificity.BoundOverlap.Combined when Specificity.SameDate(combined!, held) => new HeldDate(HeldOutcome.Keep),
+                Specificity.BoundOverlap.Combined => new HeldDate(HeldOutcome.Write, combined,
+                    Decision: Resolved($"{fact}: the record's {held} and the finding's {date} together give {combined}")),
+                Specificity.BoundOverlap.Disjoint => Contradiction(fact, heldFact!, date, quay),
+                _ => new HeldDate(HeldOutcome.Keep,
+                    Decision: Open($"{fact}: cannot tell how the finding's {date} narrows the record's {held}; the record's date is kept, check it")),
+            };
+
+        if (Specificity.DateSupersedes(held, date))
+        {
+            if (!Specificity.IsApproximate(date) || Specificity.Fits(date, held)) return new HeldDate(HeldOutcome.Keep);
+            if (Specificity.IsBound(date)) return Contradiction(fact, heldFact!, date, quay);
+            return new HeldDate(HeldOutcome.Skip, Decision: Open(
+                $"{fact}: the finding's {date} is more than a year from the record's {held}, so nothing was drafted for it; check it, then cite or replace the record's date"));
+        }
+
+        if (!Specificity.IsApproximate(date) && !Specificity.Fits(held, date))
+        {
+            if (Specificity.IsBound(held)) return Contradiction(fact, heldFact!, date, quay);
+            if (Specificity.IsSoft(held))
+                return new HeldDate(HeldOutcome.Write, Decision: Open(
+                    $"{fact}: the record's {held} is replaced with {date}, more than a year from it; check that both describe the same event"));
+        }
+        return new HeldDate(HeldOutcome.Write);
+    }
+
+    static HeldDate Contradiction(string fact, ExistingFact held, string date, int quay)
+    {
+        var grades = held.Citations.Select(c => c.Quay).ToList();
+        string standing = grades.Count == 0 ? "uncited" : grades.All(g => g is not null) ? $"cited at QUAY {grades.Max()}" : "cited without a grade";
+        bool givesWay = grades.Count == 0 || grades.All(g => g is not null) && grades.Max() < quay;
+        return givesWay
+            ? new HeldDate(HeldOutcome.Write, Replaces: true, Decision: Resolved(
+                $"{fact}: the record's {held.Date} does not fit {date} and is {standing}, below the finding's QUAY {quay}, so it is replaced"
+                + (grades.Count == 0 ? "" : " and its citations kept in a note")))
+            : new HeldDate(HeldOutcome.Skip, Decision: Open(
+                $"{fact}: the record's {held.Date} ({standing}) does not fit {date} (QUAY {quay}); nothing was drafted for it. Settle the conflict, then give the fact replaceHeld with the reason"));
+    }
+
+    static DraftDecision Resolved(string detail) => new(DraftDecisionKinds.Resolved, detail, []);
+
+    static DraftDecision Open(string detail) => new(DraftDecisionKinds.Open, detail, []);
 
     // The record's own value is kept only when it says more than the finding does; an equal value is rewritten as is.
     static bool HeldIsMoreSpecific(string? held, string given, Func<string, string, bool> supersedes, Func<string, string, bool> same) =>
@@ -328,6 +457,7 @@ internal sealed class ItemDrafter(
         string kept = string.Join(", ", new[]
         {
             Source("date", resolution.DateFrom, claims), Source("place", resolution.PlaceFrom, claims), Source("name", resolution.ValueFrom, claims),
+            resolution.CombinedDate is null ? null : "the findings' bounds combined for the date",
         }.OfType<string>());
         string cited = string.Join(", ", attached.Select(a => a.Finding.Id).Distinct());
         string improvement = !writesDate && !writesPlace && name is null
