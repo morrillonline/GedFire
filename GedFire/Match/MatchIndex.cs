@@ -46,7 +46,7 @@ public sealed class MatchIndex
         if (gedEvent is null) return null;
         int parsedYear = GedDate.ParseYear(gedEvent.Date);
         int? year = parsedYear != 0 ? parsedYear : null;
-        string? place = NormalizeOrNull(gedEvent.Place);
+        string? place = PlaceOrNull(gedEvent.Place);
         return year is null && place is null ? null : new PersonMatchEvent(year, place);
     }
 
@@ -72,11 +72,13 @@ public sealed class MatchIndex
                 : null;
             int parsedYear = GedDate.ParseYear(family.Marriage?.Date);
             int? year = parsedYear != 0 ? parsedYear : null;
-            string? place = NormalizeOrNull(family.Marriage?.Place);
+            string? place = PlaceOrNull(family.Marriage?.Place);
             marriages.Add(new PersonMatchMarriage(spouseName, year, place));
         }
         return marriages;
     }
+
+    static string? PlaceOrNull(string? place) => PlaceNormalizer.ForMatching(place) is { Length: > 0 } normalized ? normalized : null;
 
     static string? NormalizeOrNull(string? value)
     {

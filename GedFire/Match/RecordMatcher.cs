@@ -1,3 +1,4 @@
+using GedCore;
 using GedCore.Matching;
 using GedFire.Gen;
 
@@ -76,6 +77,8 @@ public sealed class RecordMatcher
             Verdict = ranked.Count == 0 ? "none" : single ? "single" : "candidates",
             ConfidentMatchXref = ranked.Count > 0 && single ? ranked[0].Individual.Xref : null,
             ConfidentMatchScore = ranked.Count > 0 && single ? ranked[0].Composite : null,
+            RunnerUpXref = ranked.Count > 1 ? ranked[1].Individual.Xref : null,
+            RunnerUpScore = ranked.Count > 1 ? ranked[1].Composite : null,
             Candidates = [.. ranked.Select(ToCandidate)],
             SameNameSurvey = BuildSurvey(ranked, excluded, kin),
             PotentialNewPerson = ranked.Count == 0,
@@ -105,6 +108,7 @@ public sealed class RecordMatcher
         Name = PersonDisplay.FullName(s.Individual),
         Born = EventDisplay(s.Individual.Birth),
         Died = EventDisplay(s.Individual.DeathOrBurial),
+        Lifespan = Lifespan(s.Individual),
         Score = s.Composite,
         Subscores = new RecordSubscores
         {
@@ -168,6 +172,13 @@ public sealed class RecordMatcher
 
     static string Names(IReadOnlyList<RecordPersonDescription> persons) =>
         string.Join(", ", persons.Select(p => p.Name));
+
+    static string? Lifespan(GedIndividual indi)
+    {
+        int born = GedDate.ParseYear(indi.Birth?.Date), died = GedDate.ParseYear(indi.DeathOrBurial?.Date);
+        if (born == 0 && died == 0) return null;
+        return $"{(born == 0 ? "?" : born.ToString())}-{(died == 0 ? "?" : died.ToString())}";
+    }
 
     static string? EventDisplay(GedEvent? ev)
     {

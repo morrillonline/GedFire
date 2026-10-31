@@ -212,6 +212,11 @@ public static class GapDetector
                     "bare-bones family (both spouses and marriage lack anchors) \u2014 enrich first"));
                 continue;
             }
+            if (EarlierMarriageChildren.AllPredate(fam))
+            {
+                suppressedCards?.Add(new SuppressedCard(person.Xref, DisplayName(person), CardType.NewChild.Display(), EarlierMarriageChildren.Reason));
+                continue;
+            }
 
             // Era/geography key off the marriage when one is recorded (this
             // is a descendancy target), else fall back to the subject's own

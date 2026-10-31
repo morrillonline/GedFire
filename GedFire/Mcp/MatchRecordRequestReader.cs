@@ -34,6 +34,17 @@ public static class MatchRecordRequestReader
         return true;
     }
 
+    /// <summary>Reads the optional maxCandidates (1-20, default 5) and compact flag.</summary>
+    public static bool TryReadView(JsonElement maxCandidates, JsonElement compact, out RecordMatchView? view, out string? error)
+    {
+        view = null;
+        if (!ToolArguments.TryReadOptionalInt(maxCandidates, "maxCandidates", 1, RecordMatchView.MaxCandidatesLimit,
+                RecordMatchView.DefaultMaxCandidates, out int max, out error)) return false;
+        if (!ToolArguments.TryReadOptionalBool(compact, "compact", out bool isCompact, out error)) return false;
+        view = new RecordMatchView(max, isCompact);
+        return true;
+    }
+
     static bool TryReadEvent(JsonElement element, out RecordEventDescription? recordEvent, out string? error)
     {
         recordEvent = null;

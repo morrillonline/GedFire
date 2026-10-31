@@ -160,6 +160,56 @@ public class MatchRecordToolTests : IDisposable
         Assert.Equal("persons[0]: give birthYear or age, not both.", ErrorText(result));
     }
 
+    async Task<JsonElement> Head(string? maxCandidates, string? compact)
+    {
+        var result = await Tool().HandleAsync(
+            Json(HouseholdPersons), Json(HouseholdRelationships), Json(HouseholdEvent), Json("0"),
+            maxCandidates is null ? default : Json(maxCandidates), compact is null ? default : Json(compact), CancellationToken.None);
+        Assert.NotEqual(true, result.IsError);
+        return result.StructuredContent!.Value.GetProperty("persons")[0];
+    }
+
+    [Fact]
+    public async Task MatchRecord_MaxCandidates_KeepsTheVerdictAndReportsWhatItDropped()
+    {
+        var uncapped = await Head(null, null);
+        var capped = await Head("1", null);
+
+        Assert.Equal(1, capped.GetProperty("candidates").GetArrayLength());
+        Assert.Equal(1, capped.GetProperty("candidatesOmitted").GetInt32());
+        Assert.Equal(uncapped.GetProperty("verdict").GetString(), capped.GetProperty("verdict").GetString());
+        Assert.Equal(uncapped.GetProperty("confidentMatchXref").GetString(), capped.GetProperty("confidentMatchXref").GetString());
+        Assert.Equal("@I10@", capped.GetProperty("runnerUpXref").GetString());
+        Assert.Equal(2, capped.GetProperty("sameNameSurvey").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task MatchRecord_Compact_DropsSubscoresAndKeepsSurveyReasons()
+    {
+        var head = await Head(null, "true");
+
+        var winner = head.GetProperty("candidates")[0];
+        Assert.Equal("1848-?", winner.GetProperty("lifespan").GetString());
+        Assert.False(winner.TryGetProperty("subscores", out _));
+        var decoy = head.GetProperty("sameNameSurvey").EnumerateArray().Single(e => e.GetProperty("xref").GetString() == "@I10@");
+        Assert.False(decoy.TryGetProperty("outcome", out _));
+        Assert.False(string.IsNullOrEmpty(decoy.GetProperty("reason").GetString()));
+    }
+
+    [Theory]
+    [InlineData("0", null)]
+    [InlineData("21", null)]
+    [InlineData(null, "\"yes\"")]
+    public async Task MatchRecord_InvalidViewOptions_AreErrors(string? maxCandidates, string? compact)
+    {
+        var result = await Tool().HandleAsync(
+            Json(HouseholdPersons), default, default, default,
+            maxCandidates is null ? default : Json(maxCandidates), compact is null ? default : Json(compact), CancellationToken.None);
+
+        Assert.Equal(true, result.IsError);
+        Assert.Contains(maxCandidates is null ? "compact" : "maxCandidates", ErrorText(result));
+    }
+
     [Fact]
     public void ToMcpServerTool_IsAdvertisedReadOnlyAndIdempotent()
     {

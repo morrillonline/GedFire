@@ -440,7 +440,7 @@ public sealed class PersonMatchCore
     {
         if (string.IsNullOrWhiteSpace(hint) || string.IsNullOrEmpty(candidate)) return;
 
-        string normalizedHint = PersonNameNormalizer.Normalize(hint);
+        string normalizedHint = PlaceNormalizer.ForMatching(hint);
         if (normalizedHint.Length == 0) return;
 
         available += weight;

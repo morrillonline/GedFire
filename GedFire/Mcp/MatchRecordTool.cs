@@ -32,7 +32,9 @@ public sealed class MatchRecordTool
         "candidates, or none. A record " +
         "person matching no tree person comes back with potentialNewPerson true and any near-miss " +
         "possibleDuplicates, never force-matched to the nearest name. Deterministic: the same input always " +
-        "returns the same result.";
+        "returns the same result. maxCandidates (default 5) caps candidates per person and candidatesOmitted counts " +
+        "the rest; compact returns candidates as {xref, name, lifespan, score, matchedKin} and survey rows as " +
+        "{xref, name, reason}. The verdict and runner-up are decided before either applies, and the survey is never capped.";
 
     public const string InputSchemaJson = """
         {
@@ -85,6 +87,16 @@ public sealed class MatchRecordTool
               "type": "integer",
               "minimum": 0,
               "description": "Index of the one person to identify. Omit to identify every person; the others still contribute their names as kin either way."
+            },
+            "maxCandidates": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "description": "Most candidates returned per person, default 5. The verdict, confident match and runner-up are decided first."
+            },
+            "compact": {
+              "type": "boolean",
+              "description": "Return candidates as {xref, name, lifespan, score, matchedKin} without subscores, and sameNameSurvey rows as {xref, name, reason}."
             }
           },
           "required": ["persons"]
@@ -107,9 +119,12 @@ public sealed class MatchRecordTool
                   "verdict": { "type": "string", "enum": ["single", "candidates", "none"], "description": "single means a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10." },
                   "confidentMatchXref": { "type": ["string", "null"] },
                   "confidentMatchScore": { "type": ["number", "null"] },
+                  "runnerUpXref": { "type": ["string", "null"], "description": "The second-ranked candidate, kept even when maxCandidates drops it." },
+                  "runnerUpScore": { "type": ["number", "null"] },
+                  "candidatesOmitted": { "type": "integer", "minimum": 0, "description": "Viable candidates left out by maxCandidates." },
                   "candidates": {
                     "type": "array",
-                    "description": "Viable candidates, best first.",
+                    "description": "Viable candidates, best first, at most maxCandidates. Compact rows carry lifespan instead of born, died and subscores.",
                     "items": {
                       "type": "object",
                       "properties": {
@@ -117,6 +132,7 @@ public sealed class MatchRecordTool
                         "name": { "type": "string" },
                         "born": { "type": ["string", "null"] },
                         "died": { "type": ["string", "null"] },
+                        "lifespan": { "type": ["string", "null"], "description": "Compact only: birth-death years, ? for an unknown end." },
                         "score": { "type": "number", "description": "Composite 0-100 over the available subscores." },
                         "subscores": {
                           "type": "object",
@@ -142,12 +158,12 @@ public sealed class MatchRecordTool
                           }
                         }
                       },
-                      "required": ["xref", "name", "born", "died", "score", "subscores", "matchedKin"]
+                      "required": ["xref", "name", "score", "matchedKin"]
                     }
                   },
                   "sameNameSurvey": {
                     "type": "array",
-                    "description": "Every same-name person considered; each non-leader carries its exclusion reason.",
+                    "description": "Every same-name person considered; each non-leader carries its exclusion reason. Never capped; compact rows are {xref, name, reason}.",
                     "items": {
                       "type": "object",
                       "properties": {
@@ -158,7 +174,7 @@ public sealed class MatchRecordTool
                         "outcome": { "type": "string", "enum": ["leading", "candidate", "excluded"] },
                         "reason": { "type": ["string", "null"], "description": "Null only for the leading candidate." }
                       },
-                      "required": ["xref", "name", "born", "died", "outcome", "reason"]
+                      "required": ["xref", "name", "reason"]
                     }
                   },
                   "potentialNewPerson": { "type": "boolean", "description": "True when no tree person remains viable." },
@@ -177,7 +193,7 @@ public sealed class MatchRecordTool
                     }
                   }
                 },
-                "required": ["index", "role", "name", "verdict", "confidentMatchXref", "confidentMatchScore", "candidates", "sameNameSurvey", "potentialNewPerson", "possibleDuplicates"]
+                "required": ["index", "role", "name", "verdict", "confidentMatchXref", "confidentMatchScore", "runnerUpXref", "runnerUpScore", "candidates", "candidatesOmitted", "sameNameSurvey", "potentialNewPerson", "possibleDuplicates"]
               }
             }
           },
@@ -206,23 +222,32 @@ public sealed class MatchRecordTool
     // SDK binder.
     Task<CallToolResult> InvokeAsync(
         JsonElement? persons = null, JsonElement? relationships = null, JsonElement? @event = null,
-        JsonElement? focus = null, CancellationToken cancellationToken = default)
-        => HandleAsync(persons ?? default, relationships ?? default, @event ?? default, focus ?? default, cancellationToken);
+        JsonElement? focus = null, JsonElement? maxCandidates = null, JsonElement? compact = null,
+        CancellationToken cancellationToken = default)
+        => HandleAsync(persons ?? default, relationships ?? default, @event ?? default, focus ?? default,
+            maxCandidates ?? default, compact ?? default, cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         JsonElement persons, JsonElement relationships, JsonElement recordEvent, JsonElement focus,
         CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(persons, relationships, recordEvent, focus, ct), cancellationToken);
+        HandleAsync(persons, relationships, recordEvent, focus, default, default, cancellationToken);
+
+    public Task<CallToolResult> HandleAsync(
+        JsonElement persons, JsonElement relationships, JsonElement recordEvent, JsonElement focus,
+        JsonElement maxCandidates, JsonElement compact, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(persons, relationships, recordEvent, focus, maxCandidates, compact, ct), cancellationToken);
 
     async Task<CallToolResult> ExecuteAsync(
         JsonElement persons, JsonElement relationships, JsonElement recordEvent, JsonElement focus,
-        CancellationToken cancellationToken)
+        JsonElement maxCandidates, JsonElement compact, CancellationToken cancellationToken)
     {
         if (!MatchRecordRequestReader.TryRead(persons, relationships, recordEvent, focus, out var record, out string? error))
+            return CallToolResults.Error(error!);
+        if (!MatchRecordRequestReader.TryReadView(maxCandidates, compact, out var view, out error))
             return CallToolResults.Error(error!);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var result = _recordMatcher.Match(snapshot.MatchIndex, record!);
-        return CallToolResults.Success(result, CallToolResults.JsonOptions);
+        return CallToolResults.Success(view!.Present(result), CallToolResults.JsonOptions);
     }
 }

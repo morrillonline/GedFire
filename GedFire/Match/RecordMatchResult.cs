@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace GedFire.Match;
 
 // ---------------------------------------------------------------------------
@@ -19,8 +21,15 @@ public sealed record RecordPersonMatch
     public string? ConfidentMatchXref { get; init; }
     public double? ConfidentMatchScore { get; init; }
 
+    /// <summary>The second-ranked candidate, kept even when the candidate cap drops it.</summary>
+    public string? RunnerUpXref { get; init; }
+    public double? RunnerUpScore { get; init; }
+
     /// <summary>Viable candidates, best first, each with its composite score and subscores.</summary>
     public required IReadOnlyList<RecordCandidateMatch> Candidates { get; init; }
+
+    /// <summary>Viable candidates left out of <see cref="Candidates"/> by the cap.</summary>
+    public int CandidatesOmitted { get; init; }
 
     /// <summary>Every same-name person considered — nobody is silently dropped. Each non-leader carries its reason.</summary>
     public required IReadOnlyList<RecordSurveyEntry> SameNameSurvey { get; init; }
@@ -38,6 +47,10 @@ public sealed record RecordCandidateMatch
     public required string Name { get; init; }
     public string? Born { get; init; }
     public string? Died { get; init; }
+
+    /// <summary>"birth-death" in years for the compact view; null when neither is known.</summary>
+    [JsonIgnore] public string? Lifespan { get; init; }
+
     public required double Score { get; init; }
     public required RecordSubscores Subscores { get; init; }
 

@@ -284,6 +284,45 @@ public class ChangesetDrafterReconcileTests
         Assert.DoesNotContain(result.Decisions, d => d.Kind == "resolved");
     }
 
+    [Theory]
+    [InlineData("14 APR 1877", "Edinburg, Christian, Illinois")]
+    [InlineData(null, "Edinburg,  Christian Co., Illinois.")]
+    [InlineData("1877", "edinburg, christian parish, illinois")]
+    public void APlaceDifferingOnlyByCountyOrPunctuation_IsCitedNotWritten(string? date, string place)
+    {
+        var lookup = Holding("14 APR 1877", "Edinburg, Christian County, Illinois");
+
+        var result = new ChangesetDrafter(lookup).Draft([Finding("F-1", date, place)]);
+
+        Assert.Empty(Vitals(result));
+        var citation = Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateCitation");
+        Assert.Equal("Edinburg, Christian County, Illinois", citation.GetProperty("match").GetProperty("place").GetString());
+        Assert.Contains("no improvement", Single(result, "resolved").Detail);
+    }
+
+    [Fact]
+    public void PlacesDifferingOnlyByAHyphen_AreOneValueWithBothCitations()
+    {
+        var result = Draft(
+            Finding("F-1", null, "Angelus Rosedale Cemetery, Los Angeles, California", tag: "BURI"),
+            Finding("F-2", null, "Angelus-Rosedale Cemetery, Los Angeles, California", tag: "BURI"));
+
+        var vital = Assert.Single(Vitals(result));
+        Assert.Equal(2, Citations(vital));
+        Assert.DoesNotContain(result.Decisions, d => d.Kind == "open");
+    }
+
+    [Fact]
+    public void ADifferentTown_IsStillAConflict()
+    {
+        var result = Draft(
+            Finding("F-1", null, "Edinburg, Christian County, Illinois"),
+            Finding("F-2", null, "Taylorville, Christian County, Illinois"));
+
+        Assert.Empty(Vitals(result));
+        Assert.Contains("different values", Single(result, "open").Detail);
+    }
+
     [Fact]
     public void TheCitationsTheTreeAlreadyHolds_AreRestatedOnACitationOnlyOp()
     {

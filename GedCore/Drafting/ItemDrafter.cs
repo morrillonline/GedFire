@@ -327,10 +327,12 @@ internal sealed class ItemDrafter(
             return null;
         }
 
-        bool writesDate = judged?.Outcome == HeldOutcome.Write;
-        date = judged?.Date ?? date;
         bool writesPlace = place is not null
-            && (replaceReason is not null || !HeldIsMoreSpecific(held?.Place, place, Specificity.PlaceSupersedes, Specificity.SamePlace));
+            && (replaceReason is not null || !HeldIsMoreSpecific(held?.Place, place, Specificity.PlaceSupersedes));
+        // The date the record already holds is not rewritten just to accompany a place the record keeps.
+        bool writesDate = judged?.Outcome == HeldOutcome.Write
+            && !(place is not null && !writesPlace && held?.Date is { } heldDate && date is not null && Specificity.SameDate(heldDate, date));
+        date = judged?.Date ?? date;
         bool replacesHeld = judged?.Replaces == true;
 
         foreach (int i in resolution.Excluded)
@@ -417,9 +419,9 @@ internal sealed class ItemDrafter(
 
     static DraftDecision Open(string detail) => new(DraftDecisionKinds.Open, detail, []);
 
-    // The record's own value is kept only when it says more than the finding does; an equal value is rewritten as is.
-    static bool HeldIsMoreSpecific(string? held, string given, Func<string, string, bool> supersedes, Func<string, string, bool> same) =>
-        held is not null && supersedes(held, given) && !same(held, given);
+    // The record's own value is kept when it says as much as the finding, even spelled differently; only an identical value is rewritten as is.
+    static bool HeldIsMoreSpecific(string? held, string given, Func<string, string, bool> supersedes) =>
+        held is not null && supersedes(held, given) && held != given;
 
     JsonObject CitationOnlyOp(
         string record, string tag, ExistingFact? held, List<Asserted> attached,
