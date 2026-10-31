@@ -9,7 +9,11 @@ internal sealed record FactClaim(string FindingId, string? Date, string? Place, 
 /// <see cref="Excluded"/> indexes claims whose approximate date does not fit the chosen one, so their citations are not attached.
 /// When it is true, <see cref="Recommended"/> indexes the claim a reviewer would most likely keep.
 /// </summary>
-internal sealed record FactResolution(bool Conflict, int? DateFrom, int? PlaceFrom, int? ValueFrom, IReadOnlyList<int> Excluded, int Recommended);
+internal sealed record FactResolution(bool Conflict, int? DateFrom, int? PlaceFrom, int? ValueFrom, IReadOnlyList<int> Excluded, int Recommended)
+{
+    /// <summary>A date no single claim gives: the intersection of the claims' hard bounds (each claim then supports it).</summary>
+    public string? CombinedDate { get; init; }
+}
 
 /// <summary>
 /// Reconciles what several findings say about one single-valued fact. Date, place and name are settled separately: each takes
@@ -25,9 +29,26 @@ internal static class SingleValuedFactResolver
         int? dateFrom = Winner(claims, c => c.Date, Specificity.DateSupersedes, out bool dateConflict);
         int? placeFrom = Winner(claims, c => c.Place, Specificity.PlaceSupersedes, out bool placeConflict);
         int? valueFrom = Winner(claims, c => c.Value, Specificity.NameSupersedes, out bool valueConflict);
+        string? combined = dateConflict ? CombinedBounds(claims) : null;
+        if (combined is not null) dateConflict = false;
         if (dateConflict || placeConflict || valueConflict) return new FactResolution(true, null, null, null, [], recommended);
 
-        return new FactResolution(false, dateFrom, placeFrom, valueFrom, Unfitting(claims, dateFrom), recommended);
+        return new FactResolution(false, dateFrom, placeFrom, valueFrom, Unfitting(claims, dateFrom), recommended) { CombinedDate = combined };
+    }
+
+    // Dates that are all hard bounds narrow one another: AFT 1795 and BEF 1797 together say BET 1795 AND 1797.
+    static string? CombinedBounds(IReadOnlyList<FactClaim> claims)
+    {
+        var dates = claims.Select(c => c.Date).OfType<string>().ToList();
+        if (dates.Count < 2 || !dates.All(Specificity.IsBound)) return null;
+
+        string combined = dates[0];
+        foreach (string date in dates.Skip(1))
+        {
+            if (Specificity.CombineBounds(combined, date, out var narrower) != Specificity.BoundOverlap.Combined) return null;
+            combined = narrower!;
+        }
+        return combined;
     }
 
     // The claim holding the value that supersedes every other value (the best graded when several say the same), or null with a conflict when none does.

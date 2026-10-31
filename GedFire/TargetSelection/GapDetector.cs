@@ -31,8 +31,10 @@ public static class GapDetector
         Detect(model, surnames, DateTime.UtcNow.Year, suppressedCards);
 
     /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
-    public static List<SelectionTarget> Detect(GedModel model, IEnumerable<string> surnames, int currentYear, ICollection<SuppressedCard>? suppressedCards = null)
+    public static List<SelectionTarget> Detect(
+        GedModel model, IEnumerable<string> surnames, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, HonestRange? honestRange = null)
     {
+        honestRange ??= HonestRange.Default;
         var surnameSet = new HashSet<string>(
             surnames.Select(s => s.Trim()).Where(s => s.Length > 0),
             StringComparer.OrdinalIgnoreCase);
@@ -62,7 +64,7 @@ public static class GapDetector
                 DetectNewParent(person, targets, suppressedCards);
             DetectNewSpouse(person, targets, suppressedCards);
             DetectNewChild(person, fam => fam.Husband != null && BearsSurname(fam.Husband, surnameSet), newChildFamiliesSeen, targets, suppressedCards);
-            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets);
+            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, honestRange);
         }
 
         return targets;
@@ -77,8 +79,10 @@ public static class GapDetector
         DetectForPeople(people, DateTime.UtcNow.Year, suppressedCards);
 
     /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
-    public static List<SelectionTarget> DetectForPeople(IEnumerable<GedIndividual> people, int currentYear, ICollection<SuppressedCard>? suppressedCards = null)
+    public static List<SelectionTarget> DetectForPeople(
+        IEnumerable<GedIndividual> people, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, HonestRange? honestRange = null)
     {
+        honestRange ??= HonestRange.Default;
         int privacyFloorYear = currentYear - PrivacyFloorYears;
         var targets = new List<SelectionTarget>();
         var newChildFamiliesSeen = new HashSet<string>();
@@ -91,7 +95,7 @@ public static class GapDetector
             DetectNewParent(person, targets, suppressedCards);
             DetectNewSpouse(person, targets, suppressedCards);
             DetectNewChild(person, _ => true, newChildFamiliesSeen, targets, suppressedCards);
-            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets);
+            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, honestRange);
         }
 
         return targets;
@@ -239,19 +243,19 @@ public static class GapDetector
     // death whose date or place is not exact, or that has an exact date or
     // place but no citation. Each missing part is a point; the difficulty
     // bonus is added once. Geography keys off the subject's
-    // own birth place.
+    // own birth place. An honest cited range is not a missing date.
     // -------------------------------------------------------------------
 
-    static void DetectEnrichPerson(GedIndividual person, HashSet<string> familiesSeen, List<SelectionTarget> targets)
+    static void DetectEnrichPerson(GedIndividual person, HashSet<string> familiesSeen, List<SelectionTarget> targets, HonestRange honestRange)
     {
         var facts = new List<EnrichmentEntry>();
-        AddIfImprovable(facts, "Birth", person.Birth);
+        AddIfImprovable(facts, "Birth", person.Birth, honestRange);
         if (!BurialSatisfiesDeath(person))
-            AddIfImprovable(facts, "Death", person.Death);
+            AddIfImprovable(facts, "Death", person.Death, honestRange);
         foreach (var fam in person.FamSpouse.Where(f => familiesSeen.Add(f.Xref)))
             // A missing MARR record (fam.Marriage null) still counts as "not
             // exact" because both date and place are absent.
-            AddIfImprovable(facts, "Marriage", fam.Marriage);
+            AddIfImprovable(facts, "Marriage", fam.Marriage, honestRange);
         if (facts.Count == 0) return;
 
         int nominal = facts.Sum(f => (f.MissingDate ? 1 : 0) + (f.MissingPlace ? 1 : 0) + (f.MissingCitation ? 1 : 0));
@@ -267,11 +271,11 @@ public static class GapDetector
     static bool BurialSatisfiesDeath(GedIndividual person) =>
         person.Burial is { } burial && ExactnessRules.IsExactDate(burial.Date) && ExactnessRules.IsExactPlace(burial.Place);
 
-    static void AddIfImprovable(List<EnrichmentEntry> facts, string fact, GedEvent? gedEvent)
+    static void AddIfImprovable(List<EnrichmentEntry> facts, string fact, GedEvent? gedEvent, HonestRange honestRange)
     {
         string? date = gedEvent?.Date;
         string? place = gedEvent?.Place;
-        bool missingDate = !ExactnessRules.IsExactDate(date);
+        bool missingDate = !ExactnessRules.IsExactDate(date) && !(gedEvent is not null && honestRange.Closes(gedEvent));
         bool missingPlace = !ExactnessRules.IsExactPlace(place);
         bool missingCitation = (!missingDate || !missingPlace) && !IsCited(gedEvent);
         if (!missingDate && !missingPlace && !missingCitation) return;

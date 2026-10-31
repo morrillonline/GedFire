@@ -287,6 +287,33 @@ public class DraftFindingReaderTests
     }
 
     [Fact]
+    public void ReplaceHeldAndWithdraw_AreReadWithTheirReasons()
+    {
+        var replace = Valid.Replace("\"quay\": 2", "\"quay\": 2, \"replaceHeld\": \" the son's death \"");
+        var (replaced, replaceErrors) = Read($"[{replace}]");
+        Assert.Empty(replaceErrors);
+        Assert.Equal("the son's death", replaced[0].Facts[0].ReplaceHeld);
+
+        var withdraw = Valid.Replace("\"date\": \"1 Jan 1900\", \"quay\": 2", "\"quay\": 2, \"withdraw\": \"mother of children born 1735\"");
+        var (withdrawn, withdrawErrors) = Read($"[{withdraw}]");
+        Assert.Empty(withdrawErrors);
+        Assert.Equal("mother of children born 1735", withdrawn[0].Facts[0].Withdraw);
+    }
+
+    [Theory]
+    [InlineData("\"withdraw\": \"x\", \"replaceHeld\": \"y\"", "withdraw deletes the fact")]
+    [InlineData("\"withdraw\": \"x\", \"citeOnly\": true", "withdraw deletes the fact")]
+    [InlineData("\"citeOnly\": true, \"replaceHeld\": \"y\"", "citeOnly adds a citation")]
+    [InlineData("\"replaceHeld\": \"  \"", "replaceHeld must be a non-blank string")]
+    [InlineData("\"withdraw\": \"\"", "withdraw must be a non-blank string")]
+    public void ReplaceHeldAndWithdraw_RejectWhatDoesNotApply(string fields, string error)
+    {
+        var (_, errors) = Read($"[{Valid.Replace("\"quay\": 2", "\"quay\": 2, " + fields)}]");
+
+        Assert.Contains(errors, e => e.Contains(error));
+    }
+
+    [Fact]
     public void ANoteMatchAndCites_AreRead()
     {
         var note = Valid.Replace("\"text\": \"A note.\"", "\"text\": \"A note.\", \"match\": \"Old.\", \"cites\": [ { \"finding\": \"F-9\", \"quay\": 1, \"excerpt\": \"x\" }, { \"quay\": 2 } ]");

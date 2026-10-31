@@ -2,14 +2,16 @@ namespace GedCore.Apply;
 
 /// <summary>
 /// A dated or placed fact present after a changeset that was not present before.
-/// <see cref="DateImproved"/>, <see cref="PlaceImproved"/> and <see cref="CitationImproved"/> say which parts
-/// are new or changed against the record's closest prior fact of the same tag.
+/// <see cref="DateImprovement"/>, <see cref="PlaceImproved"/> and <see cref="CitationImproved"/> say which parts
+/// improve on the record's closest prior fact of the same tag.
 /// </summary>
 public sealed record FactWrite(
-    string Record, string Tag, string? Date, string? Place, bool DateImproved, bool PlaceImproved, bool CitationImproved = false)
+    string Record, string Tag, string? Date, string? Place, DateImprovement DateImprovement, bool PlaceImproved, bool CitationImproved = false)
 {
     public FactWrite(string record, string tag, string? date, string? place)
-        : this(record, tag, date, place, date is not null, place is not null) { }
+        : this(record, tag, date, place, date is null ? DateImprovement.None : DateImprovement.First, place is not null) { }
+
+    public bool DateImproved => DateImprovement != DateImprovement.None;
 
     public int Improvements => (DateImproved ? 1 : 0) + (PlaceImproved ? 1 : 0) + (CitationImproved ? 1 : 0);
 }
@@ -83,12 +85,12 @@ public sealed class TreeChanges
     // The prior fact sharing the date or place is the one this write refines; otherwise the first of that tag.
     static FactWrite Written(string xref, FactSignature fact, List<FactSignature> sameTag)
     {
-        if (sameTag.Count == 0) return new FactWrite(xref, fact.Tag, fact.Date, fact.Place, fact.Date is not null, fact.Place is not null, fact.Cited);
+        if (sameTag.Count == 0) return new FactWrite(xref, fact.Tag, fact.Date, fact.Place) { CitationImproved = fact.Cited };
 
         var prior = sameTag.FirstOrDefault(r => r.Date == fact.Date || r.Place == fact.Place) ?? sameTag[0];
         return new FactWrite(xref, fact.Tag, fact.Date, fact.Place,
-            fact.Date is not null && fact.Date != prior.Date, fact.Place is not null && fact.Place != prior.Place,
-            fact.Cited && !prior.Cited);
+            fact.Date is null ? DateImprovement.None : DateImprovements.Classify(prior.Date, fact.Date),
+            fact.Place is not null && fact.Place != prior.Place, fact.Cited && !prior.Cited);
     }
 
     static IEnumerable<FactSignature> FactSignatures(GedRecord record) =>

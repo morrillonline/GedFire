@@ -32,8 +32,33 @@ internal static partial class Specificity
         return Parse(a) is { } pa && Parse(b) is { } pb && pa.Parts >= pb.Parts && Agrees(pa, pb);
     }
 
-    public static bool SameDate(string a, string b) =>
-        Normalize(a) == Normalize(b) || (Parse(a) is { } pa && Parse(b) is { } pb && pa == pb);
+    public static bool SameDate(string a, string b) => Canonical(a) == Canonical(b);
+
+    /// <summary>Dates that can both be true: one refines the other, or an approximate one fits a specific one.</summary>
+    public static bool Consistent(string a, string b)
+    {
+        bool approxA = IsApproximate(a), approxB = IsApproximate(b);
+        if (IsBound(a) && IsBound(b)) return CombineBounds(a, b, out _) != BoundOverlap.Disjoint;
+        if (approxA != approxB) return approxA ? Fits(a, b) : Fits(b, a);
+        return approxA || DateSupersedes(a, b) || DateSupersedes(b, a);
+    }
+
+    static readonly Dictionary<string, string> ShortQualifiers = new()
+    {
+        ["ABOUT"] = "ABT", ["BEFORE"] = "BEF", ["AFTER"] = "AFT", ["BETWEEN"] = "BET",
+    };
+
+    // One spelling per date: "BEFORE 01 Sept 1796" reads "BEF 1 SEP 1796".
+    static string Canonical(string date)
+    {
+        string normalized = Normalize(date);
+        string[] tokens = normalized.Split(' ');
+        string head = ShortQualifiers.GetValueOrDefault(tokens[0], tokens[0]);
+        if (!ApproximateWords.Contains(head)) return CanonicalPart(normalized);
+        return $"{head} {string.Join(" AND ", string.Join(' ', tokens.Skip(1)).Split(" AND ").Select(CanonicalPart))}";
+    }
+
+    static string CanonicalPart(string date) => Parse(date) is { } parsed ? Format(parsed) : date;
 
     /// <summary>
     /// True when the two names are the same, or <paramref name="a"/> is <paramref name="b"/> with a given name replaced by its
@@ -71,7 +96,7 @@ internal static partial class Specificity
     /// <summary>Whether an approximate date can describe the same time as a specific one, by year; the approximate date's citation is attached only when it can.</summary>
     public static bool Fits(string approximate, string specific)
     {
-        if (GedDate.ParseValue(approximate) is not { } value || Parse(specific) is not { } parsed) return false;
+        if (GedDate.ParseValue(Canonical(approximate)) is not { } value || Parse(specific) is not { } parsed) return false;
         if (!int.TryParse(parsed.Year.Split('/')[0], out int year)) return false;
         return value.Kind switch
         {
@@ -83,6 +108,109 @@ internal static partial class Specificity
             _ => false,
         };
     }
+
+    /// <summary>A hard bound: BEF, AFT or BET … AND, which a date either falls within or not. FROM/TO periods are spans, not bounds.</summary>
+    public static bool IsBound(string date) => GedDate.ParseValue(Canonical(date))?.Kind is GedDateKind.Before or GedDateKind.After or GedDateKind.Between;
+
+    /// <summary>A soft approximation: ABT, CAL or EST, which has no defined tolerance.</summary>
+    public static bool IsSoft(string date) => GedDate.ParseValue(Canonical(date))?.Kind is GedDateKind.About or GedDateKind.Calculated or GedDateKind.Estimated;
+
+    /// <summary>The earliest and latest days a BET … AND … range admits; an end without a day or month stands for its whole month or year.</summary>
+    public static (DateOnly Earliest, DateOnly Latest)? BetweenDays(string date) =>
+        Ends(date) is { Lower: { } lower, Upper: { } upper } && DayOf(lower, last: false) is { } earliest && DayOf(upper, last: true) is { } latest
+            ? (earliest, latest)
+            : null;
+
+    static DateOnly? DayOf(Parsed date, bool last)
+    {
+        if (!int.TryParse(date.Year.Split('/')[0], out int year) || year is < 1 or > 9999) return null;
+        int month = date.Month is null ? (last ? 12 : 1) : Array.IndexOf(Months, date.Month) + 1;
+        int days = DateTime.DaysInMonth(year, month);
+        int day = date.Day is null ? (last ? days : 1) : int.Parse(date.Day);
+        return day >= 1 && day <= days ? new DateOnly(year, month, day) : null;
+    }
+
+    /// <summary>What two hard bounds say together.</summary>
+    public enum BoundOverlap { Combined, Disjoint, Unknown }
+
+    /// <summary>
+    /// Intersects two hard bounds: "AFT 1795" and "BEF 27 SEP 1796" give "BET 1795 AND 27 SEP 1796"; "BEF 1800" and "BEF 1797"
+    /// give "BEF 1797". <see cref="BoundOverlap.Disjoint"/> when no date satisfies both, <see cref="BoundOverlap.Unknown"/> when
+    /// the ends cannot be ordered ("1796" against "SEP 1796").
+    /// </summary>
+    public static BoundOverlap CombineBounds(string a, string b, out string? combined)
+    {
+        combined = null;
+        if (Ends(a) is not { } ea || Ends(b) is not { } eb) return BoundOverlap.Unknown;
+
+        if (!Later(ea.Lower, eb.Lower, out var lower) || !Earlier(ea.Upper, eb.Upper, out var upper)) return BoundOverlap.Unknown;
+        if (lower is not null && upper is not null)
+        {
+            if (Compare(lower, upper) is not { } order) return BoundOverlap.Unknown;
+            if (order >= 0) return BoundOverlap.Disjoint;
+        }
+
+        combined = (lower, upper) switch
+        {
+            ({ } l, { } u) => $"BET {Format(l)} AND {Format(u)}",
+            (null, { } u) => $"BEF {Format(u)}",
+            ({ } l, null) => $"AFT {Format(l)}",
+            _ => null,
+        };
+        return combined is null ? BoundOverlap.Unknown : BoundOverlap.Combined;
+    }
+
+    sealed record BoundEnds(Parsed? Lower, Parsed? Upper);
+
+    static BoundEnds? Ends(string date)
+    {
+        string[] tokens = Normalize(date).Split(' ');
+        string rest = string.Join(' ', tokens.Skip(1));
+        switch (tokens[0])
+        {
+            case "BEF" or "BEFORE": return Parse(rest) is { } u ? new BoundEnds(null, u) : null;
+            case "AFT" or "AFTER": return Parse(rest) is { } l ? new BoundEnds(l, null) : null;
+            case "BET" or "BETWEEN":
+                int and = Array.IndexOf(tokens, "AND");
+                if (and < 2) return null;
+                return Parse(string.Join(' ', tokens[1..and])) is { } from && Parse(string.Join(' ', tokens[(and + 1)..])) is { } to
+                    ? new BoundEnds(from, to) : null;
+            default: return null;
+        }
+    }
+
+    // The later of two lower ends (a missing end imposes nothing); false when they cannot be ordered.
+    static bool Later(Parsed? a, Parsed? b, out Parsed? later)
+    {
+        later = a ?? b;
+        if (a is null || b is null) return true;
+        if (Compare(a, b) is not { } order) return false;
+        later = order >= 0 ? a : b;
+        return true;
+    }
+
+    static bool Earlier(Parsed? a, Parsed? b, out Parsed? earlier)
+    {
+        earlier = a ?? b;
+        if (a is null || b is null) return true;
+        if (Compare(a, b) is not { } order) return false;
+        earlier = order <= 0 ? a : b;
+        return true;
+    }
+
+    // Orders two dates; null when one says less than the other about the year they share.
+    static int? Compare(Parsed a, Parsed b)
+    {
+        if (!int.TryParse(a.Year.Split('/')[0], out int ya) || !int.TryParse(b.Year.Split('/')[0], out int yb)) return null;
+        if (ya != yb) return ya.CompareTo(yb);
+        if (a.Month is null || b.Month is null) return a.Month == b.Month ? 0 : null;
+        int byMonth = Array.IndexOf(Months, a.Month).CompareTo(Array.IndexOf(Months, b.Month));
+        if (byMonth != 0) return byMonth;
+        if (a.Day is null || b.Day is null) return a.Day == b.Day ? 0 : null;
+        return int.Parse(a.Day).CompareTo(int.Parse(b.Day));
+    }
+
+    static string Format(Parsed date) => string.Join(' ', new[] { date.Day, date.Month, date.Year }.OfType<string>());
 
     /// <summary>True when the two places are the same, or <paramref name="a"/> names every jurisdiction of <paramref name="b"/>, in the same order, and more: "Oakland, Kennebec, Maine" supersedes "Oakland, Maine" and "Maine".</summary>
     public static bool PlaceSupersedes(string a, string b)

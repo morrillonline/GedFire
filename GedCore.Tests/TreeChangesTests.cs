@@ -139,4 +139,41 @@ public class TreeChangesTests : ApplyTestBase
 
         Assert.Equal(2, write.Improvements);
     }
+
+    static string BirthDate(string date) =>
+        $$"""{ "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT", "value": { "date": "{{date}}", "place": "Minnesota" } }""";
+
+    [Fact]
+    public void AMoreSpecificBirthDate_IsARefinedDate()
+    {
+        var write = Assert.Single(DryRunChanges(BirthDate("5 NOV 1928")).Facts);
+
+        Assert.Equal(DateImprovement.Refined, write.DateImprovement);
+        Assert.Equal(1, write.Improvements);
+    }
+
+    [Fact]
+    public void ALessSpecificBirthDate_IsNotAWrite()
+    {
+        Assert.Empty(DryRunChanges(BirthDate("ABT 1928")).Facts);
+    }
+
+    [Fact]
+    public void ACorrectionPays_WhileTheSpecificityLossAdvisoryStillFires()
+    {
+        var lines = BaseLines.ToList();
+        lines[lines.IndexOf("2 DATE 1928")] = "2 DATE 17 OCT 1810";
+        lines[lines.IndexOf("2 PLAC Minnesota")] = "2 PLAC Pembroke, Yarmouth, Nova Scotia, Canada";
+        WriteFile(lines);
+
+        var result = Run("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
+                "value": { "date": "BEF 27 SEP 1796", "place": "Canada" } } ] } ] }
+            """, dryRun: true);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Contains(result.NewDiagnostics, d => d.Code == "GEN201");
+        Assert.Equal(DateImprovement.Corrected, Assert.Single(result.Changes.Facts).DateImprovement);
+    }
 }

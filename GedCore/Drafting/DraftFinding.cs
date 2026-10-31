@@ -23,6 +23,12 @@ public sealed record DraftFact(
     public IReadOnlyList<DraftSubstructure> Substructures { get; init; } = [];
     public string? ReplacedCitations { get; init; }
     public bool CiteOnly { get; init; }
+
+    /// <summary>The author's reason for writing this value over the one the record holds, even one that is more specific or better cited.</summary>
+    public string? ReplaceHeld { get; init; }
+
+    /// <summary>The author's reason for deleting the fact the record holds (date and place select the instance); nothing replaces it.</summary>
+    public string? Withdraw { get; init; }
 }
 
 /// <summary>An extra line under a fact, such as the TYPE of an EVEN.</summary>

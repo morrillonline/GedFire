@@ -33,7 +33,10 @@ public sealed class DraftChangesetTool
         "record already holds, or updates the one with the same date. New people and families come from people " +
         "(placeholder xrefs) and relations (spouse, child, parent), compiled to the dialect's relationship ops with " +
         "the finding's citation. A note may rewrite an existing note (match) and cite findings of its item (cites); " +
-        "a fact may carry substructures, a replacedCitations disposition, or citeOnly to cite a fact already held. " +
+        "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +
+        "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
+        "way to a finding's bound that excludes it only when uncited or graded lower; otherwise it is left open. Hard bounds " +
+        "(BEF, AFT, BET) narrow one another into one range. " +
         "Findings aimed at the same target become one item. Returns the changeset, a " +
         "decisions list (what was reused, minted, merged, or left open for you), and errors; the changeset also carries a " +
         "findings table (each finding's extract, source, classes, grades and identity argument, carried unchanged) and each op names the findings it rests on, " +
@@ -113,7 +116,9 @@ public sealed class DraftChangesetTool
                           }
                         },
                         "replacedCitations": { "type": "string", "enum": ["keep", "drop", "moveToNote"], "description": "What becomes of the citations on a fact whose value this replaces; default keep." },
-                        "citeOnly": { "type": "boolean", "description": "Only add this finding's citation to a fact the record already holds. date and place then select the instance when the record has several." }
+                        "citeOnly": { "type": "boolean", "description": "Only add this finding's citation to a fact the record already holds. date and place then select the instance when the record has several." },
+                        "replaceHeld": { "type": "string", "minLength": 1, "description": "The reason to write this value over the one the record holds, even a more specific or better-cited one (a single-valued fact). Its citations move to a note unless replacedCitations says otherwise." },
+                        "withdraw": { "type": "string", "minLength": 1, "description": "The reason to delete the fact the record holds, with nothing in its place; date and place select the instance. Its citations move to a note. Cite the evidence in a note." }
                       },
                       "required": ["record", "fact", "quay"]
                     }

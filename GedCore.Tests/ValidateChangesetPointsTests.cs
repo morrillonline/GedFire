@@ -76,7 +76,7 @@ public class ValidateChangesetPointsTests : IDisposable
         Assert.Equal(7, preview.GetProperty("total").GetInt32());
         var closed = Assert.Single(preview.GetProperty("closed").EnumerateArray());
         Assert.Equal("@I00001@|enrich-person|enrich-death", closed.GetProperty("cardKey").GetString());
-        Assert.Equal("DEAT @I00001@", closed.GetProperty("wrote").GetString());
+        Assert.Equal("DEAT @I00001@ (first date and place and citation)", closed.GetProperty("wrote").GetString());
     }
 
     [Fact]

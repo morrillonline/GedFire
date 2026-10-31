@@ -196,6 +196,9 @@ in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error
   and places for one person, plus any such fact with an exact date or place but
   no citation. `nominalPoints` counts missing dates, places, and citations;
   `score` adds a difficulty bonus once.
+- A `BET ... AND ...` date no wider than 12 months, cited at QUAY 2 or higher,
+  is not a missing date. Open `BEF`/`AFT` dates and `ABT`, `CAL`, and `EST`
+  remain gaps.
 - An exact burial date and place close a death gap when no exact death exists.
   The summary's `died` falls back to burial.
 - New-parent and new-spouse cards are withheld for bare-bones people: none of
@@ -289,8 +292,21 @@ assigns each fact's grade. Policy can require verification notes for low grades.
 - A more precise compatible date or place wins. A specific date supersedes an
   approximate date; the approximate citation stays only if its year fits.
   Otherwise an `open` decision explains its omission.
+- Hard bounds (`BEF`, `AFT`, `BET … AND`) narrow one another: `AFT 1795` and
+  `BEF 27 SEP 1796` draft `BET 1795 AND 27 SEP 1796`, whether both come from
+  findings or one is already on the record.
 - A less specific finding adds a citation, not a downgrade. The compiler
   reports a `resolved` decision with `no improvement`.
+- Precision decides only between dates that can both be true. When a bound
+  excludes the record's date (or the record's bound excludes the finding's
+  date), the record's value gives way if it is uncited or graded below the
+  finding: the bound is written and the old citations move to a note. Otherwise
+  nothing is drafted for the fact and an `open` decision asks the author to
+  settle it.
+- `ABT`, `CAL` and `EST` have no defined tolerance, so they never replace a
+  specific date that is more than a year away; the fact is left `open`. A
+  specific finding still replaces such an estimate on the record, with an
+  `open` decision asking that both describe the same event.
 - Genuine disagreements leave the fact undrafted. An `open` decision lists
   values and findings, recommending by QUAY and then source quality.
 - Name reconciliation only expands documented nicknames with matching surname,
@@ -350,6 +366,13 @@ The warning requests source review, is not an error, and does not block applicat
 - `replacedCitations` chooses `keep`, `drop`, or `moveToNote` for citations on
   a replaced value.
 - `citeOnly: true` cites an existing fact; date/place select its instance.
+- `replaceHeld: "<reason>"` writes a single-valued fact's date and place over
+  the record's, even a more specific or better-cited one. A contradicted value's
+  citations move to a note unless `replacedCitations` says otherwise.
+- `withdraw: "<reason>"` deletes the record's fact with nothing in its place;
+  date/place select the instance, and its citations move to a note. Like a
+  removal, it raises an `open` decision unless the finding adds a cited note.
+  The reason is shown to the reviewer in the changeset's findings table.
 - A note's `match` names the exact text to rewrite. `cites` lists
   `{"finding", "quay", "excerpt"}` entries; omitting `finding` uses its own.
   The compiler joins notes on the same record within a changeset and retains
@@ -437,10 +460,15 @@ optionally ending in `-date` or `-place`.
 With no gap, or with `enrich-fact`, the card covers any improved fact on the
 subject. Each improved date, place, or newly added citation earns `points`;
 `bonus` pays once.
+A date improves only when it is the first, refines the held date (`1877` to
+`14 APR 1877`, `ABT 1877` to `1877`), narrows its bound (`BEF 1800` to
+`BEF 1797`), or corrects a date it contradicts. A less specific date or the same
+date respelled (`BEFORE 1796` to `BEF 1796`) earns nothing.
 `pointsPreview` compares the touched records before and after:
 
 - `closed`: cards with a written improvement or new family relationship.
-  `wrote` identifies the fact and improved components.
+  `wrote` identifies the fact and improved components, naming a date as
+  `first`, `refined`, `narrowed`, or `corrected`.
 - `notClosed`: remaining cards with reasons. An identical restatement earns no
   closure.
 - `subjectMismatch`: cards left open by a name mismatch. An enrich card detects

@@ -80,7 +80,7 @@ public sealed class DraftFindingReader
 
     DraftFact? ReadFact(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly")) return null;
+        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw")) return null;
         int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
         string? tag = Text(el, "fact", path, required: true);
@@ -92,12 +92,19 @@ public sealed class DraftFindingReader
         string? replaced = Choice(el, "replacedCitations", path, ["keep", "drop", "movetonote"], required: false);
         var substructures = ReadList(el, "substructures", path, ReadSubstructure);
         bool citeOnly = ReadFlag(el, "citeOnly", path);
+        string? replaceHeld = Text(el, "replaceHeld", path);
+        string? withdraw = Text(el, "withdraw", path);
         int quay = ReadQuay(el, path, "this fact (not inherited from the finding)");
 
-        if (citeOnly)
+        if (withdraw is not null)
         {
-            if (value is not null || substructures.Count > 0 || replaced is not null)
-                _errors.Add($"{path}.citeOnly adds a citation to an existing fact; value, substructures and replacedCitations do not apply.");
+            if (value is not null || substructures.Count > 0 || replaced is not null || citeOnly || replaceHeld is not null)
+                _errors.Add($"{path}.withdraw deletes the fact the record holds; value, substructures, replacedCitations, citeOnly and replaceHeld do not apply.");
+        }
+        else if (citeOnly)
+        {
+            if (value is not null || substructures.Count > 0 || replaced is not null || replaceHeld is not null)
+                _errors.Add($"{path}.citeOnly adds a citation to an existing fact; value, substructures, replacedCitations and replaceHeld do not apply.");
         }
         else if (value is not null && (date is not null || place is not null))
             _errors.Add($"{path}.value is a text fact's payload and cannot be combined with a date or place.");
@@ -110,6 +117,8 @@ public sealed class DraftFindingReader
             Substructures = substructures,
             ReplacedCitations = replaced is null ? null : replaced == "movetonote" ? "moveToNote" : replaced,
             CiteOnly = citeOnly,
+            ReplaceHeld = replaceHeld,
+            Withdraw = withdraw,
         };
     }
 

@@ -45,6 +45,8 @@ internal static class FindingEvidence
         node["quay"] = fact.Quay;
         Set(node, "class", fact.Class);
         Set(node, "information", fact.Information);
+        Set(node, "replaceHeld", fact.ReplaceHeld);
+        Set(node, "withdraw", fact.Withdraw);
         return node;
     }
 
