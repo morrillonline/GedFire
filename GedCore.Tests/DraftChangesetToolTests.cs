@@ -65,6 +65,54 @@ public class DraftChangesetToolTests : IDisposable
     }
 
     [Fact]
+    public async Task ABoundPersonRename_IsReportedByBothReviewToolsBeforeApplying()
+    {
+        const string document = """
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Betty /Test/
+            1 SEX F
+            0 @I2@ INDI
+            1 NAME George /Example/
+            1 SEX M
+            0 TRLR
+            """;
+        const string findings = """
+            [{
+              "id": "F-1", "extract": "Joseph Example in a fictional register.",
+              "source": {"name": "Fictional register", "locator": "p. 1", "class": "original", "information": "primary"},
+              "target": {"xref": "@I1@"},
+              "existingPeople": ["@I2@"],
+              "facts": [{"record": "@I2@", "fact": "NAME", "value": "Joseph /Example/", "quay": 3}]
+            }]
+            """;
+        string path = Path.Combine(_dir, "rename.ged");
+        File.WriteAllText(path, document);
+        byte[] before = File.ReadAllBytes(path);
+        var draft = await new DraftChangesetTool(DocumentSession.Open(path), new ToolGate()).HandleAsync(Arg(findings), default, default, CancellationToken.None);
+        Assert.True(Structured(draft).GetProperty("success").GetBoolean());
+        string changesetPath = Path.Combine(_dir, "rename.json");
+        File.WriteAllText(changesetPath, Structured(draft).GetProperty("changeset").GetRawText());
+        var validation = await new ValidateChangesetTool(path, new ToolGate()).HandleAsync(changesetPath, "all", CancellationToken.None);
+        var plausibility = await new CheckPlausibilityTool(path, new ToolGate()).HandleAsync(changesetPath, "all", CancellationToken.None);
+        foreach (var review in new[] { validation, plausibility })
+        {
+            Assert.True(Structured(review).GetProperty("success").GetBoolean());
+            Assert.Contains(Structured(review).GetProperty("log").EnumerateArray(),
+                l => l.GetString()!.Contains("'George /Example/' → 'Joseph /Example/'"));
+        }
+        Assert.Equal(before, File.ReadAllBytes(path));
+        var applied = await new ApplyChangesetTool(path, new ToolGate(), readOnly: false).HandleAsync(changesetPath, "all", CancellationToken.None);
+        Assert.True(Structured(applied).GetProperty("success").GetBoolean());
+        byte[] after = File.ReadAllBytes(path);
+        var repeated = await new ApplyChangesetTool(path, new ToolGate(), readOnly: false).HandleAsync(changesetPath, "all", CancellationToken.None);
+        Assert.True(Structured(repeated).GetProperty("success").GetBoolean());
+        Assert.Equal(after, File.ReadAllBytes(path));
+    }
+
+    [Fact]
     public async Task OutPath_WritesTheChangesetToANewFile()
     {
         string path = Path.Combine(_dir, "out.json");

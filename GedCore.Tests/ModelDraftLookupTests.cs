@@ -57,6 +57,22 @@ public class ModelDraftLookupTests
     }
 
     [Fact]
+    public void HasPerson_DistinguishesAnUnnamedPersonFromAMissingRecord()
+    {
+        Assert.True(Lookup().HasPerson("@I2@"));
+        Assert.False(Lookup().HasPerson("@I9@"));
+        Assert.Null(Lookup().PersonSurname("@I2@"));
+    }
+
+    [Fact]
+    public void PersonSurname_ReturnsTheRawSurnameForNameGuards()
+    {
+        var model = new GedModel();
+        model.Individuals["@I1@"] = new GedIndividual { Xref = "@I1@", Fullname = "Ann Test", LastNameRaw = "Test" };
+        Assert.Equal("Test", new ModelDraftLookup(model).PersonSurname("@I1@"));
+    }
+
+    [Fact]
     public void FactsOn_ReturnsEachInstanceWithItsDatePlaceAndCitations()
     {
         var lookup = Lookup();

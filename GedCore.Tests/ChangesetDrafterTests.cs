@@ -490,6 +490,205 @@ public class ChangesetDrafterTests
         Assert.Equal("Ralph /Morrill/", op.GetProperty("value").GetString());
     }
 
+    const string RenameDocument = """
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I10@ INDI
+        1 NAME George /Wadleigh/
+        1 SEX M
+        1 FAMS @F1@
+        0 @I20@ INDI
+        1 NAME Betty /Morrill/
+        1 SEX F
+        1 FAMS @F1@
+        0 @F1@ FAM
+        1 HUSB @I10@
+        1 WIFE @I20@
+        1 MARR
+        2 DATE 22 OCT 1779
+        0 TRLR
+        """;
+
+    static DraftFinding MarriageFinding(string id) =>
+        new(id, new DraftSource($"Fictional register {id}", null, null, "page 1", null, "original", "primary"),
+            "Joseph Wadleigh married Betty Morrill on 27 October 1779.",
+            new DraftTarget("@I20@", null, "Betty Morrill"),
+            [Text("NAME", "Joseph /Wadleigh/", 3, "@I10@"), Fact("MARR", "27 OCT 1779", null, 3, "@F1@")], [])
+        {
+            Relations = [new DraftRelation(DraftRelation.Spouse, "@I20@", "@I10@", "@F1@", null, null, null, 3)],
+        };
+
+    static DraftResult DraftMarriage(string document = RenameDocument, params DraftFinding[] findings)
+    {
+        var parsed = GedCore.Ged70.Ged70Parser.Read(new MemoryStream(Encoding.UTF8.GetBytes(document)));
+        var lookup = new GedFire.Mcp.ModelDraftLookup(GedFire.Gen.ModelBuilder.Build(parsed));
+        return new ChangesetDrafter(lookup).Draft(findings.Length == 0 ? [MarriageFinding("A"), MarriageFinding("B")] : findings);
+    }
+
+    [Fact]
+    public void ABoundHusbandsName_IsUpdatedWithTheMarriageAndItsPreviousNameIsPreserved()
+    {
+        var drafted = DraftMarriage();
+        Assert.True(drafted.Success, string.Join("; ", drafted.Errors));
+        var changeset = GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString());
+        var original = Encoding.UTF8.GetBytes(RenameDocument);
+        var validated = GedCore.Apply.ChangesetApplier.Run(original, changeset, [1], dryRun: true);
+        Assert.True(validated.Success, string.Join("; ", validated.Errors));
+        Assert.Contains(validated.Log, l => l.Contains("'George /Wadleigh/' → 'Joseph /Wadleigh/'"));
+        var applied = GedCore.Apply.ChangesetApplier.Run(original, changeset, [1], dryRun: false);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        var document = GedCore.Ged70.Ged70Parser.Read(new MemoryStream(applied.OutputBytes!));
+        var husband = document.ByXref["@I10@"];
+        Assert.Equal("Joseph /Wadleigh/", husband.FirstChild("NAME")!.PayloadValue);
+        Assert.Equal(2, husband.FirstChild("NAME")!.ChildrenByTag("SOUR").Count());
+        Assert.Equal("27 OCT 1779", document.ByXref["@F1@"].FirstChild("MARR")!.FirstChild("DATE")!.Value);
+        Assert.Contains(husband.ChildrenByTag("NOTE"), n => n.FullValue().Contains("George") && n.FullValue().Contains("uncited"));
+        var repeated = GedCore.Apply.ChangesetApplier.Run(applied.OutputBytes!, changeset, [1], dryRun: false);
+        Assert.True(repeated.Success, string.Join("; ", repeated.Errors));
+        Assert.Null(repeated.OutputBytes);
+    }
+
+    [Fact]
+    public void AnExplicitExistingPersonBinding_DoesNotRequireARelationshipOp()
+    {
+        var finding = MarriageFinding("A") with { Relations = [], ExistingPeople = ["@I10@"] };
+        var drafted = DraftMarriage(RenameDocument, finding);
+        Assert.True(drafted.Success, string.Join("; ", drafted.Errors));
+        Assert.DoesNotContain(Ops(drafted), o => o.GetProperty("op").GetString() == "createOrUpdateSpouse");
+        Assert.Contains(Ops(drafted), o => o.GetProperty("record").GetString() == "@I10@" && o.GetProperty("fact").GetString() == "NAME");
+    }
+
+    [Fact]
+    public void ANameFactDoesNotBindItsOwnRecord()
+    {
+        var finding = MarriageFinding("A") with { Relations = [] };
+        var drafted = DraftMarriage(RenameDocument, finding);
+        Assert.False(drafted.Success);
+        Assert.Null(drafted.Changeset);
+        Assert.Contains(drafted.Errors, e => e.Contains("facts[0].record @I10@ is not referenced"));
+    }
+
+    [Fact]
+    public void AnUnknownExistingPersonBinding_IsRefused()
+    {
+        var finding = MarriageFinding("A") with { Relations = [], ExistingPeople = ["@I99@"] };
+        var drafted = DraftMarriage(RenameDocument, finding);
+        Assert.Contains(drafted.Errors, e => e.Contains("existingPeople[0] @I99@ is not"));
+    }
+
+    [Fact]
+    public void ANameCanBeAddedToABoundPersonWithoutAnExistingName()
+    {
+        string document = RenameDocument.Replace("1 NAME George /Wadleigh/", "");
+        var finding = MarriageFinding("A") with { Relations = [], ExistingPeople = ["@I10@"] };
+        var drafted = DraftMarriage(document, finding);
+        Assert.True(drafted.Success, string.Join("; ", drafted.Errors));
+    }
+
+    [Fact]
+    public void AnUnchangedName_DoesNotCreateAPreviousNameNote()
+    {
+        var finding = MarriageFinding("A") with { Facts = [Text("NAME", "George /Wadleigh/", 3, "@I10@")] };
+        var drafted = DraftMarriage(RenameDocument, finding);
+        var applied = GedCore.Apply.ChangesetApplier.Run(Encoding.UTF8.GetBytes(RenameDocument),
+            GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString()), [1], dryRun: false);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        var person = GedCore.Ged70.Ged70Parser.Read(new MemoryStream(applied.OutputBytes!)).ByXref["@I10@"];
+        Assert.Empty(person.ChildrenByTag("NOTE"));
+    }
+
+    [Fact]
+    public void ATargetSurnameChange_AlsoRequiresExplicitPermission()
+    {
+        var finding = MarriageFinding("A") with { Facts = [Text("NAME", "Betty /Other/", 3, "@I20@")] };
+        Assert.Contains(DraftMarriage(RenameDocument, finding).Errors, e => e.Contains("allowSurnameChange"));
+    }
+
+    [Theory]
+    [InlineData("Joseph /Other/")]
+    [InlineData("Joseph")]
+    [InlineData("Joseph //")]
+    public void AChangedOrRemovedSurname_RequiresExplicitPermission(string name)
+    {
+        var finding = MarriageFinding("A");
+        var fact = finding.Facts[0] with { Value = name };
+        var refused = DraftMarriage(RenameDocument, finding with { Facts = [fact] });
+        Assert.False(refused.Success);
+        Assert.Contains(refused.Errors, e => e.Contains("allowSurnameChange"));
+        var allowed = DraftMarriage(RenameDocument, finding with { Facts = [fact with { AllowSurnameChange = true }] });
+        Assert.True(allowed.Success, string.Join("; ", allowed.Errors));
+        Assert.Equal(name, Ops(allowed).Single(o => o.GetProperty("op").GetString() == "createOrUpdateVital").GetProperty("value").GetString());
+    }
+
+    [Theory]
+    [InlineData("keep")]
+    [InlineData("drop")]
+    public void ANameCorrection_CannotLoseOrMisattributeItsPreviousCitations(string disposition)
+    {
+        var finding = MarriageFinding("A");
+        var drafted = DraftMarriage(RenameDocument, finding with { Facts = [finding.Facts[0] with { ReplacedCitations = disposition }] });
+        Assert.False(drafted.Success);
+        Assert.Contains(drafted.Errors, e => e.Contains("previous name's citations must be preserved"));
+    }
+
+    [Fact]
+    public void ATargetPersonNameCorrection_StillCompilesAndApplies()
+    {
+        var finding = MarriageFinding("A") with
+        {
+            Relations = [],
+            Facts = [Text("NAME", "Elizabeth /Morrill/", 3, "@I20@")],
+        };
+        var drafted = DraftMarriage(RenameDocument, finding);
+        Assert.True(drafted.Success, string.Join("; ", drafted.Errors));
+        var applied = GedCore.Apply.ChangesetApplier.Run(Encoding.UTF8.GetBytes(RenameDocument),
+            GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString()), [1], dryRun: false);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        var person = GedCore.Ged70.Ged70Parser.Read(new MemoryStream(applied.OutputBytes!)).ByXref["@I20@"];
+        Assert.Equal("Elizabeth /Morrill/", person.FirstChild("NAME")!.PayloadValue);
+        Assert.Contains(person.ChildrenByTag("NOTE"), n => n.FullValue() == "The previous name was Betty Morrill, which was uncited.");
+    }
+
+    [Fact]
+    public void APreviouslyCitedName_KeepsItsCompleteCitationTrailInItsOwnNote()
+    {
+        string document = RenameDocument.Replace("1 NAME George /Wadleigh/", """
+            1 NAME George /Wadleigh/
+            2 SOUR @S1@
+            3 PAGE old page
+            3 DATA
+            4 TEXT George in an earlier fictional register.
+            3 QUAY 1
+            3 NOTE Original citation annotation.
+            """).Replace("0 TRLR", "0 @S1@ SOUR\n1 TITL Earlier fictional register\n0 TRLR");
+        var finding = MarriageFinding("A") with { Notes = [new DraftNote("@I10@", "An unrelated research note.")] };
+        var drafted = DraftMarriage(document, finding);
+        Assert.True(drafted.Success, string.Join("; ", drafted.Errors));
+        drafted.Changeset!["items"]![0]!["ops"]!.AsArray().Insert(0, new System.Text.Json.Nodes.JsonObject
+        {
+            ["op"] = "createOrUpdateNote", ["record"] = "@I10@", ["text"] = "An earlier unrelated note.",
+        });
+        var applied = GedCore.Apply.ChangesetApplier.Run(Encoding.UTF8.GetBytes(document),
+            GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString()), [1], dryRun: false);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        var person = GedCore.Ged70.Ged70Parser.Read(new MemoryStream(applied.OutputBytes!)).ByXref["@I10@"];
+        var note = person.ChildrenByTag("NOTE").Single(n => n.FullValue() == "The previous name was George Wadleigh, which was cited.");
+        Assert.DoesNotContain("@", note.FullValue());
+        var citation = Assert.Single(note.ChildrenByTag("SOUR"));
+        Assert.Equal("@S1@", citation.Value);
+        Assert.Equal("old page", citation.FirstChild("PAGE")!.Value);
+        Assert.Equal("George in an earlier fictional register.", citation.FirstChild("DATA")!.FirstChild("TEXT")!.FullValue());
+        Assert.Equal("1", citation.FirstChild("QUAY")!.Value);
+        Assert.Equal("Original citation annotation.", citation.FirstChild("NOTE")!.FullValue());
+        Assert.DoesNotContain(person.FirstChild("NAME")!.ChildrenByTag("SOUR"), c => c.Value == "@S1@");
+        Assert.Empty(person.ChildrenByTag("NOTE").Single(n => n.FullValue() == "An earlier unrelated note.").ChildrenByTag("SOUR"));
+        var repeated = GedCore.Apply.ChangesetApplier.Run(applied.OutputBytes!,
+            GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString()), [1], dryRun: false);
+        Assert.True(repeated.Success, string.Join("; ", repeated.Errors));
+        Assert.Null(repeated.OutputBytes);
+    }
+
     [Fact]
     public void TwoDifferentNames_AreLeftOpen()
     {

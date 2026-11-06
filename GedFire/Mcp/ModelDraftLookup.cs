@@ -16,6 +16,11 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
     public string? PersonName(string xref) =>
         model.Individuals.TryGetValue(xref, out var person) && person.Fullname.Length > 0 ? person.Fullname : null;
 
+    public string? PersonSurname(string xref) =>
+        model.Individuals.TryGetValue(xref, out var person) && person.Fullname.Length > 0 ? person.LastNameRaw : null;
+
+    public bool HasPerson(string xref) => model.Individuals.ContainsKey(xref);
+
     public IReadOnlyList<ExistingFact> FactsOn(string record, string tag) =>
         [.. EventsOf(record, tag).Select(e => new ExistingFact(NullIfEmpty(e.Date), NullIfEmpty(e.Place), CitationsOf(e)))];
 

@@ -254,7 +254,7 @@ internal static class NodeBuilder
     /// </summary>
     /// <summary>Returns a log fragment naming what became of each existing citation, or null when there were none.</summary>
     public static string? DisposeCitations(ApplyState state, GedRecord record,
-                                           GedRecord factNode, string factTag, string mode)
+                                           GedRecord factNode, string factTag, string mode, GedRecord? preservationNote = null)
     {
         var citations = factNode.ChildrenByTag("SOUR").ToList();
         if (citations.Count == 0) return null;
@@ -271,7 +271,8 @@ internal static class NodeBuilder
 
         if (mode == "drop") return disposition;
 
-        if (!state.NotesAddedThisItem.TryGetValue(record.Xref!, out var note))
+        var note = preservationNote;
+        if (note is null && !state.NotesAddedThisItem.TryGetValue(record.Xref!, out note))
         {
             note = NewNode(1, "NOTE",
                 $"Prior citation(s) on {factTag} superseded by a correction and retained here.");

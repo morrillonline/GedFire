@@ -17,8 +17,46 @@ internal static class DraftChecks
         }
 
         foreach (var error in NewRecordErrors(findings).Concat(RemovalErrors(findings, lookup))
-                     .Concat(NoteCitationErrors(findings)).Concat(EmptyFindingErrors(findings)))
+                     .Concat(NoteCitationErrors(findings)).Concat(EmptyFindingErrors(findings))
+                     .Concat(NameErrors(findings, lookup)))
             yield return error;
+    }
+
+    static IEnumerable<string> NameErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)
+    {
+        var referenced = findings.Select(f => f.Target.Xref)
+            .Concat(findings.SelectMany(f => f.ExistingPeople))
+            .Concat(findings.SelectMany(f => f.Relations).SelectMany(PeopleOf))
+            .Concat(findings.SelectMany(f => f.People).Select(p => p.Xref))
+            .ToHashSet(StringComparer.Ordinal);
+        for (int f = 0; f < findings.Count; f++)
+        {
+            for (int p = 0; p < findings[f].ExistingPeople.Count; p++)
+            {
+                string xref = findings[f].ExistingPeople[p];
+                if (Placeholder.IsPlaceholder(xref) || !lookup.HasPerson(xref))
+                    yield return $"findings[{f}].existingPeople[{p}] {xref} is not an existing person in the document.";
+            }
+            for (int i = 0; i < findings[f].Facts.Count; i++)
+            {
+                var fact = findings[f].Facts[i];
+                if (fact.Tag != "NAME") continue;
+                string path = $"findings[{f}].facts[{i}]";
+                if (!referenced.Contains(fact.Record))
+                    yield return $"{path}.record {fact.Record} is not referenced by the input's targets, existingPeople, people or relations.";
+                else if (fact.Record != findings[f].Target.Xref && !Placeholder.IsPlaceholder(fact.Record)
+                         && !lookup.HasPerson(fact.Record))
+                    yield return $"{path}.record {fact.Record} is not an existing person in the document.";
+                if (fact.Value is null || fact.CiteOnly || fact.Withdraw is not null) continue;
+                if (fact.ReplacedCitations is "keep" or "drop")
+                    yield return $"{path}.replacedCitations must be moveToNote for NAME corrections; the previous name's citations must be preserved.";
+                string? heldSurname = lookup.PersonSurname(fact.Record);
+                string? newSurname = GedNamePayload.Split(fact.Value).Surname;
+                if (heldSurname is not null && !string.Equals(Fold(heldSurname), Fold(newSurname ?? ""), StringComparison.OrdinalIgnoreCase)
+                    && !fact.AllowSurnameChange)
+                    yield return $"{path}.value changes the surname from \"{heldSurname}\" to \"{newSurname ?? ""}\"; set allowSurnameChange to true only for an intentional surname correction.";
+            }
+        }
     }
 
     /// <summary>The highest QUAY the source class and information class can support.</summary>

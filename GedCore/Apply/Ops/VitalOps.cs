@@ -141,8 +141,12 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
                             IReadOnlyList<Citation> citations, List<string> log)
     {
         var updates = PendingValueUpdates(existingFact);
+        GedRecord? previousNameNote = null;
+        if (Fact == "NAME" && ReplacedCitations == "moveToNote" && Value.Text is not null
+            && existingFact.PayloadValue != Value.Text && existingFact.PayloadValue.Length > 0)
+            previousNameNote = PreservePreviousName(state, target, existingFact, log);
         string? disposition = updates.Count > 0
-            ? NodeBuilder.DisposeCitations(state, target, existingFact, Fact, ReplacedCitations)
+            ? NodeBuilder.DisposeCitations(state, target, existingFact, Fact, ReplacedCitations, previousNameNote)
             : null;
         foreach (var update in updates)
         {
@@ -169,6 +173,23 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         log.Add(changes.Count > 0
             ? $"{LogContext}: updated ({string.Join("; ", changes)})"
             : $"{LogContext}: no-op (already matches)");
+    }
+
+    private GedRecord PreservePreviousName(ApplyState state, GedRecord target, GedRecord name, List<string> log)
+    {
+        string previous = string.Join(' ', name.PayloadValue.Replace("/", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        string attestation = name.ChildrenByTag("SOUR").Any() ? "cited" : "uncited";
+        string text = $"The previous name was {previous}, which was {attestation}.";
+        var note = target.ChildrenByTag("NOTE").FirstOrDefault(n => n.FullValue() == text);
+        if (note is null)
+        {
+            note = NodeBuilder.NoteNode(1, text);
+            NodeBuilder.Attach(target, note);
+            state.Mutated();
+            state.Touch(target);
+            log.Add($"{LogContext}: preserved previous name in a note");
+        }
+        return note;
     }
 
     private sealed record ValueUpdate(string Description, bool Replaces, Action Write, string? LessSpecific = null);
