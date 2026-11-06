@@ -38,7 +38,7 @@ public sealed class DraftFindingReader
 
     DraftFinding? ReadFinding(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "id", "extract", "source", "target", "facts", "notes", "people", "relations", "argument")) return null;
+        if (!IsObject(el, path, "id", "extract", "source", "target", "facts", "notes", "people", "existingPeople", "relations", "argument")) return null;
         int before = _errors.Count;
 
         string? id = Text(el, "id", path, required: true);
@@ -48,13 +48,17 @@ public sealed class DraftFindingReader
         var facts = ReadList(el, "facts", path, ReadFact);
         var notes = ReadList(el, "notes", path, ReadNote);
         var people = ReadList(el, "people", path, ReadPerson);
+        var existingPeople = ReadStrings(el, "existingPeople", path);
         var relations = ReadList(el, "relations", path, ReadRelation);
         var argument = el.TryGetProperty("argument", out var given) && given.ValueKind != JsonValueKind.Null
             ? FindingArgumentReader.Read(given, $"{path}.argument", _errors)
             : null;
 
         if (_errors.Count > before || id is null || extract is null || source is null || target is null) return null;
-        return new DraftFinding(id, source, extract, target, facts, notes) { People = people, Relations = relations, Argument = argument };
+        return new DraftFinding(id, source, extract, target, facts, notes)
+        {
+            People = people, ExistingPeople = existingPeople, Relations = relations, Argument = argument,
+        };
     }
 
     DraftSource? ReadSource(JsonElement? el, string path)
@@ -80,7 +84,7 @@ public sealed class DraftFindingReader
 
     DraftFact? ReadFact(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw")) return null;
+        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange")) return null;
         int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
         string? tag = Text(el, "fact", path, required: true);
@@ -92,10 +96,13 @@ public sealed class DraftFindingReader
         string? replaced = Choice(el, "replacedCitations", path, ["keep", "drop", "movetonote"], required: false);
         var substructures = ReadList(el, "substructures", path, ReadSubstructure);
         bool citeOnly = ReadFlag(el, "citeOnly", path);
+        bool allowSurnameChange = ReadFlag(el, "allowSurnameChange", path);
         string? replaceHeld = Text(el, "replaceHeld", path);
         string? withdraw = Text(el, "withdraw", path);
         int quay = ReadQuay(el, path, "this fact (not inherited from the finding)");
 
+        if (allowSurnameChange && (tag?.ToUpperInvariant() != "NAME" || value is null || citeOnly || withdraw is not null))
+            _errors.Add($"{path}.allowSurnameChange applies only to a NAME fact with a value.");
         if (withdraw is not null)
         {
             if (value is not null || substructures.Count > 0 || replaced is not null || citeOnly || replaceHeld is not null)
@@ -117,6 +124,7 @@ public sealed class DraftFindingReader
             Substructures = substructures,
             ReplacedCitations = replaced is null ? null : replaced == "movetonote" ? "moveToNote" : replaced,
             CiteOnly = citeOnly,
+            AllowSurnameChange = allowSurnameChange,
             ReplaceHeld = replaceHeld,
             Withdraw = withdraw,
         };

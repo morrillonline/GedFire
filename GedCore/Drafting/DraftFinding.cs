@@ -23,6 +23,7 @@ public sealed record DraftFact(
     public IReadOnlyList<DraftSubstructure> Substructures { get; init; } = [];
     public string? ReplacedCitations { get; init; }
     public bool CiteOnly { get; init; }
+    public bool AllowSurnameChange { get; init; }
 
     /// <summary>The author's reason for writing this value over the one the record holds, even one that is more specific or better cited.</summary>
     public string? ReplaceHeld { get; init; }
@@ -84,6 +85,7 @@ public sealed record DraftFinding(
     IReadOnlyList<DraftFact> Facts, IReadOnlyList<DraftNote> Notes)
 {
     public IReadOnlyList<DraftPerson> People { get; init; } = [];
+    public IReadOnlyList<string> ExistingPeople { get; init; } = [];
     public IReadOnlyList<DraftRelation> Relations { get; init; } = [];
 
     /// <summary>Why the records concern this person and not a same-named rival, exactly as correlation wrote it; carried into the changeset, never judged.</summary>

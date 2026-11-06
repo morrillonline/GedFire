@@ -478,7 +478,8 @@ internal sealed class ItemDrafter(
 
     static FactKey FactKeyOf(DraftFact fact) =>
         new(fact.Record, fact.Tag, fact.Date?.ToUpperInvariant(), fact.Place, fact.Value,
-            string.Join('|', fact.Substructures.Select(s => $"{s.Tag}={s.Value}")), fact.ReplacedCitations);
+            string.Join('|', fact.Substructures.Select(s => $"{s.Tag}={s.Value}")),
+            fact.Tag == "NAME" ? "moveToNote" : fact.ReplacedCitations);
 
     // A repeatable tag never overwrites by accident: a date the record already holds is addressed by match, anything else is added.
     // A fact with substructures is always added: the existing instance's substructures are not known, and an identical one is a no-op.

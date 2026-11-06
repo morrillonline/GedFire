@@ -106,11 +106,6 @@ also score at least 10 points above the runner-up. Otherwise the result is
 `confidentMatchScore`, and `person` all null. Classification uses the full
 recall set before `maxResults` is applied.
 
-When the query or candidate has an unknown surname, `matchScore` is capped at
-89 unless a birth, death, or marriage year/place hint agrees with recorded
-data. Names and sex alone cannot produce `single`; missing event data and
-disagreeing event hints do not lift the cap.
-
 `find_family` searches through a named relative. `relation` is `spouse`
 (find the named person's partner), `child` (find their parents), or `parent`
 (find their children). Optional birth and death hints describe the person
@@ -156,14 +151,6 @@ record against tree family subgraphs. Supply:
   `parent-of`, or `sibling-of`.
 - `event`: the record's date and place.
 - Optional `focus`: the person whose result you want.
-- Optional `maxCandidates` (1-20, default 5): candidates returned per person;
-  `candidatesOmitted` counts the rest.
-- Optional `compact: true`: candidates become `{xref, name, lifespan, score,
-  matchedKin}` and survey rows `{xref, name, reason}`.
-
-The verdict, confident match, `runnerUpXref`/`runnerUpScore`,
-`potentialNewPerson`, and `possibleDuplicates` are decided before the cap, and
-the survey is never capped.
 
 Results rank candidates by name, lifespan, kin overlap, and place. Each
 person's `sameNameSurvey` lists the same-name candidates considered and the
@@ -204,9 +191,6 @@ in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error
   and places for one person, plus any such fact with an exact date or place but
   no citation. `nominalPoints` counts missing dates, places, and citations;
   `score` adds a difficulty bonus once.
-- A `BET ... AND ...` date no wider than 12 months, cited at QUAY 2 or higher,
-  is not a missing date. Open `BEF`/`AFT` dates and `ABT`, `CAL`, and `EST`
-  remain gaps.
 - An exact burial date and place close a death gap when no exact death exists.
   The summary's `died` falls back to burial.
 - New-parent and new-spouse cards are withheld for bare-bones people: none of
@@ -217,15 +201,11 @@ in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error
 - New-child cards are withheld only if both spouses are bare-bones and the
   marriage has neither an exact date nor a place. In surname mode they also
   require a husband with a study surname; xrefs mode has no surname requirement.
-- New-child cards are also withheld when every known child of the wife was born
-  before this marriage (its date, or else the first census recording the couple).
-  An undatable child keeps the card.
 - `suppressedCards` lists `{xref, name, cardType, reason}` for otherwise eligible
   cards withheld by this gate, once per childless family for New child. These
   use the same subject xref, name, and card-type labels as the withheld card.
   Personal reasons are `bare-bones subject — enrich first`; family reasons are
-  `bare-bones family (both spouses and marriage lack anchors) — enrich first`
-  or `the wife's known children were all born before this marriage`.
+  `bare-bones family (both spouses and marriage lack anchors) — enrich first`.
   The list is empty when nothing was suppressed and is excluded from
   `totalCandidates`. Enrich-person cards, points, privacy, died-young, and surname
   rules are unchanged. No state is kept: landing an anchor restores relationship
@@ -233,8 +213,7 @@ in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error
 - Duplicate hints use the GEN301 plausibility test. Results include up to
   three candidates plus `possibleDuplicateCount`; duplicates do not prevent a draw.
 - An `Unknown` name part needs an agreeing parent or spouse name for duplicate
-  pairing. An agreeing relative can support the match without dates; the
-  person's own name and sex alone cannot.
+  pairing.
 - GEN301 never pairs two people whose recorded births (or recorded deaths) sit
   more than twenty years apart, or whose given names share no token, initial,
   or documented nickname.
@@ -304,35 +283,14 @@ assigns each fact's grade. Policy can require verification notes for low grades.
 - A more precise compatible date or place wins. A specific date supersedes an
   approximate date; the approximate citation stays only if its year fits.
   Otherwise an `open` decision explains its omission.
-- Hard bounds (`BEF`, `AFT`, `BET … AND`) narrow one another: `AFT 1795` and
-  `BEF 27 SEP 1796` draft `BET 1795 AND 27 SEP 1796`, whether both come from
-  findings or one is already on the record.
 - A less specific finding adds a citation, not a downgrade. The compiler
   reports a `resolved` decision with `no improvement`.
-- Places compare by jurisdiction, ignoring case, hyphens, spacing, trailing
-  periods, and a trailing `County`, `Co.`, or `Parish`. A finding that differs
-  from the record only this way is cited, not written; the record's spelling is
-  kept. The same rule applies to points scoring and GEN301 place matching.
-- Precision decides only between dates that can both be true. When a bound
-  excludes the record's date (or the record's bound excludes the finding's
-  date), the record's value gives way if it is uncited or graded below the
-  finding: the bound is written and the old citations move to a note. Otherwise
-  nothing is drafted for the fact and an `open` decision asks the author to
-  settle it.
-- `ABT`, `CAL` and `EST` have no defined tolerance, so they never replace a
-  specific date that is more than a year away; the fact is left `open`. A
-  specific finding still replaces such an estimate on the record, with an
-  `open` decision asking that both describe the same event.
 - Genuine disagreements leave the fact undrafted. An `open` decision lists
   values and findings, recommending by QUAY and then source quality.
 - Name reconciliation only expands documented nicknames with matching surname,
   suffix, and given-name count. Other disagreements stay `open`.
 
-The compiler maintains its own standard verification notes, one per fact. A
-fact gets a note only when its best citation, in the item or already in the
-document, is at or below the policy ceiling; the note names every record the
-fact rests on. No note is added when a note on the record already says the fact
-awaits verification, however worded. Once stronger
+The compiler maintains its own standard verification notes. Once stronger
 citations lift a named fact above the policy ceiling, it removes that fact
 from the note or deletes the note when no low-grade facts remain. It preserves
 sources. It leaves other verification-note wording to the author and raises an
@@ -354,21 +312,6 @@ Relations cite the finding at their own `quay`:
 the compiler reports `dropped-seed` when it removes them. Marriage facts use
 the family placeholder as `record`.
 
-An existing person's `SEX` fact uses a string `value`, such as `"M"` or `"F"`.
-Within each item, the compiler places these corrections before relationships,
-so role validation uses the corrected sex. Facts on new people follow the
-relationships that create them.
-
-Same-sex spouses are supported without changing either person's recorded
-`SEX`. Existing `HUSB`/`WIFE` placements are preserved; those legacy tags
-identify partner slots, not constraints on the couple's sexes. `GEN403`
-warns when a marriage links two people with the same recorded `M` or `F`,
-with additional historical-review wording for dates before 2001, the year
-of the [first national legalization](https://en.wikipedia.org/wiki/Same-sex_marriage_in_the_Netherlands)
-of same-sex civil marriage (Netherlands; effective 1 April 2001). This is a
-historical milestone, not a universal legalization date: local law varies.
-The warning requests source review, is not an error, and does not block application.
-
 - `spouse` and `child` relations accept `notDuplicateOf`: existing people
   the author has confirmed are not the new person.
 - A child relation with `from` moves the child from that existing family into
@@ -380,19 +323,50 @@ The warning requests source review, is not an error, and does not block applicat
 - A fact can carry `substructures`, such as an `EVEN` with a `TYPE`.
   Such an event adds an instance rather than matching by date.
 - `replacedCitations` chooses `keep`, `drop`, or `moveToNote` for citations on
-  a replaced value.
+  a replaced value. NAME corrections always use `moveToNote`; `keep` and
+  `drop` are rejected so old citations cannot attest the new name or be lost.
 - `citeOnly: true` cites an existing fact; date/place select its instance.
-- `replaceHeld: "<reason>"` writes a single-valued fact's date and place over
-  the record's, even a more specific or better-cited one. A contradicted value's
-  citations move to a note unless `replacedCitations` says otherwise.
-- `withdraw: "<reason>"` deletes the record's fact with nothing in its place;
-  date/place select the instance, and its citations move to a note. Like a
-  removal, it raises an `open` decision unless the finding adds a cited note.
-  The reason is shown to the reviewer in the changeset's findings table.
 - A note's `match` names the exact text to rewrite. `cites` lists
   `{"finding", "quay", "excerpt"}` entries; omitting `finding` uses its own.
   The compiler joins notes on the same record within a changeset and retains
   every finding's citations.
+
+### Correcting an existing person's name
+
+A NAME fact may address any existing person bound by a target, a person
+reference in `relations`, or `existingPeople` anywhere in the input. The
+fact's own `record` does not bind the person. `existingPeople` declares xrefs
+without creating people or asserting new relationships; `people` remains
+reserved for new-record placeholders.
+
+For example, these fields in a finding for a fictional wife correct her
+bound husband's name and their marriage:
+
+```json
+{
+  "target": {"xref": "@I20@", "name": "Betty Morrill"},
+  "existingPeople": ["@I10@"],
+  "facts": [
+    {"record": "@I10@", "fact": "NAME", "value": "Joseph /Wadleigh/", "quay": 3},
+    {"record": "@F1@", "fact": "MARR", "date": "27 OCT 1779", "quay": 3}
+  ]
+}
+```
+
+Include the usual finding `id`, `extract`, and `source`. Each NAME op receives
+that finding's citation and QUAY; agreeing findings contribute their citations
+to one op. A different or removed surname is refused unless that NAME fact
+sets `allowSurnameChange: true`. Keep `target.name`, when supplied, as the
+currently recorded name, not the proposed correction.
+
+Applying a different NAME preserves the losing value in a plain-sentence
+NOTE, for example, "The previous name was George Wadleigh, which was uncited."
+If cited, the sentence says "cited" and the original citation subtrees move
+from NAME into that note. Its prose contains no record ids. This preservation
+is performed by the NAME op's `moveToNote` disposition against the actual
+document at apply time. Unchanged names create no preservation note, and a
+second apply is a no-op. Both `validate_changeset` and `check_plausibility`
+include the old-name-to-new-name replacement in their `log`.
 
 ### Identity arguments and output
 
@@ -452,7 +426,7 @@ unknown keys stop startup. See the [complete example](policy.example.json).
 |---|---|
 | `bannedPhrases` | Reject case-insensitive phrases in note text or citation pages. |
 | `bannedPatterns` | Reject regular-expression matches in note text or citation pages. |
-| `verificationNote` | Require a note with `notePrefix` for records receiving facts whose strongest citation is at or below `maxQuay`. |
+| `verificationNote` | Require a note with `notePrefix` for records receiving facts at or below `maxQuay`. |
 | `deathPlaceEvidence` | Require a death-place citation whose page or `dataText` matches this regular expression. |
 
 For example, `{"maxQuay": 1, "notePrefix": "needs independent verification:"}`
@@ -476,15 +450,10 @@ optionally ending in `-date` or `-place`.
 With no gap, or with `enrich-fact`, the card covers any improved fact on the
 subject. Each improved date, place, or newly added citation earns `points`;
 `bonus` pays once.
-A date improves only when it is the first, refines the held date (`1877` to
-`14 APR 1877`, `ABT 1877` to `1877`), narrows its bound (`BEF 1800` to
-`BEF 1797`), or corrects a date it contradicts. A less specific date or the same
-date respelled (`BEFORE 1796` to `BEF 1796`) earns nothing.
 `pointsPreview` compares the touched records before and after:
 
 - `closed`: cards with a written improvement or new family relationship.
-  `wrote` identifies the fact and improved components, naming a date as
-  `first`, `refined`, `narrowed`, or `corrected`.
+  `wrote` identifies the fact and improved components.
 - `notClosed`: remaining cards with reasons. An identical restatement earns no
   closure.
 - `subjectMismatch`: cards left open by a name mismatch. An enrich card detects

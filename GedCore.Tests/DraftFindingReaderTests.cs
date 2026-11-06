@@ -31,6 +31,34 @@ public class DraftFindingReaderTests
     }
 
     [Fact]
+    public void ExistingPeopleAndExplicitSurnamePermission_AreRead()
+    {
+        string input = Valid.Replace("\"facts\":", "\"existingPeople\": [\"@I2@\"], \"facts\":")
+            .Replace("\"fact\": \"deat\", \"date\": \"1 Jan 1900\"", "\"fact\": \"NAME\", \"value\": \"Ann /Other/\", \"allowSurnameChange\": true");
+        var (findings, errors) = Read($"[{input}]");
+        Assert.Empty(errors);
+        var finding = Assert.Single(findings);
+        Assert.Equal(["@I2@"], finding.ExistingPeople);
+        Assert.True(Assert.Single(finding.Facts).AllowSurnameChange);
+    }
+
+    [Theory]
+    [InlineData("\"existingPeople\": \"@I2@\",", "existingPeople must be an array")]
+    [InlineData("\"existingPeople\": [false],", "existingPeople[0]")]
+    public void InvalidExistingBindings_AreRejectedByPath(string property, string expected)
+    {
+        var (_, errors) = Read($"[{Valid.Replace("\"facts\":", property + " \"facts\":")}]");
+        Assert.Contains(errors, e => e.Contains(expected));
+    }
+
+    [Fact]
+    public void SurnamePermissionOnAnEvent_IsRejectedByPath()
+    {
+        var (_, errors) = Read($"[{Valid.Replace("\"quay\": 2", "\"quay\": 2, \"allowSurnameChange\": true")}]");
+        Assert.Contains(errors, e => e.Contains("facts[0].allowSurnameChange applies only to a NAME"));
+    }
+
+    [Fact]
     public void AnArgument_IsCarriedOnTheFindingAsGiven()
     {
         var (findings, errors) = Read($$"""[{{Valid.Replace("\"id\": \"F-1\",", "\"id\": \"F-1\", \"argument\": { \"anchors\": [\"Born in Salem.\"], \"difficulty\": \"low\" },")}}]""");

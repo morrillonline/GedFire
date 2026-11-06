@@ -32,6 +32,9 @@ public sealed class DraftChangesetTool
         "change) and QUAY, and any note text. A repeatable tag (CENS, RESI, ...) is added beside the instances the " +
         "record already holds, or updates the one with the same date. New people and families come from people " +
         "(placeholder xrefs) and relations (spouse, child, parent), compiled to the dialect's relationship ops with " +
+        "the finding's citation. NAME facts may correct the target or people bound by existingPeople or relations; " +
+        "a fact's record alone is not a binding. Surname changes require allowSurnameChange=true. NAME corrections " +
+        "preserve the previous name and move its citations to a plain-sentence note, never dropping them. Relations use " +
         "the finding's citation. A note may rewrite an existing note (match) and cite findings of its item (cites); " +
         "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +
         "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
@@ -101,6 +104,7 @@ public sealed class DraftChangesetTool
                         "date": { "type": "string" },
                         "place": { "type": "string" },
                         "value": { "type": "string", "description": "A text fact's payload, e.g. a NAME change (\"Ralph /Morrill/\"); not combined with date or place." },
+                        "allowSurnameChange": { "type": "boolean", "description": "Explicit permission for this NAME value to change the existing person's surname; default false. Only applies to NAME assertions with a value." },
                         "quay": { "type": "integer", "minimum": 0, "maximum": 3 },
                         "class": { "type": "string", "enum": ["original", "image copy", "derivative", "authored", "user-contributed"], "description": "Overrides the source's class for this fact." },
                         "information": { "type": "string", "enum": ["primary", "secondary", "undetermined"], "description": "Overrides the source's information class for this fact." },
@@ -115,13 +119,18 @@ public sealed class DraftChangesetTool
                             "required": ["tag", "value"]
                           }
                         },
-                        "replacedCitations": { "type": "string", "enum": ["keep", "drop", "moveToNote"], "description": "What becomes of the citations on a fact whose value this replaces; default keep." },
+                        "replacedCitations": { "type": "string", "enum": ["keep", "drop", "moveToNote"], "description": "What becomes of the citations on a fact whose value this replaces; default keep except NAME, which requires moveToNote and preserves the previous name even when uncited." },
                         "citeOnly": { "type": "boolean", "description": "Only add this finding's citation to a fact the record already holds. date and place then select the instance when the record has several." },
                         "replaceHeld": { "type": "string", "minLength": 1, "description": "The reason to write this value over the one the record holds, even a more specific or better-cited one (a single-valued fact). Its citations move to a note unless replacedCitations says otherwise." },
                         "withdraw": { "type": "string", "minLength": 1, "description": "The reason to delete the fact the record holds, with nothing in its place; date and place select the instance. Its citations move to a note. Cite the evidence in a note." }
                       },
                       "required": ["record", "fact", "quay"]
                     }
+                  },
+                  "existingPeople": {
+                    "type": "array",
+                    "description": "Existing people explicitly bound by xref, without creating a person or asserting a relationship. Targets and person references in relations also bind people; a facts[].record alone does not.",
+                    "items": { "type": "string", "pattern": "^@[^@]+@$" }
                   },
                   "people": {
                     "type": "array",

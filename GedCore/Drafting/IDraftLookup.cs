@@ -12,6 +12,10 @@ public interface IPersonNames
 {
     /// <summary>The recorded name of a person, or null when the xref is not a known person.</summary>
     string? PersonName(string xref);
+
+    string? PersonSurname(string xref) => GedNamePayload.Split(PersonName(xref)).Surname;
+
+    bool HasPerson(string xref) => PersonName(xref) is not null;
 }
 
 /// <summary>What the document already says about a record's facts and notes.</summary>

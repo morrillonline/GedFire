@@ -42,6 +42,7 @@ internal static class FindingEvidence
         Set(node, "date", fact.Date);
         Set(node, "place", fact.Place);
         Set(node, "value", fact.Value);
+        if (fact.AllowSurnameChange) node["allowSurnameChange"] = true;
         node["quay"] = fact.Quay;
         Set(node, "class", fact.Class);
         Set(node, "information", fact.Information);
