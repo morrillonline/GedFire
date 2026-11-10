@@ -28,6 +28,32 @@ jobs:
           echo "BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
       - run: dotnet test --nologo -p:BuildNumber="$BUILD_NUMBER"
 
+  # A feature PR that deletes more documentation lines than it adds has, so
+  # far, always meant an agent rewrote the docs from a stale snapshot
+  # (PR #59 erased the docs for PRs #54-#58 this way). Label a PR
+  # `docs-cleanup` when the net deletion is intentional.
+  docs-guard:
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'docs-cleanup')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Refuse net documentation loss
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          read -r added deleted <<<"$(git diff --numstat "$base"...HEAD -- README.md docs \
+            | awk '{a+=$1; d+=$2} END {printf "%d %d", a, d}')"
+          echo "Documentation lines added: $added, deleted: $deleted"
+          if (( deleted > added )); then
+            echo "::error::This PR deletes more documentation lines ($deleted) than it adds ($added)." \
+              "Check that README.md and docs/ were not rewritten from a stale snapshot." \
+              "If the deletion is intentional, apply the docs-cleanup label and re-run."
+            exit 1
+          fi
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: test

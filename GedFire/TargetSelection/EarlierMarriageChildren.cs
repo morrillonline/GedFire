@@ -15,7 +15,17 @@ static class EarlierMarriageChildren
     {
         if (family.Wife is not { } wife || CoupleStartYear(family) is not { } start) return false;
         var children = wife.FamSpouse.Where(f => f != family).SelectMany(f => f.Children).Distinct().ToList();
-        return children.Count > 0 && children.All(c => GedDate.ParseYear(c.Birth?.Date) is var born && born > 0 && born < start);
+        return children.Count > 0 && children.All(c => BornBefore(c, start));
+    }
+
+    // A child without a usable birth date is still bounded by their own first
+    // census: anyone enumerated before the couple was together was born earlier.
+    static bool BornBefore(GedIndividual child, int coupleStart)
+    {
+        int born = GedDate.ParseYear(child.Birth?.Date);
+        if (born > 0) return born < coupleStart;
+        var censusYears = CensusYears(child).ToList();
+        return censusYears.Count > 0 && censusYears.Min() < coupleStart;
     }
 
     // The marriage year, else the first census year that records both partners.
