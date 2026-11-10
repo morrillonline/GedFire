@@ -575,6 +575,25 @@ public class GapDetectorTests
     }
 
     [Fact]
+    public void NewChild_SuppressedWhenAnUndatedChildWasEnumeratedBeforeTheMarriage()
+    {
+        var (targets, suppressed) = DetectWithSuppressed(RemarriedWife("1 CENS\n2 DATE 1905"));
+
+        Assert.DoesNotContain(targets, t => t.CardType == "New child");
+        var card = Assert.Single(suppressed, s => s.CardType == "New child");
+        Assert.Equal("the wife's known children were all born before this marriage", card.Reason);
+    }
+
+    [Fact]
+    public void NewChild_KeptWhenAnUndatedChildsOnlyCensusFollowsTheMarriage()
+    {
+        var (targets, suppressed) = DetectWithSuppressed(RemarriedWife("1 CENS\n2 DATE 1920"));
+
+        Assert.Single(targets, t => t.CardType == "New child");
+        Assert.DoesNotContain(suppressed, s => s.CardType == "New child");
+    }
+
+    [Fact]
     public void NewChild_KeptWhenTheCoupleCannotBeDated()
     {
         var (targets, _) = DetectWithSuppressed(RemarriedWife("1 BIRT\n2 DATE 1909", marriage: "2 PLAC Duluth, Minnesota")
