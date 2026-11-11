@@ -70,6 +70,7 @@ Update `README.md`, command help, examples, and fixtures when user-visible comma
 ## Git And Pull Requests
 
 - Do not discard or rewrite changes made by other contributors.
+- Run `git status` before starting a task; uncommitted changes on a synced `main` may be stale files overwriting committed work.
 - Inspect `git status` and the intended diff before proposing a commit.
 - Do not commit, push, merge, or create branches unless explicitly requested.
 - Do not add `Co-authored-by` trailers to commit messages or attribution lines to pull request descriptions.
