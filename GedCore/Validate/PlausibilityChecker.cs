@@ -75,6 +75,8 @@ public static class PlausibilityChecker
         cancellationToken.ThrowIfCancellationRequested();
         CheckNameCharacters(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
+        CheckPlaceholderGivenName(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
         CheckMissingSex(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
         CheckSameSexMarriage(doc, diags);
@@ -628,6 +630,27 @@ public static class PlausibilityChecker
         invalid.Contains("?")
             ? "put a suspected name in a footnote and use Unknown in the name field"
             : "use Unknown for an unknown part, NICK for a nickname, NSFX for a suffix";
+
+    // -------------------------------------------------------------------
+    // GEN406 — placeholder given name
+    // -------------------------------------------------------------------
+
+    // Info, not a Warning: "Baby" or "Child" is right for a child who died unnamed, wrong once a given name is known.
+    private static readonly HashSet<string> PlaceholderGivenNames = new(StringComparer.OrdinalIgnoreCase) { "Baby", "Child" };
+
+    private static void CheckPlaceholderGivenName(GedDocument doc, List<GedDiagnostic> diags)
+    {
+        foreach (var indi in doc.Records.Where(r => r.Tag == "INDI" && r.Xref is not null))
+        {
+            string given = GedNamePayload.Split(indi.FirstChild("NAME")?.FullValue()).GivenMiddle;
+            if (!PlaceholderGivenNames.Contains(given)) continue;
+
+            diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Info, "GEN406",
+                $"{indi.Xref} has given name \"{given}\"; confirm the child died young without a name, " +
+                "otherwise find the true given name",
+                indi.Xref, "NAME"));
+        }
+    }
 
     // -------------------------------------------------------------------
     // GEN405 — spouses share a surname

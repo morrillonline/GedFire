@@ -738,6 +738,37 @@ public class PlausibilityCheckerTests
             Assert.Contains("Netherlands, 2001", warning.Message);
     }
 
+    private static GedDocument PersonNamed(string name) => Parse($"""
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        1 NAME {name}
+        0 TRLR
+        """);
+
+    [Theory]
+    [InlineData("Baby /Carver/")]
+    [InlineData("child /Carver/")]
+    public void GEN406_PlaceholderGivenName_IsFlaggedAsInfo(string name)
+    {
+        var diag = Single(PersonNamed(name), "GEN406");
+
+        Assert.Equal(GedDiagnosticSeverity.Info, diag.Severity);
+        Assert.Equal("@I1@", diag.Xref);
+        Assert.Contains("died young", diag.Message);
+    }
+
+    [Theory]
+    [InlineData("Thomas /Carver/")]
+    [InlineData("Babyface /Carver/")]
+    [InlineData("Baby Thomas /Carver/")]
+    [InlineData("/Baby/")]
+    public void GEN406_RealGivenName_IsNotFlagged(string name)
+    {
+        Assert.DoesNotContain(PlausibilityChecker.Check(PersonNamed(name)), d => d.Code == "GEN406");
+    }
+
     private static GedDocument SpousesWithNames(string husbName, string wifeName) => Parse($"""
         0 HEAD
         1 GEDC
