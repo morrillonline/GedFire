@@ -184,7 +184,7 @@ historical person who might bear that name.
 
 - `kin`: parents, siblings, spouses with marriage details, and children.
 - `gaps`: the same targets `select_targets` reports for the person, including
-  their Biography card.
+  a man's Biography card when he has another card.
 - `possibleDuplicateOf`: up to three scored candidates, plus the full count.
 - `plausibility`: standing issues against the person or their families.
 - `notes`: person and family note texts.
@@ -195,18 +195,27 @@ bound a missing vital. Missing kin, notes, or duplicates produce empty arrays.
 
 ### Target selection
 
-`select_targets` draws `count` gaps for study `surnames`, returning a
-`wanted.json`-shaped result without the GEDCOM path. The clock seeds the draw.
-Alternatively, pass `xrefs` instead of count and surnames to score specified
-people deterministically. This returns every eligible gap, names people without gap cards
-in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error.
+`select_targets` draws `people` people at random from those with at least one
+gap card for study `surnames`, and returns every card that pays for each of
+them, kept together: one card per eligible gap (a married person gets no New
+spouse card, a person with both parents no New parent card), then, for a man,
+his Biography card. A pack holds at most one person with Legendary-band cards,
+who may hold several; later such people are discarded whole, so a pack can
+hold fewer people than asked. A family's New child card and marriage
+enrichment sit on one spouse only. The result is `wanted.json`-shaped, without
+the GEDCOM path; `count` in it is the number of cards, and `totalCandidates`
+the gap cards before the draw. The clock seeds the draw. The CLI's
+`select-targets --count` is the same number of people.
+Alternatively, pass `xrefs` instead of people and surnames to score specified
+people the same way, deterministically. This names people without gap cards
+in `xrefsWithoutGaps` and sets `draw.seed` to null. An unknown xref is an error.
 
-- With `xrefs`, each person outside the privacy floor also gets one `Biography`
-  card. It is not a gap and is never drawn at random: it stays open for people
-  with complete vitals or existing prose, and pays again for each later
-  changeset that adds a new citation. `nominalPoints` is 3, and `score` adds
-  the enrichment difficulty bonus for the person's birth era and region,
-  without the anchor adjustment (3, 8, 13, or 18).
+- A man outside the privacy floor who has at least one other card also gets
+  one `Biography` card; women and people with no other card get none. It
+  stays open for people with complete vitals or existing prose, and pays again
+  for each later changeset that adds a new citation. `nominalPoints` is 3, and
+  `score` adds the enrichment difficulty bonus for the person's birth era and
+  region, without the anchor adjustment (3, 8, 13, or 18).
 - An `enrich-person` card covers all inexact birth, marriage, and death dates
   and places for one person, plus any such fact with an exact date or place but
   no citation. `nominalPoints` counts missing dates, places, and citations;

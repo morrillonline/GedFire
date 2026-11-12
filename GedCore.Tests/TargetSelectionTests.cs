@@ -1088,7 +1088,7 @@ public class GapDetectorTests
     {
         var person = new GedIndividual
         {
-            Xref = "@I1@", FirstName = "Ada", LastNameRaw = "Ashworth",
+            Xref = "@I1@", FirstName = "Adam", LastNameRaw = "Ashworth", IsMale = true,
             Birth = new GedEvent { Date = birthDate ?? "", Place = place },
             Death = new GedEvent { Date = "1 MAR 1960" },
         };
@@ -1103,6 +1103,26 @@ public class GapDetectorTests
         Assert.Equal(rawDifficulty, cards[0].Difficulty.EraWeight + cards[0].Difficulty.GeoWeight);
         Assert.Equal(score, cards[0].Score);
     }
+
+    [Fact]
+    public void WithBiographyCards_AddsBiographyOnlyForAManWithAnotherCard_AfterHisCards()
+    {
+        static GedIndividual Person(string xref, bool male) => new()
+        {
+            Xref = xref, FirstName = xref, LastNameRaw = "Ashworth", IsMale = male, Birth = new GedEvent { Date = "1850" },
+        };
+        var man = Person("@I1@", true);
+        var manWithoutGaps = Person("@I2@", true);
+        var woman = Person("@I3@", false);
+        var gaps = GapDetector.DetectForPeople([man, woman], 2026);
+
+        var pack = GapDetector.WithBiographyCards([man, manWithoutGaps, woman], gaps);
+
+        Assert.Equal("Biography", pack.Last(t => t.Xref == "@I1@").CardType);
+        Assert.Single(pack, t => t.CardType == "Biography");
+        Assert.DoesNotContain(pack, t => t.Xref == "@I2@");
+        Assert.Equal(gaps.Count + 1, pack.Count);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1111,22 +1131,59 @@ public class GapDetectorTests
 
 public class TargetDrawerTests
 {
-    static SelectionTarget MakeTarget(string xref, DifficultyBand band) => new()
+    static SelectionTarget MakeTarget(string xref, DifficultyBand band, string cardType = "New parent") => new()
     {
         Xref = xref,
         Name = xref,
         Surname = "Test",
-        CardType = "New parent",
+        CardType = cardType,
         NominalPoints = 10,
         Difficulty = new DifficultyEntry { Band = band, EraWeight = 0, GeoWeight = 0, ContextAdjustment = 0 },
         Score = 10,
     };
 
     [Fact]
+    public void Draw_CountsPeople_AndReturnsEveryCardOfEachTogether()
+    {
+        var pool = new List<SelectionTarget>
+        {
+            MakeTarget("@I1@", DifficultyBand.Common), MakeTarget("@I2@", DifficultyBand.Common),
+            MakeTarget("@I1@", DifficultyBand.Common, "New spouse"), MakeTarget("@I3@", DifficultyBand.Common),
+            MakeTarget("@I2@", DifficultyBand.Common, "Enrich person"),
+        };
+
+        var result = TargetDrawer.Draw(pool, people: 3, seed: 9);
+
+        Assert.Equal(5, result.Targets.Count);
+        var order = result.Targets.Select(t => t.Xref).ToList();
+        Assert.Equal(3, order.Distinct().Count());
+        Assert.All(order.Distinct(), xref => Assert.Equal(
+            order.LastIndexOf(xref) - order.IndexOf(xref) + 1, order.Count(x => x == xref)));
+        Assert.Equal(["New parent", "New spouse"], result.Targets.Where(t => t.Xref == "@I1@").Select(t => t.CardType));
+    }
+
+    [Fact]
+    public void Draw_DiscardsASecondLegendaryPersonWhole()
+    {
+        var pool = new List<SelectionTarget>
+        {
+            MakeTarget("@L1@", DifficultyBand.Legendary),
+            MakeTarget("@L2@", DifficultyBand.Common), MakeTarget("@L2@", DifficultyBand.Legendary, "New spouse"),
+        };
+
+        var result = TargetDrawer.Draw(pool, people: 2, seed: 7);
+
+        var kept = Assert.Single(result.Targets.Select(t => t.Xref).Distinct());
+        Assert.Equal(pool.Count(c => c.Xref == kept), result.Targets.Count);
+        Assert.Equal(pool.Count(c => c.Xref != kept), result.LegendaryDiscards.Count);
+        Assert.All(result.LegendaryDiscards, d => Assert.NotEqual(kept, d.Xref));
+    }
+
+    [Fact]
     public void Draw_TakesRequestedCount_WhenPoolLargeEnough()
     {
         var pool = Enumerable.Range(0, 10).Select(i => MakeTarget($"@I{i}@", DifficultyBand.Common)).ToList();
-        var result = TargetDrawer.Draw(pool, count: 5, seed: 42);
+        var result = TargetDrawer.Draw(pool, people: 5, seed: 42);
         Assert.Equal(5, result.Targets.Count);
         Assert.Equal(result.Targets.Select(t => t.Xref).Distinct().Count(), result.Targets.Count);
     }
@@ -1135,7 +1192,7 @@ public class TargetDrawerTests
     public void Draw_CapsAtPoolSize_WhenCountExceedsPool()
     {
         var pool = Enumerable.Range(0, 3).Select(i => MakeTarget($"@I{i}@", DifficultyBand.Common)).ToList();
-        var result = TargetDrawer.Draw(pool, count: 10, seed: 1);
+        var result = TargetDrawer.Draw(pool, people: 10, seed: 1);
         Assert.Equal(3, result.Targets.Count);
     }
 
@@ -1147,7 +1204,7 @@ public class TargetDrawerTests
             MakeTarget("@L1@", DifficultyBand.Legendary),
             MakeTarget("@L2@", DifficultyBand.Legendary),
         };
-        var result = TargetDrawer.Draw(pool, count: 2, seed: 7);
+        var result = TargetDrawer.Draw(pool, people: 2, seed: 7);
 
         Assert.Single(result.Targets);
         Assert.Equal(DifficultyBand.Legendary, result.Targets[0].Difficulty.Band);
@@ -1163,7 +1220,7 @@ public class TargetDrawerTests
             MakeTarget("@C1@", DifficultyBand.Common),
             MakeTarget("@C2@", DifficultyBand.Common),
         };
-        var result = TargetDrawer.Draw(pool, count: 3, seed: 3);
+        var result = TargetDrawer.Draw(pool, people: 3, seed: 3);
 
         Assert.Equal(3, result.Targets.Count);
         Assert.Empty(result.LegendaryDiscards);
@@ -1174,8 +1231,8 @@ public class TargetDrawerTests
     public void Draw_SameSeedAndPool_IsDeterministic()
     {
         var pool = Enumerable.Range(0, 20).Select(i => MakeTarget($"@I{i}@", DifficultyBand.Common)).ToList();
-        var first = TargetDrawer.Draw(pool, count: 6, seed: 12345);
-        var second = TargetDrawer.Draw(pool, count: 6, seed: 12345);
+        var first = TargetDrawer.Draw(pool, people: 6, seed: 12345);
+        var second = TargetDrawer.Draw(pool, people: 6, seed: 12345);
 
         Assert.Equal(first.Targets.Select(t => t.Xref), second.Targets.Select(t => t.Xref));
     }

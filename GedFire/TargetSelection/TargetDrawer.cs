@@ -1,6 +1,8 @@
+using GedFire.Gen;
+
 namespace GedFire.TargetSelection;
 
-/// <summary>One target discarded from a draw because it would have been a second Legendary in the pack.</summary>
+/// <summary>One target discarded from a draw because its person would have been a second Legendary person in the pack.</summary>
 public sealed record DiscardedTarget
 {
     public required string Xref { get; init; }
@@ -18,58 +20,65 @@ public sealed record DrawResult
 }
 
 /// <summary>
-/// Draws a pack of targets from the full candidate set: uniform odds for
-/// every card, with a hard cap of one Legendary-band card per pack. A
-/// second Legendary in the draw is discarded, not replaced by a redraw, so
-/// the pack can land short of the requested count.
+/// Draws a pack from the full candidate set by person: uniform odds for every
+/// person with at least one card, and every card of each drawn person, kept
+/// together. A pack holds at most one person with a Legendary-band card; a
+/// later such person is discarded whole, not replaced by a redraw, so the pack
+/// can land short of the requested number of people.
 /// </summary>
 public static class TargetDrawer
 {
     /// <summary>
-    /// Draw <paramref name="count"/> candidates uniformly at random, without
-    /// replacement, from <paramref name="candidates"/>. <paramref name="seed"/>
+    /// <see cref="Draw"/> over the gap cards in <paramref name="model"/>, with every card that pays for each
+    /// drawn person: their gap cards, then a man's Biography card. Biography alone never brings a person into the draw.
+    /// </summary>
+    public static DrawResult DrawPack(GedModel model, IReadOnlyList<SelectionTarget> gapCards, int people, long seed)
+    {
+        var draw = Draw(gapCards, people, seed);
+        var drawn = draw.Targets.Select(t => t.Xref).Distinct().Select(xref => model.Individuals[xref]);
+        return draw with { Targets = GapDetector.WithBiographyCards(drawn, draw.Targets) };
+    }
+
+    /// <summary>
+    /// Draw <paramref name="people"/> people uniformly at random, without
+    /// replacement, from those holding <paramref name="candidates"/>, and return
+    /// all of each one's cards. <paramref name="seed"/>
     /// is recorded verbatim in the result for the audit log — callers
     /// generate it themselves, typically from the system clock. The CLI has
     /// no --seed input, so users cannot request a specific outcome.
     /// </summary>
-    public static DrawResult Draw(IReadOnlyList<SelectionTarget> candidates, int count, long seed)
+    public static DrawResult Draw(IReadOnlyList<SelectionTarget> candidates, int people, long seed)
     {
         var rng = new Random(unchecked((int)seed));
-        var pool = candidates.ToList();
-        int take = Math.Max(0, Math.Min(count, pool.Count));
+        var pool = candidates.GroupBy(c => c.Xref, StringComparer.Ordinal).Select(g => g.ToList()).ToList();
+        int take = Math.Max(0, Math.Min(people, pool.Count));
 
-        // Partial Fisher-Yates: selects `take` elements uniformly at random,
+        // Partial Fisher-Yates: selects `take` people uniformly at random,
         // without replacement, and leaves them in the order they were dealt
         // (indices 0..take-1) — that draw order is what "keep the first
-        // Legendary, discard the rest" below means by "first".
+        // Legendary person, discard the rest" below means by "first".
         for (int i = 0; i < take; i++)
         {
             int j = rng.Next(i, pool.Count);
             (pool[i], pool[j]) = (pool[j], pool[i]);
         }
 
-        var drawn = new List<SelectionTarget>(take);
+        var drawn = new List<SelectionTarget>();
         var discards = new List<DiscardedTarget>();
         bool haveLegendary = false;
 
-        for (int i = 0; i < take; i++)
+        foreach (var cards in pool.Take(take))
         {
-            var candidate = pool[i];
-            if (candidate.Difficulty.Band == DifficultyBand.Legendary)
+            if (cards.Any(c => c.Difficulty.Band == DifficultyBand.Legendary))
             {
                 if (haveLegendary)
                 {
-                    discards.Add(new DiscardedTarget
-                    {
-                        Xref = candidate.Xref,
-                        Name = candidate.Name,
-                        CardType = candidate.CardType,
-                    });
+                    discards.AddRange(cards.Select(c => new DiscardedTarget { Xref = c.Xref, Name = c.Name, CardType = c.CardType }));
                     continue;
                 }
                 haveLegendary = true;
             }
-            drawn.Add(candidate);
+            drawn.AddRange(cards);
         }
 
         return new DrawResult { Targets = drawn, Seed = seed, LegendaryDiscards = discards };

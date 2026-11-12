@@ -247,7 +247,7 @@ different file or provider.
 | `list_unanchored_people` | Find people with no dated or placed anchors of their own or through immediate kin. |
 | `match_record` | Compare a multi-person record with tree families and survey same-name rivals. |
 | `research_brief` | Summarize a person's facts, kin, gaps, notes, duplicates, and plausibility issues. |
-| `select_targets` | Score research gaps and draw targets, or score specified people, including each person's repeatable Biography card. |
+| `select_targets` | Draw people with research gaps, or score specified people, returning every card that pays for each, including a man's repeatable Biography card. |
 | `date_calc` | Normalize dual dates, add or subtract ages, or calculate elapsed time. |
 | `describe_changeset_ops` | Return the changeset envelope, operation schemas, and worked examples. |
 | `draft_changeset` | Compile findings into cited changesets and report unresolved decisions. |
@@ -346,7 +346,7 @@ The CLI uses the same engine as the MCP server.
 | `apply` | Preview or apply selected changeset items; use `--dry-run` to preview. |
 | `generate` | Generate static family pages, with optional media staging. |
 | `export-index` | Export a JSON person-name index. |
-| `select-targets` | Detect, score, and draw research gaps for study surnames. |
+| `select-targets` | Draw people with research gaps for study surnames, with every card that pays for each. |
 | `date-calc` | Normalize dual dates or calculate dates and ages. |
 | `find-person` / `get-record` / `get-document-stats` | Run one lookup and print JSON without starting a server. |
 | `pack` / `unpack` | Create or extract a GEDZIP archive. |
