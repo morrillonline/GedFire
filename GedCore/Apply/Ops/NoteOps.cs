@@ -15,16 +15,27 @@ namespace GedCore.Apply;
 /// generator renders a cited INDI-level note as a prose paragraph with the
 /// source footnoted, rather than as plain note text. Citations are upserted
 /// idempotently, so re-applying leaves the file byte-identical.
+///
+/// Purpose "biography" says the note is the person's cited biographical prose
+/// and records the citations the op added for biography credit
+/// (<see cref="BiographyNotes"/>); the purpose lives in the changeset only and
+/// writes nothing extra to the file. A note a biography op wrote never
+/// receives moveToNote citations in the same run.
 /// </summary>
 public sealed class CreateOrUpdateNoteOp : ChangeOp
 {
+    public const string BiographyPurpose = "biography";
+
     public override string Kind => "createOrUpdateNote";
 
     public required string Record { get; init; }
     public required string Text { get; init; }
     public string? Match { get; init; }
     public string? Mime { get; init; }
+    public string? Purpose { get; init; }
     public IReadOnlyList<Citation> Citations { get; init; } = [];
+
+    bool IsBiography => string.Equals(Purpose?.Trim(), BiographyPurpose, StringComparison.OrdinalIgnoreCase);
 
     internal override IEnumerable<string> CitedSources => Citations.Select(c => c.Source);
 
@@ -34,6 +45,7 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
         Text = JsonRead.Req(el, "text", "createOrUpdateNote"),
         Match = JsonRead.Str(el, "match"),
         Mime = JsonRead.Str(el, "mime"),
+        Purpose = JsonRead.Str(el, "purpose"),
         Citations = Citation.ReadAll(el),
     };
 
@@ -44,6 +56,10 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
         if (!ctx.Known(Record)) { errors.Add($"{Kind} on {Record}: target not in file"); return; }
         if (Mime is not null && !IsSupportedMime(Mime))
             errors.Add($"{Kind} on {Record}: mime must be text/plain or text/html");
+        if (Purpose is not null && !IsBiography)
+            errors.Add($"{Kind} on {Record}: purpose must be \"{BiographyPurpose}\"");
+        else if (IsBiography && !IsPerson(ctx))
+            errors.Add($"{Kind} on {Record}: a biography note belongs on a person");
         // Citations are optional on a note, but any given must name a known source.
         OpChecks.CitationsValid(ctx, $"{Kind} on {Record}", Citations, errors);
         var target = ctx.Existing(Record);
@@ -56,63 +72,63 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
             errors.Add($"{Kind} on {Record}: no note matches \"match\" (and none already has the new text)");
     }
 
+    bool IsPerson(ResolutionContext ctx) =>
+        ctx.Existing(Record) is { } existing
+            ? existing.Tag == "INDI"
+            : ctx.Placeholders.TryGetKind(Record, out var kind) && kind == PlaceholderKind.Person;
+
     internal override void Apply(ApplyState state, List<string> log)
     {
         var target = state.Doc.ByXref[state.Resolve(Record)];
-        var citations = state.ResolveCitations(Citations);
-        string requestedText = NodeBuilder.NormalizeText(Text);
-        string? requestedMime = Mime is null ? null : NormalizeMime(Mime);
+        var (note, action) = WriteText(state, target);
 
-        // Get-or-create the note node, then upsert citations onto it. Keeping the
-        // text and the citations in one idempotent pass means a re-run is a no-op
-        // whether or not the note already carries the sources.
-        GedRecord note;
-        string action;
-        var identical = target.ChildrenByTag("NOTE").FirstOrDefault(note => note.FullValue() == requestedText);
-        if (identical is not null)
+        if (Mime is not null && NodeBuilder.SetNoteMime(note, NormalizeMime(Mime)))
         {
-            note = identical;
-            action = "no-op (already present)";
-        }
-        else
-        {
-            var matched = Match is null
-                ? null
-                : target.ChildrenByTag("NOTE").FirstOrDefault(note =>
-                    note.FullValue() == NodeBuilder.NormalizeText(Match));
-            if (matched is not null)
-            {
-                NodeBuilder.SetNoteText(matched, requestedText);
-                state.Mutated();
-                state.Touch(target);
-                note = matched;
-                action = "updated (text rewritten)";
-            }
-            else
-            {
-                note = NodeBuilder.NoteNode(1, requestedText, requestedMime);
-                NodeBuilder.Attach(target, note);
-                state.Mutated();
-                state.Touch(target);
-                action = "created";
-            }
+            Changed(state, target);
+            action ??= "updated (MIME changed)";
         }
 
-        if (Mime is not null && NodeBuilder.SetNoteMime(note, requestedMime))
-        {
-            state.Mutated();
-            state.Touch(target);
-            action = action == "no-op (already present)" ? "updated (MIME changed)" : action;
-        }
+        var heldCitations = BiographyNotes.CitationsOf(note).ToHashSet();
         state.NotesAddedThisItem[target.Xref!] = note;
 
-        var citeChanges = CitationReconciler.Upsert(state, note, citations);
+        var citeChanges = CitationReconciler.Upsert(state, note, state.ResolveCitations(Citations));
+        if (IsBiography)
+        {
+            state.BiographyNotesWritten.Add(note);
+            state.AddBiographyCitations(target.Xref!, BiographyNotes.CitationsOf(note).Where(c => !heldCitations.Contains(c)));
+        }
 
-        if (citeChanges.Count > 0)
-            action = action == "no-op (already present)"
-                ? string.Join("; ", citeChanges)
-                : $"{action}; {string.Join("; ", citeChanges)}";
-        log.Add($"{Kind} on {target.Xref}: {action}");
+        var parts = new[] { action }.OfType<string>().Concat(citeChanges).ToList();
+        log.Add($"{Kind} on {target.Xref}: {(parts.Count == 0 ? "no-op (already present)" : string.Join("; ", parts))}");
+    }
+
+    // The note with the requested text, else the matched note rewritten, else a new note; the action is null when the text was already present.
+    (GedRecord Note, string? Action) WriteText(ApplyState state, GedRecord target)
+    {
+        string requestedText = NodeBuilder.NormalizeText(Text);
+        var identical = target.ChildrenByTag("NOTE").FirstOrDefault(note => note.FullValue() == requestedText);
+        if (identical is not null) return (identical, null);
+
+        var matched = Match is null
+            ? null
+            : target.ChildrenByTag("NOTE").FirstOrDefault(note => note.FullValue() == NodeBuilder.NormalizeText(Match));
+        if (matched is not null)
+        {
+            NodeBuilder.SetNoteText(matched, requestedText);
+            Changed(state, target);
+            return (matched, "updated (text rewritten)");
+        }
+
+        var created = NodeBuilder.NoteNode(1, requestedText, Mime is null ? null : NormalizeMime(Mime));
+        NodeBuilder.Attach(target, created);
+        Changed(state, target);
+        return (created, "created");
+    }
+
+    static void Changed(ApplyState state, GedRecord target)
+    {
+        state.Mutated();
+        state.Touch(target);
     }
 
     static string? NormalizeMime(string mime) => mime.Trim().ToLowerInvariant() switch

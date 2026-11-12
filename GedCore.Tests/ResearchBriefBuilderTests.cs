@@ -139,7 +139,8 @@ public class ResearchBriefBuilderTests
     {
         var snapshot = Snapshot();
         var brief = Build(snapshot);
-        var expected = GapDetector.DetectForPeople([snapshot.Model.Individuals["@I1@"]]);
+        var person = snapshot.Model.Individuals["@I1@"];
+        var expected = GapDetector.WithBiographyCards([person], GapDetector.DetectForPeople([person]));
 
         Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(brief.Gaps));
         Assert.NotEmpty(brief.Gaps);

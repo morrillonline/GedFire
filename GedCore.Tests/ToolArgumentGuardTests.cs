@@ -32,7 +32,7 @@ public class ToolArgumentGuardTests : IDisposable
     [Fact]
     public void Check_AllRequiredPresentAndNothingElse_ReturnsNull()
     {
-        Assert.Null(Guard().Check("select_targets", Args("""{"count": 5, "surnames": ["Ashworth"]}""")));
+        Assert.Null(Guard().Check("select_targets", Args("""{"people": 5, "surnames": ["Ashworth"]}""")));
     }
 
     [Fact]
@@ -64,10 +64,10 @@ public class ToolArgumentGuardTests : IDisposable
     [Fact]
     public void Check_UnrecognizedParameter_NamesItAndListsAcceptedParameters()
     {
-        string? error = Guard().Check("select_targets", Args("""{"count": 5, "surnames": ["A"], "surname": "B"}"""));
+        string? error = Guard().Check("select_targets", Args("""{"people": 5, "surnames": ["A"], "surname": "B"}"""));
 
         Assert.Equal(
-            "select_targets: unrecognized parameter \"surname\". Accepted parameters: count, surnames, xrefs.",
+            "select_targets: unrecognized parameter \"surname\". Accepted parameters: people, surnames, xrefs.",
             error);
     }
 
@@ -82,7 +82,7 @@ public class ToolArgumentGuardTests : IDisposable
     [Fact]
     public void Check_SeveralUnrecognizedParameters_AreAllNamedInOrder()
     {
-        string? error = Guard().Check("select_targets", Args("""{"count": 5, "surnames": ["A"], "zeta": 1, "alpha": 2}"""));
+        string? error = Guard().Check("select_targets", Args("""{"people": 5, "surnames": ["A"], "zeta": 1, "alpha": 2}"""));
 
         Assert.Contains("unrecognized parameters \"alpha\", \"zeta\"", error);
     }

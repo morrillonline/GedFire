@@ -72,6 +72,7 @@ internal sealed class ItemDrafter(
     {
         var op = new JsonObject { ["op"] = "createOrUpdateNote", ["record"] = note.Record, ["text"] = note.Text };
         if (note.Match is not null) op["match"] = note.Match;
+        if (note.Purpose is not null) op["purpose"] = note.Purpose;
         var cites = note.Cites.Select(c => NoteClaim(group, owner, c).Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!).ToList();
         AttachCitations(op, cites);
         return Backed(op, note.Cites.Select(c => c.Finding ?? owner.Id));

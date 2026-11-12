@@ -46,7 +46,7 @@ public static class WantedFileWriter
 
     /// <summary>The document for an explicit-xrefs scoring: no surnames, a null seed, and the input xrefs that produced no target.</summary>
     public static string ToJsonForXrefs(IReadOnlyList<string> xrefsWithoutGaps, DrawResult draw) =>
-        Serialize(null, [], draw.Targets.Count, draw, xrefsWithoutGaps);
+        Serialize(null, [], draw.Targets.Count(t => t.CardType != CardType.Biography.Display()), draw, xrefsWithoutGaps);
 
     static string Serialize(
         string? source, IReadOnlyCollection<string> surnames, int totalCandidates, DrawResult draw,

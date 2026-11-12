@@ -52,7 +52,7 @@ public static class PointsCardReader
             return false;
 
         if (string.IsNullOrWhiteSpace(xref)) error = $"{path}.xref is required: the card subject's xref such as \"@I00006@\".";
-        else if (string.IsNullOrWhiteSpace(cls)) error = $"{path}.class is required: enrich-person, new-parent, new-spouse or new-child.";
+        else if (string.IsNullOrWhiteSpace(cls)) error = $"{path}.class is required: enrich-person, new-parent, new-spouse, new-child or biography.";
         else if (points < 0) error = $"{path}.points is required: a non-negative integer.";
         if (error is not null) return false;
 

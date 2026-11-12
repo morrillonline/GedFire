@@ -432,7 +432,8 @@ public static class ChangesetApplier
             .ToHashSet(StringComparer.Ordinal);
         cancellationToken.ThrowIfCancellationRequested();
         var beforeDoc = Ged70Parser.Read(new MemoryStream(originalBytes));
-        result.Changes = TreeChanges.Between(beforeDoc, state.Doc, state.TouchedRoots);
+        result.Changes = TreeChanges.Between(
+            beforeDoc, state.Doc, state.TouchedRoots, BiographyCredit.Find(beforeDoc, state.Doc, state));
         var beforeDiags = AllDiagnostics(beforeDoc, touchedIndiXrefs, cancellationToken);
         var afterDiags = AllDiagnostics(state.Doc, touchedIndiXrefs, cancellationToken);
         var newDiags = ConformanceChecker.DiffDiagnostics(beforeDiags, afterDiags);

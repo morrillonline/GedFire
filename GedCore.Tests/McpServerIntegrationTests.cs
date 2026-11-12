@@ -638,11 +638,12 @@ public class McpServerIntegrationTests : IDisposable
         await using var client = McpStdioTestClient.Start(WriteFamilyGed());
         await client.InitializeAsync(ShortTimeout);
 
-        var result = await CallTool(client, "select_targets", """{"count":2,"surnames":["Ashworth"]}""");
+        var result = await CallTool(client, "select_targets", """{"people":2,"surnames":["Ashworth"]}""");
 
         Assert.False(result.TryGetProperty("source", out _));
         Assert.True(result.GetProperty("totalCandidates").GetInt32() > 0);
-        Assert.True(result.GetProperty("count").GetInt32() <= 2);
+        var people = result.GetProperty("targets").EnumerateArray().Select(t => t.GetProperty("xref").GetString()).Distinct();
+        Assert.InRange(people.Count(), 1, 2);
     }
 
     [Fact]

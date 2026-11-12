@@ -2,7 +2,7 @@ namespace GedCore.Points;
 
 /// <summary>
 /// A research card an author is working: the person it is about, its class
-/// ("enrich-person", "new-parent", "new-spouse", "new-child"), for an enrich
+/// ("enrich-person", "new-parent", "new-spouse", "new-child", "biography"), for an enrich
 /// card the gap it names ("enrich-death", "enrich-death-place"), and its points.
 /// </summary>
 public sealed record PointsCard(string Xref, string Class, string? Gap, string? Name, int Points, int Bonus = 0)

@@ -107,6 +107,47 @@ public static class GapDetector
         return birthYear > 0 && birthYear >= privacyFloorYear;
     }
 
+    // -------------------------------------------------------------------
+    // Biography — not a gap: one repeatable card per man for cited
+    // biographical prose, open even when prose exists, and offered only
+    // beside another of his cards. Priced like enrichment: era and region of
+    // the person's own birth, no anchor-strength adjustment.
+    // -------------------------------------------------------------------
+
+    public const int BiographyPoints = 3;
+
+    /// <summary>One Biography card for each man among <paramref name="people"/> outside the privacy floor, in order.</summary>
+    public static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people) =>
+        BiographyCards(people, DateTime.UtcNow.Year);
+
+    /// <summary>
+    /// Every card that pays for each of <paramref name="people"/>, in order: the person's <paramref name="gapCards"/>,
+    /// then, for a man with at least one of them, his Biography card.
+    /// </summary>
+    public static List<SelectionTarget> WithBiographyCards(IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards)
+    {
+        var byPerson = gapCards.ToLookup(c => c.Xref, StringComparer.Ordinal);
+        return [.. people.SelectMany(person => byPerson[person.Xref].Any()
+            ? byPerson[person.Xref].Concat(BiographyCards([person]))
+            : [])];
+    }
+
+    /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
+    public static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people, int currentYear)
+    {
+        int privacyFloorYear = currentYear - PrivacyFloorYears;
+        return [.. people
+            .Where(person => person.IsMale && !IsWithinPrivacyFloor(person, privacyFloorYear))
+            .Select(person => BuildTarget(person, CardType.Biography, BiographyPoints, DifficultyScore.Compute(
+                EraWeightForDate(BiographyEraDate(person)), ExactnessRules.GeographyWeight(person.Birth?.Place), contextAdjustment: 0)))];
+    }
+
+    // The person's birth, else the first of death and marriage that is dated, as enrichment falls back.
+    static string? BiographyEraDate(GedIndividual person) =>
+        new[] { person.Birth?.Date, person.Death?.Date }
+            .Concat(person.FamSpouse.Select(f => f.Marriage?.Date))
+            .FirstOrDefault(d => !string.IsNullOrEmpty(d));
+
     static bool HasAnchor(GedEvent? gedEvent) =>
         gedEvent is not null && (ExactnessRules.IsExactDate(gedEvent.Date) || !string.IsNullOrWhiteSpace(gedEvent.Place));
 

@@ -42,17 +42,23 @@ public sealed class TreeChanges
     /// <summary>Every person or family record the changeset touched, whether or not it wrote a fact there (a citation or note touches).</summary>
     public IReadOnlySet<string> Touched { get; }
 
+    /// <summary>The people whose biography notes gained a citation none of them carried before; see <see cref="BiographyNotes"/>.</summary>
+    public IReadOnlyList<BiographyWrite> Biographies { get; }
+
     public TreeChanges(
         IReadOnlyList<FactWrite> facts, IReadOnlyDictionary<string, NameChange> names,
-        IReadOnlyDictionary<string, FamilyChange> families, IReadOnlySet<string>? touched = null)
+        IReadOnlyDictionary<string, FamilyChange> families, IReadOnlySet<string>? touched = null,
+        IReadOnlyList<BiographyWrite>? biographies = null)
     {
         Facts = facts;
         Names = names;
         Families = families;
         Touched = touched ?? new HashSet<string>();
+        Biographies = biographies ?? [];
     }
 
-    public static TreeChanges Between(GedDocument before, GedDocument after, IEnumerable<GedRecord> touchedRoots)
+    public static TreeChanges Between(
+        GedDocument before, GedDocument after, IEnumerable<GedRecord> touchedRoots, IReadOnlyList<BiographyWrite>? biographies = null)
     {
         var facts = new List<FactWrite>();
         var names = new Dictionary<string, NameChange>(StringComparer.Ordinal);
@@ -68,7 +74,7 @@ public sealed class TreeChanges
             if (root.Tag == "INDI") AddNameChange(names, xref, prior, root);
             else families[xref] = FamilyDiff(prior, root);
         }
-        return new TreeChanges(facts, names, families, touched);
+        return new TreeChanges(facts, names, families, touched, biographies);
     }
 
     sealed record FactSignature(string Tag, string? Date, string? Place, bool Cited);

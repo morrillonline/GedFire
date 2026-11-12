@@ -92,6 +92,19 @@ public class DraftNoteJoinerTests
     }
 
     [Fact]
+    public void BiographyNotes_JoinOnlyWithBiographyNotes()
+    {
+        var joined = DraftNoteJoiner.Join([
+            Finding("F-1", "@I1@", null, Note("@I1@", "Died in Salem."), Note("@I1@", "Served in the militia.") with { Purpose = "biography" }),
+            Finding("F-2", "@I1@", null, Note("@I1@", "Farmed near Salem.") with { Purpose = "biography" }, Note("@I1@", "Buried in Salem."))]);
+
+        Assert.Equal(
+            [("Died in Salem. Buried in Salem.", null), ("Served in the militia. Farmed near Salem.", "biography")],
+            joined[0].Notes.Select(n => (n.Text, n.Purpose)));
+        Assert.Empty(joined[1].Notes);
+    }
+
+    [Fact]
     public void TheInputList_IsNotChanged()
     {
         var input = new[]

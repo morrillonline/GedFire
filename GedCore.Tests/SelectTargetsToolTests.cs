@@ -202,11 +202,13 @@ public class SelectTargetsToolTests : IDisposable
     }
 
     [Fact]
-    public async Task SelectTargets_CountBelowCandidates_ReturnsExactlyThatMany()
+    public async Task SelectTargets_CountOfOne_ReturnsEveryCardOfOnePerson()
     {
         var result = await Call(Tool(), "1", "[\"Ashworth\"]");
 
-        Assert.Equal(1, result.StructuredContent!.Value.GetProperty("count").GetInt32());
+        var targets = result.StructuredContent!.Value.GetProperty("targets").EnumerateArray().ToList();
+        Assert.Single(targets.Select(t => t.GetProperty("xref").GetString()).Distinct());
+        Assert.Equal(targets.Count, result.StructuredContent!.Value.GetProperty("count").GetInt32());
     }
 
     [Fact]
@@ -220,14 +222,16 @@ public class SelectTargetsToolTests : IDisposable
 
         var root = result.StructuredContent!.Value;
         long seed = root.GetProperty("draw").GetProperty("seed").GetInt64();
-        var expected = GedFire.TargetSelection.TargetDrawer.Draw(candidates, 50, seed).Targets.Select(t => t.Xref);
-        Assert.Equal(expected, root.GetProperty("targets").EnumerateArray().Select(t => t.GetProperty("xref").GetString()!));
+        var expected = GedFire.TargetSelection.TargetDrawer.DrawPack(snapshot.Model, candidates, 50, seed).Targets
+            .Select(t => (t.Xref, t.CardType));
+        Assert.Equal(expected, root.GetProperty("targets").EnumerateArray()
+            .Select(t => (t.GetProperty("xref").GetString()!, t.GetProperty("cardType").GetString()!)));
     }
 
     [Theory]
-    [InlineData("null", "[\"Ashworth\"]", "count is required")]
-    [InlineData("\"5\"", "[\"Ashworth\"]", "count must be an integer between 1 and")]
-    [InlineData("0", "[\"Ashworth\"]", "count must be an integer between 1 and")]
+    [InlineData("null", "[\"Ashworth\"]", "people is required")]
+    [InlineData("\"5\"", "[\"Ashworth\"]", "people must be an integer between 1 and")]
+    [InlineData("0", "[\"Ashworth\"]", "people must be an integer between 1 and")]
     [InlineData("5", "null", "surnames is required")]
     [InlineData("5", "[]", "surnames is required")]
     [InlineData("5", "\"Ashworth\"", "surnames must be an array")]
@@ -391,7 +395,7 @@ public class SelectTargetsToolTests : IDisposable
         var result = await XrefTool().HandleAsync(Json("5"), default, Json("[\"@I10@\"]"), CancellationToken.None);
 
         Assert.True(result.IsError);
-        Assert.Contains("xrefs cannot be combined with count or surnames", ErrorText(result));
+        Assert.Contains("xrefs cannot be combined with people or surnames", ErrorText(result));
     }
 
     [Theory]

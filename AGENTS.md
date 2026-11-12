@@ -8,6 +8,7 @@ GedFire is an open-source .NET command-line tool for AI-assisted family-history 
 - `GedFire/` contains the `gedfire` CLI, MCP, static-site generator, exporters, and template lookup.
 - `GedCore.Tests/` contains the xUnit test suite and synthetic GEDCOM and changeset fixtures.
 - `docs/demo/` contains the fictional data used by the README walkthrough.
+- Open MCP feature requests are kept outside this repository, in the sibling research repository at `../morrillonline/research/notes/gedfire-mcp-requests.md`. Check it when asked about requested or planned MCP features.
 
 Keep domain behavior in `GedCore` when it does not depend on command-line or site-generation concerns. Keep argument parsing and user-facing command behavior in `GedFire`.
 
@@ -58,6 +59,7 @@ Before declaring that a change is ready to commit, run the full test suite to en
 - GEDCOM and GEDZIP files must conform to standards. Refer to the [FamilySearch GEDCOM 7 specification](https://gedcom.io/specifications/FamilySearchGEDCOMv7.html) for the latest standard. 
 - Never take risks when modifying a GEDCOM file. Corrupting a file must be avoided. Use the validate routine when a corrupted file is suspected.
 - GEDCOM extensions are allowed by the standard and so should be supported by this system.
+- GedFire itself never writes GEDCOM extensions (no `_TAG` structures or `HEAD.SCHMA` entries of its own). Express GedFire's data with standard GEDCOM 7 structures, such as a plain person-level `NOTE` with source citations for biographical prose; keep tool-only metadata in changesets.
 - Preserve GEDCOM record xrefs (such as `@I1@`) across all edits. Never renumber or reuse them; remove them only through an approved delete or merge.
 - With fixes and enhancements, make heavy use of unit tests to ensure correctness and no regressions.
 - Always respect the MCP read-only option when enabled. "Read-only" means exactly one thing: the GEDCOM file is not modified. That is the only intent. Do not read more into the word, such as a rule that no tool may write any other file, and do not extend it to other behavior.

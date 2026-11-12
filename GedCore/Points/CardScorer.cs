@@ -8,11 +8,14 @@ namespace GedCore.Points;
 /// card closes only when the fact it names was written on its subject (a card naming no
 /// single fact closes on any improved fact, at its points per improvement); a new-parent,
 /// new-spouse or new-child card closes only when the family gained that relative, allocated
-/// one-to-one by <see cref="NewRelativeCardAllocator"/>; a changeset that renames a card's
-/// subject closes nothing for it.
+/// one-to-one by <see cref="NewRelativeCardAllocator"/>; a biography card closes when a biography
+/// note on its subject gained a citation, at most once per person; a changeset that renames a
+/// card's subject closes nothing for it.
 /// </summary>
 public static class CardScorer
 {
+    public const string BiographyClass = "biography";
+
     /// <summary>How one card fared: closed with what it <c>Wrote</c> (and its <c>Points</c>, when they differ from the card's), or open with a reason.</summary>
     sealed record Closure(string? Wrote, string? Reason, IReadOnlyList<string> Added, int? Points = null)
     {
@@ -36,6 +39,7 @@ public static class CardScorer
     {
         var list = cards.ToList();
         var relatives = NewRelativeCardAllocator.Allocate(list, changes);
+        var biographyAwards = new Dictionary<string, string>(StringComparer.Ordinal);
         var closed = new List<ClosedCard>();
         var notClosed = new List<UnclosedCard>();
         var mismatches = new List<SubjectMismatch>();
@@ -56,11 +60,16 @@ public static class CardScorer
                 mismatches.Add(new SubjectMismatch(card.Key, card.Name!, minted));
                 notClosed.Add(new UnclosedCard(card.Key, $"the changeset mints \"{minted}\", not the card's \"{card.Name}\""));
             }
+            else if (closure.Wrote is not null && IsBiography(card) && !biographyAwards.TryAdd(card.Xref, card.Key))
+                notClosed.Add(new UnclosedCard(card.Key,
+                    $"card {biographyAwards[card.Xref]} already takes this changeset's one Biography award for {card.Xref}"));
             else if (closure.Wrote is not null) closed.Add(new ClosedCard(card.Key, closure.Points ?? card.Points, closure.Wrote));
             else notClosed.Add(new UnclosedCard(card.Key, closure.Reason!));
         }
         return new PointsPreview(closed, notClosed, mismatches, closed.Sum(c => c.Points));
     }
+
+    static bool IsBiography(PointsCard card) => CardText.Normalize(card.Class) == BiographyClass;
 
     static string? RenamedAway(PointsCard card, TreeChanges changes) =>
         card.Name is not null
@@ -85,8 +94,14 @@ public static class CardScorer
         CardText.Normalize(card.Class) switch
         {
             "enrich-person" => CloseEnrich(card, changes),
+            BiographyClass => CloseBiography(card, changes),
             _ => Closure.Open($"unknown card class \"{card.Class}\""),
         };
+
+    static Closure CloseBiography(PointsCard card, TreeChanges changes) =>
+        changes.Biographies.FirstOrDefault(b => b.Record == card.Xref) is { } write
+            ? Closure.Closes($"biography note on {card.Xref} citing {string.Join("; ", write.NewCitations)}")
+            : Closure.Open("no biography note on the subject gained a citation its biography notes did not already carry");
 
     static Closure ToClosure(NewRelativeOutcome outcome) =>
         outcome.Wrote is not null ? Closure.Closes(outcome.Wrote, outcome.Added) : Closure.Open(outcome.Reason!);

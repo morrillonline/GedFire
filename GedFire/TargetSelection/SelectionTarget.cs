@@ -3,8 +3,9 @@ namespace GedFire.TargetSelection;
 /// <summary>
 /// One self-contained research target — enough detail that an agent can
 /// immediately start work with no further context.
-/// Exactly one of <see cref="KnownParent"/>, <see cref="SpouseFamily"/>,
-/// <see cref="Enrichments"/> is populated, matching <see cref="CardType"/>.
+/// At most one of <see cref="KnownParent"/>, <see cref="SpouseFamily"/>,
+/// <see cref="Enrichments"/> is populated, matching <see cref="CardType"/>;
+/// a Biography target carries none of them.
 /// </summary>
 public sealed record SelectionTarget
 {

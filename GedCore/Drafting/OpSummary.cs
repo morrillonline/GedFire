@@ -15,7 +15,7 @@ internal static class OpSummary
             "createOrUpdateSpouse" => $"Link {Text(op, "person")} to spouse {PersonRef(op, "spouse")}{FamilyOf(op)}",
             "createOrUpdateChild" => $"Add child {PersonRef(op, "child")} to {Text(op, "family")}",
             "createOrUpdateParent" => $"Add {Text(op, "role")} {PersonRef(op, "parent")} to {Text(op, "person")}",
-            "createOrUpdateNote" => $"{(Has(op, "match") ? "Rewrite a note" : "Add a note")} on {Text(op, "record")}: \"{OneLine(Text(op, "text"))}\"",
+            "createOrUpdateNote" => $"{(Has(op, "match") ? "Rewrite" : "Add")} a {(Has(op, "purpose") ? "biography " : "")}note on {Text(op, "record")}: \"{OneLine(Text(op, "text"))}\"",
             "deleteChild" => $"Remove child {Text(op, "child")} from {Text(op, "family")}",
             "deleteParent" => $"Remove the {Text(op, "role")} of {Text(op, "person")}",
             "deleteVital" => $"Withdraw {Text(op, "fact")} on {Text(op, "record")}{MatchOf(op)}",
