@@ -200,6 +200,7 @@ public sealed class DraftChangesetTool
                         "record": { "type": "string", "pattern": "^@[^@]+@$" },
                         "text": { "type": "string" },
                         "match": { "type": "string", "description": "The exact text of an existing note on the record, to rewrite instead of adding a new note." },
+                        "purpose": { "type": "string", "enum": ["biography"], "description": "biography: the note is the person's cited biographical prose (service, occupation, migration, probate...), compiled to a createOrUpdateNote with purpose biography so a citation it adds earns biography credit. Biography notes are joined only with other biography notes." },
                         "cites": {
                           "type": "array",
                           "description": "Citations on the note. Each cites a finding of this draft aimed at the same target (the note's own finding when finding is omitted), graded on its own.",

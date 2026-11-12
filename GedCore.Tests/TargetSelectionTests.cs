@@ -1077,6 +1077,32 @@ public class GapDetectorTests
         var targets = Detect(ged, currentYear: 2026, "Morrill");
         Assert.NotEmpty(targets);
     }
+
+    [Theory]
+    [InlineData("4 JUL 1950", "Boston, Massachusetts", false, 0, 0)]       // within the privacy floor
+    [InlineData("4 JUL 1910", "Boston, Massachusetts", true, 0, 3)]        // Common: complete vitals still earn a card
+    [InlineData("ABT 1750", "Paris, France", true, 4, 13)]                  // Rare: era 2 + region 2, no anchor adjustment
+    [InlineData(null, "Tokyo, Japan", true, 3, 13)]                         // undated birth falls back to the death's era
+    public void BiographyCards_PriceThreePointsPlusTheEnrichmentDifficultyBonus(
+        string? birthDate, string place, bool expected, int rawDifficulty, int score)
+    {
+        var person = new GedIndividual
+        {
+            Xref = "@I1@", FirstName = "Ada", LastNameRaw = "Ashworth",
+            Birth = new GedEvent { Date = birthDate ?? "", Place = place },
+            Death = new GedEvent { Date = "1 MAR 1960" },
+        };
+
+        var cards = GapDetector.BiographyCards([person], 2026);
+
+        Assert.Equal(expected, cards.Count == 1);
+        if (!expected) return;
+        Assert.Equal("Biography", cards[0].CardType);
+        Assert.Equal(3, cards[0].NominalPoints);
+        Assert.Equal(0, cards[0].Difficulty.ContextAdjustment);
+        Assert.Equal(rawDifficulty, cards[0].Difficulty.EraWeight + cards[0].Difficulty.GeoWeight);
+        Assert.Equal(score, cards[0].Score);
+    }
 }
 
 // ---------------------------------------------------------------------------

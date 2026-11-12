@@ -249,10 +249,11 @@ internal static class NodeBuilder
     ///   "moveToNote" — re-attach them beneath a NOTE on the record (GEDCOM 7
     ///                  allows SOUR under NOTE) so the prior attestation stays
     ///                  auditable against the old value. Reuses the NOTE a
-    ///                  note op added earlier in the same item if present;
-    ///                  otherwise creates a minimal superseded-value note.
+    ///                  note op added earlier in the same item if present,
+    ///                  unless a biography note op wrote it; otherwise creates a
+    ///                  minimal superseded-value note.
+    /// Returns a log fragment naming what became of each existing citation, or null when there were none.
     /// </summary>
-    /// <summary>Returns a log fragment naming what became of each existing citation, or null when there were none.</summary>
     public static string? DisposeCitations(ApplyState state, GedRecord record,
                                            GedRecord factNode, string factTag, string mode, GedRecord? preservationNote = null)
     {
@@ -272,7 +273,7 @@ internal static class NodeBuilder
         if (mode == "drop") return disposition;
 
         var note = preservationNote;
-        if (note is null && !state.NotesAddedThisItem.TryGetValue(record.Xref!, out note))
+        if (note is null && (!state.NotesAddedThisItem.TryGetValue(record.Xref!, out note) || state.BiographyNotesWritten.Contains(note)))
         {
             note = NewNode(1, "NOTE",
                 $"Prior citation(s) on {factTag} superseded by a correction and retained here.");

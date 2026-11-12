@@ -26,7 +26,8 @@ public sealed class ResearchBriefTool
         "person (the full record detail get_record returns, facts with dates, places, citations, and notes); " +
         "kin (parents, siblings, spouses with marriage date and place, and children, each as a one-line " +
         "{xref, name, born, died} summary, not a full record); gaps (exactly the targets select_targets " +
-        "would report for this person, in the same record shape, so the caller sees what would score); " +
+        "would report for this person, in the same record shape, so the caller sees what would score, " +
+        "including the person's repeatable Biography card); " +
         "possibleDuplicateOf and possibleDuplicateCount (the same-person candidates select_targets computes, " +
         "best first); plausibility (the findings check_plausibility's rules raise about this person or their " +
         "families as the document stands — age anomalies, event-order problems); and notes (the person's " +

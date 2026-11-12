@@ -247,7 +247,7 @@ different file or provider.
 | `list_unanchored_people` | Find people with no dated or placed anchors of their own or through immediate kin. |
 | `match_record` | Compare a multi-person record with tree families and survey same-name rivals. |
 | `research_brief` | Summarize a person's facts, kin, gaps, notes, duplicates, and plausibility issues. |
-| `select_targets` | Score research gaps and draw targets, or score specified people. |
+| `select_targets` | Score research gaps and draw targets, or score specified people, including each person's repeatable Biography card. |
 | `date_calc` | Normalize dual dates, add or subtract ages, or calculate elapsed time. |
 | `describe_changeset_ops` | Return the changeset envelope, operation schemas, and worked examples. |
 | `draft_changeset` | Compile findings into cited changesets and report unresolved decisions. |

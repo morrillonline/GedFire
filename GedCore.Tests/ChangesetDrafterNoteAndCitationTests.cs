@@ -79,6 +79,21 @@ public class ChangesetDrafterNoteAndCitationTests
     }
 
     [Fact]
+    public void ABiographyNote_CompilesToABiographyNoteOpThatEarnsItsCitation()
+    {
+        var pension = Finding("F-1", Source("Pension Files", "File 4471"), "Hiram served in the 3rd Maine.",
+            notes: [new DraftNote("@I1@", "Hiram served in the 3rd Maine Infantry.") { Purpose = "biography", Cites = [new DraftNoteCitation(null, 2, null)] }]);
+
+        var result = Draft(pension);
+
+        var note = Ops(result).Single(o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+        Assert.Equal("biography", note.GetProperty("purpose").GetString());
+        var applied = DryRun(result);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        Assert.Equal("File 4471", Assert.Single(Assert.Single(applied.Changes.Biographies).NewCitations).Page);
+    }
+
+    [Fact]
     public void ANoteCitingOneFinding_UsesTheSingularCitationKey()
     {
         var finding = Finding("F-1", Source("Register", "Register p. 2"), "Hiram.",

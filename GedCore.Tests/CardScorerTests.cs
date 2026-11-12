@@ -278,6 +278,47 @@ public class CardScorerTests
         Assert.Contains("unknown card class", Assert.Single(preview.NotClosed).Reason);
     }
 
+    static TreeChanges Biography(string xref, params BiographyCitation[] citations) =>
+        new([], NoNames, new Dictionary<string, FamilyChange>(), biographies: [new BiographyWrite(xref, citations)]);
+
+    [Fact]
+    public void BiographyCard_ClosesAtItsPointsWhenTheSubjectsBiographyGainedACitation()
+    {
+        var preview = CardScorer.Preview(
+            [new PointsCard("@I1@", "Biography", null, null, 8, Bonus: 5)],
+            Biography("@I1@", new BiographyCitation("@S1@", "File 4471")));
+
+        var closed = Assert.Single(preview.Closed);
+        Assert.Equal("@I1@|Biography", closed.CardKey);
+        Assert.Equal(8, closed.Points);
+        Assert.Equal("biography note on @I1@ citing @S1@ \"File 4471\"", closed.Wrote);
+    }
+
+    [Fact]
+    public void BiographyCard_StaysOpenWhenOnlySomeoneElsesBiographyGainedACitation()
+    {
+        var preview = CardScorer.Preview(
+            [new PointsCard("@I1@", "biography", null, null, 3)], Biography("@I2@", new BiographyCitation("@S1@", null)));
+
+        Assert.Contains("no biography note on the subject gained a citation", Assert.Single(preview.NotClosed).Reason);
+    }
+
+    [Fact]
+    public void BiographyCards_PayOncePerPersonPerChangeset_AlongsideFactCards()
+    {
+        var changes = new TreeChanges(
+            [new FactWrite("@I1@", "DEAT", "1 JAN 1900", null)], NoNames, new Dictionary<string, FamilyChange>(),
+            biographies: [new BiographyWrite("@I1@", [new BiographyCitation("@S1@", "p. 1"), new BiographyCitation("@S2@", "p. 2")])]);
+
+        var preview = CardScorer.Preview(
+            [new PointsCard("@I1@", "biography", null, null, 8), new PointsCard("@I1@", "biography", "again", null, 8), Enrich("enrich-death")],
+            changes);
+
+        Assert.Equal(["@I1@|biography", "@I1@|enrich-person|enrich-death"], preview.Closed.Select(c => c.CardKey));
+        Assert.Equal(15, preview.Total);
+        Assert.Contains("already takes this changeset's one Biography award for @I1@", Assert.Single(preview.NotClosed).Reason);
+    }
+
     [Fact]
     public void Total_SumsOnlyClosedCards()
     {

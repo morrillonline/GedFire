@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore.Apply;
 
 namespace GedCore.Drafting;
 
@@ -215,14 +216,15 @@ public sealed class DraftFindingReader
 
     DraftNote? ReadNote(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "text", "match", "cites")) return null;
+        if (!IsObject(el, path, "record", "text", "match", "cites", "purpose")) return null;
         int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
         string? text = Text(el, "text", path, required: true);
         string? match = Text(el, "match", path);
+        string? purpose = Choice(el, "purpose", path, [CreateOrUpdateNoteOp.BiographyPurpose], required: false);
         var cites = ReadList(el, "cites", path, ReadNoteCitation);
         if (_errors.Count > before || record is null || text is null) return null;
-        return new DraftNote(record, text) { Match = match, Cites = cites };
+        return new DraftNote(record, text) { Match = match, Cites = cites, Purpose = purpose };
     }
 
     DraftNoteCitation? ReadNoteCitation(JsonElement el, string path)

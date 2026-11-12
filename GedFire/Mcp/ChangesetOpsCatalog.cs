@@ -223,12 +223,16 @@ public static class ChangesetOpsCatalog
         new("createOrUpdateNote", "createOrUpdate", "Note",
             "Attach research reasoning or conflict analysis to a record (never a dated fact assertion — use " +
             "createOrUpdateVital for those). A note with the exact requested text → no-op; \"match\" naming " +
-            "an existing note's exact text rewrites it; otherwise a new note is created.",
+            "an existing note's exact text rewrites it; otherwise a new note is created. With \"purpose\": " +
+            "\"biography\" the note is a person's cited biographical prose (service, occupation, migration, " +
+            "probate…), written as a plain note with its citations: a citation it gains that none of the " +
+            "person's cited notes carried before (same source and page) earns biography credit.",
             [
-                new("record", "string", true, "Target person or family xref."),
+                new("record", "string", true, "Target person or family xref; a person for purpose \"biography\"."),
                 new("text", "string", true, "The note's full text. Refer to people and sources by name; text containing a record id such as @S1@ is refused."),
                 new("match", "string", false, "An existing note's exact current text, to rewrite instead of creating a new one."),
                 new("mime", "string", false, "\"text/plain\" (default) or \"text/html\"."),
+                new("purpose", "string", false, "\"biography\" to claim biography credit for the citations this note adds. It is read from the changeset only; nothing extra is written to the file, and the text is never read to decide."),
                 new("citation / citations", "object | array", false, CitationNote + " Renders the note as a cited narrative paragraph rather than plain text."),
             ],
             Ex("""

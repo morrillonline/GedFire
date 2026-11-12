@@ -37,12 +37,14 @@ public sealed record DraftSubstructure(string Tag, string Value);
 
 /// <summary>
 /// A note the author wrote. <see cref="Match"/> is the exact text of an existing note to rewrite;
-/// <see cref="Cites"/> attach citations of findings in the same draft.
+/// <see cref="Cites"/> attach citations of findings in the same draft; <see cref="Purpose"/> "biography"
+/// marks a person's note as cited biographical prose.
 /// </summary>
 public sealed record DraftNote(string Record, string Text)
 {
     public string? Match { get; init; }
     public IReadOnlyList<DraftNoteCitation> Cites { get; init; } = [];
+    public string? Purpose { get; init; }
 }
 
 /// <summary>A citation on a note: the finding it cites (the note's own when null), graded on its own, optionally with a narrower extract.</summary>

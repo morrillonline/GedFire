@@ -183,7 +183,8 @@ historical person who might bear that name.
 `research_brief` combines the person's full record with:
 
 - `kin`: parents, siblings, spouses with marriage details, and children.
-- `gaps`: the same gaps `select_targets` reports.
+- `gaps`: the same targets `select_targets` reports for the person, including
+  their Biography card.
 - `possibleDuplicateOf`: up to three scored candidates, plus the full count.
 - `plausibility`: standing issues against the person or their families.
 - `notes`: person and family note texts.
@@ -197,9 +198,15 @@ bound a missing vital. Missing kin, notes, or duplicates produce empty arrays.
 `select_targets` draws `count` gaps for study `surnames`, returning a
 `wanted.json`-shaped result without the GEDCOM path. The clock seeds the draw.
 Alternatively, pass `xrefs` instead of count and surnames to score specified
-people deterministically. This returns every eligible gap, names people without cards
+people deterministically. This returns every eligible gap, names people without gap cards
 in `xrefsWithoutGaps`, and sets `draw.seed` to null. An unknown xref is an error.
 
+- With `xrefs`, each person outside the privacy floor also gets one `Biography`
+  card. It is not a gap and is never drawn at random: it stays open for people
+  with complete vitals or existing prose, and pays again for each later
+  changeset that adds a new citation. `nominalPoints` is 3, and `score` adds
+  the enrichment difficulty bonus for the person's birth era and region,
+  without the anchor adjustment (3, 8, 13, or 18).
 - An `enrich-person` card covers all inexact birth, marriage, and death dates
   and places for one person, plus any such fact with an exact date or place but
   no citation. `nominalPoints` counts missing dates, places, and citations;
@@ -396,6 +403,11 @@ The warning requests source review, is not an error, and does not block applicat
   `{"finding", "quay", "excerpt"}` entries; omitting `finding` uses its own.
   The compiler joins notes on the same record within a changeset and retains
   every finding's citations.
+- A note's `purpose: "biography"` claims biography credit for the citations it
+  adds to the person's cited biographical prose (service, occupation,
+  migration, probate). It compiles to a `createOrUpdateNote` with the same
+  purpose and joins only other biography notes. The note itself is a plain
+  cited note.
 
 ### Correcting an existing person's name
 
@@ -509,7 +521,8 @@ Pass `cards` to `validate_changeset`, or `cardsPath` pointing to
 `{"cards": [...]}`. Each card supplies `xref`, `class`, and `points`, with
 optional `gap`, `name`, and `bonus`.
 
-Classes are `enrich-person`, `new-parent`, `new-spouse`, and `new-child`.
+Classes are `enrich-person`, `new-parent`, `new-spouse`, `new-child`, and
+`biography`.
 Enrichment gaps are `enrich-birth`, `enrich-death`, or `enrich-marriage`,
 optionally ending in `-date` or `-place`.
 
@@ -536,6 +549,23 @@ Card-to-write matching is one-to-one: an applied person closes at most one
 new-relative card. An exact `name` match claims the minted person first, the
 rest claim by anchor xref, and a card left only with already-claimed people
 appears in `notClosed` with the collision named.
+
+A `biography` card closes at its `points` when a `createOrUpdateNote` with
+`purpose: "biography"` adds to its subject's biographical notes a citation that
+none of them carried before the changeset. Biographical notes are plain
+person-level notes with prose and at least one source citation; GedFire writes
+no marker or extension, so they are recognized from standard GEDCOM structure.
+Only an op with the purpose earns credit; note text is never read, and
+uncited verification notes never qualify. A citation is its source and page
+(`SOUR` + `PAGE`), so quotation text, QUAY, spacing or case in the page,
+citation order, and a placeholder or copied source xref do not make it new.
+Existing prose never exhausts the card: a new note beside it, or a new
+citation strengthening it, pays; new text backed only by a
+citation one of the person's cited notes already carries, an identical replay,
+or a run that changes nothing does not. A person earns at most one Biography
+award per changeset, alongside any fact cards; a later changeset adding a
+different citation earns another. A note a biography op writes never receives
+citations moved off a replaced fact in the same changeset.
 
 Points measure changes, not evidentiary reliability.
 

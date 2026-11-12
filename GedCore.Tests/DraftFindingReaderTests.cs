@@ -30,6 +30,17 @@ public class DraftFindingReaderTests
         Assert.Equal("A note.", Assert.Single(finding.Notes).Text);
     }
 
+    [Theory]
+    [InlineData("Biography", "biography", null)]
+    [InlineData("obituary", null, "notes[0].purpose must be one of biography")]
+    public void ANotePurpose_IsReadOrRefusedByName(string purpose, string? expected, string? error)
+    {
+        var (findings, errors) = Read($"[{Valid.Replace("\"text\": \"A note.\"", $"\"text\": \"A note.\", \"purpose\": \"{purpose}\"")}]");
+
+        if (error is null) Assert.Equal(expected, Assert.Single(Assert.Single(findings).Notes).Purpose);
+        else Assert.Contains(errors, e => e.Contains(error));
+    }
+
     [Fact]
     public void ExistingPeopleAndExplicitSurnamePermission_AreRead()
     {

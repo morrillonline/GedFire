@@ -107,6 +107,35 @@ public static class GapDetector
         return birthYear > 0 && birthYear >= privacyFloorYear;
     }
 
+    // -------------------------------------------------------------------
+    // Biography — not a gap: one repeatable card per person for cited
+    // biographical prose, open even when the vitals are complete or prose
+    // exists. Priced like enrichment: era and region of the person's own
+    // birth, no anchor-strength adjustment.
+    // -------------------------------------------------------------------
+
+    public const int BiographyPoints = 3;
+
+    /// <summary>One Biography card for each of <paramref name="people"/> outside the privacy floor, in order.</summary>
+    public static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people) =>
+        BiographyCards(people, DateTime.UtcNow.Year);
+
+    /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
+    public static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people, int currentYear)
+    {
+        int privacyFloorYear = currentYear - PrivacyFloorYears;
+        return [.. people
+            .Where(person => !IsWithinPrivacyFloor(person, privacyFloorYear))
+            .Select(person => BuildTarget(person, CardType.Biography, BiographyPoints, DifficultyScore.Compute(
+                EraWeightForDate(BiographyEraDate(person)), ExactnessRules.GeographyWeight(person.Birth?.Place), contextAdjustment: 0)))];
+    }
+
+    // The person's birth, else the first of death and marriage that is dated, as enrichment falls back.
+    static string? BiographyEraDate(GedIndividual person) =>
+        new[] { person.Birth?.Date, person.Death?.Date }
+            .Concat(person.FamSpouse.Select(f => f.Marriage?.Date))
+            .FirstOrDefault(d => !string.IsNullOrEmpty(d));
+
     static bool HasAnchor(GedEvent? gedEvent) =>
         gedEvent is not null && (ExactnessRules.IsExactDate(gedEvent.Date) || !string.IsNullOrWhiteSpace(gedEvent.Place));
 

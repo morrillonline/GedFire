@@ -126,13 +126,13 @@ static class ChangesetToolSchemas
         schema["properties"]!["cards"] = JsonNode.Parse("""
             {
               "type": "array",
-              "description": "Research cards the author is working. When given, the result carries pointsPreview: which cards this changeset closes by what it actually writes to the tree, which it leaves open and why, and any card whose subject the changeset renamed. An enrich card closes only when the fact it names is written on its subject; a citation alone writes no fact.",
+              "description": "Research cards the author is working. When given, the result carries pointsPreview: which cards this changeset closes by what it actually writes to the tree, which it leaves open and why, and any card whose subject the changeset renamed. An enrich card closes only when the fact it names is written on its subject; a citation alone writes no fact. A biography card closes when a createOrUpdateNote with purpose biography adds to the subject's biography notes a citation (same source and page) none of them carried before; one biography card per person closes per changeset.",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
                   "xref": { "type": "string", "pattern": "^@[^@]+@$", "description": "The card subject's xref." },
-                  "class": { "type": "string", "description": "enrich-person, new-parent, new-spouse or new-child (select_targets' card type, case and spacing ignored)." },
+                  "class": { "type": "string", "description": "enrich-person, new-parent, new-spouse, new-child or biography (select_targets' card type, case and spacing ignored)." },
                   "gap": { "type": "string", "description": "For enrich-person, the fact the card names: enrich-birth, enrich-death or enrich-marriage, optionally ending -date or -place. Omit it, or use enrich-fact, for a card that names no single fact: it closes on any improved fact written on the subject." },
                   "name": { "type": "string", "description": "For enrich-person, the subject's name: a changeset that renames the subject to something else leaves the card open. For new-parent, new-spouse and new-child, the name of the person to mint: a person the changeset creates must carry exactly this name, or the card stays open." },
                   "points": { "type": "integer", "minimum": 0, "description": "The card's points. For a card with no single named fact (no gap, or enrich-fact) this is the points for each improved date, place or citation, and closed.points is this times the improvements plus bonus." },

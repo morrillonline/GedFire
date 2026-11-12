@@ -32,7 +32,12 @@ public sealed class SelectTargetsTool
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
         "never selected. Pass xrefs instead of count and surnames to skip the draw and score exactly those " +
         "people: every eligible gap each person has becomes a target (one person can yield several), the result is " +
-        "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that produced no target. " +
+        "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that produced no gap target. " +
+        "With xrefs each person outside the privacy floor also gets one Biography target, never drawn: a repeatable " +
+        "card for cited biographical prose (service, occupation, migration, probate...), open even when the vitals are " +
+        "complete or prose exists; nominalPoints 3 plus the enrichment difficulty bonus (birth era and region), paid " +
+        "once per person per changeset when a biography note gains a citation (source and page) none of the person's " +
+        "biography notes carried. " +
         "New parent and New spouse require an exact date or non-empty place on an own vital event " +
         "(birth, christening/baptism, death, burial). New child requires an anchor on either spouse or " +
         "the marriage. Otherwise enrich first; suppressedCards lists the withheld cards and reasons.";
@@ -95,7 +100,7 @@ public sealed class SelectTargetsTool
             "xrefsWithoutGaps": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Only with xrefs: the input xrefs that produced no target."
+              "description": "Only with xrefs: the input xrefs that produced no gap target (a Biography target is not a gap)."
             },
             "draw": {
               "type": "object",
@@ -178,11 +183,11 @@ public sealed class SelectTargetsTool
         }
 
         var suppressedCards = new List<SuppressedCard>();
-        var targets = GapDetector.DetectForPeople(people, suppressedCards);
+        var gaps = GapDetector.DetectForPeople(people, suppressedCards);
         var scored = DuplicateAnnotator.Annotate(
-          new DrawResult { Targets = targets, Seed = null, LegendaryDiscards = [], SuppressedCards = suppressedCards },
+          new DrawResult { Targets = [.. gaps, .. GapDetector.BiographyCards(people)], Seed = null, LegendaryDiscards = [], SuppressedCards = suppressedCards },
             snapshot.MatchIndex, cancellationToken);
-        var produced = scored.Targets.Select(t => t.Xref).ToHashSet(StringComparer.Ordinal);
+        var produced = gaps.Select(t => t.Xref).ToHashSet(StringComparer.Ordinal);
         var withoutGaps = people.Select(p => p.Xref).Where(x => !produced.Contains(x)).ToList();
 
         return Success(WantedFileWriter.ToJsonForXrefs(withoutGaps, scored));

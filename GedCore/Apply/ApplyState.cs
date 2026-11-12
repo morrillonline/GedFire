@@ -63,6 +63,18 @@ internal sealed class ApplyState(GedDocument doc)
     /// </summary>
     public Dictionary<string, GedRecord> NotesAddedThisItem { get; } = [];
 
+    /// <summary>Person xref → the citations biography note ops added to that person's notes this run, in order.</summary>
+    public Dictionary<string, List<BiographyCitation>> BiographyCitationsAdded { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Notes a biography note op wrote this run; moveToNote never files displaced citations under them.</summary>
+    public HashSet<GedRecord> BiographyNotesWritten { get; } = [];
+
+    public void AddBiographyCitations(string person, IEnumerable<BiographyCitation> citations)
+    {
+        if (!BiographyCitationsAdded.TryGetValue(person, out var list)) BiographyCitationsAdded[person] = list = [];
+        list.AddRange(citations);
+    }
+
     /// <summary>
     /// SOUR citation node → the field values (PAGE/DATA.TEXT/QUAY) written to
     /// it so far in this run. One citation per source per structure holds by

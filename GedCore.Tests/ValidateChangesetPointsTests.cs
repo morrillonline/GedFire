@@ -80,6 +80,25 @@ public class ValidateChangesetPointsTests : IDisposable
     }
 
     [Fact]
+    public async Task ABiographyCard_IsClosedByABiographyNoteThatAddsACitation()
+    {
+        var tool = new ValidateChangesetTool(WriteGed(), new ToolGate());
+        var cards = Cards("""[ { "xref": "@I00001@", "class": "Biography", "points": 8 } ]""");
+        string changeset = WriteChangeset("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateNote", "record": "@I00001@", "purpose": "biography",
+                "text": "Allen kept a dry-goods store in Salem from 1890.",
+                "citation": { "source": "@S00001@", "page": "Business directory, 1890", "quay": 2 } } ] } ] }
+            """);
+
+        var result = await tool.HandleAsync(changeset, "all", cards, CancellationToken.None);
+
+        var closed = Assert.Single(Structured(result).GetProperty("pointsPreview").GetProperty("closed").EnumerateArray());
+        Assert.Equal(8, closed.GetProperty("points").GetInt32());
+        Assert.Equal("biography note on @I00001@ citing @S00001@ \"Business directory, 1890\"", closed.GetProperty("wrote").GetString());
+    }
+
+    [Fact]
     public async Task ACardWhoseFactIsOnlyCited_IsNotClosed()
     {
         string path = WriteGed();

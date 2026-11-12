@@ -72,8 +72,9 @@ public class SelectTargetsToolTests : IDisposable
 
         Assert.NotEqual(true, result.IsError);
         var root = result.StructuredContent!.Value;
-        Assert.Equal(count, root.GetProperty("count").GetInt32());
-        Assert.Equal(count, root.GetProperty("totalCandidates").GetInt32());
+        int biographyCards = explicitPeople ? 1 : 0;
+        Assert.Equal(count + biographyCards, root.GetProperty("count").GetInt32());
+        Assert.Equal(count + biographyCards, root.GetProperty("totalCandidates").GetInt32());
         var suppressed = root.GetProperty("suppressedCards").EnumerateArray().ToList();
         Assert.Equal(suppressedCount, suppressed.Count);
         Assert.All(suppressed, card =>
@@ -332,13 +333,14 @@ public class SelectTargetsToolTests : IDisposable
     }
 
     [Fact]
-    public async Task Xrefs_PersonWithEveryFactExactAndFullFamily_ProducesNoCardAndIsNamed()
+    public async Task Xrefs_PersonWithEveryFactExactAndFullFamily_GetsOnlyABiographyCardAndIsNamedWithoutGaps()
     {
         var result = await CallXrefs(XrefTool(), "[\"@I10@\"]");
 
         var root = result.StructuredContent!.Value;
-        Assert.Equal(0, root.GetProperty("count").GetInt32());
-        Assert.Equal(0, root.GetProperty("targets").GetArrayLength());
+        var card = Assert.Single(root.GetProperty("targets").EnumerateArray().ToList());
+        Assert.Equal("Biography", card.GetProperty("cardType").GetString());
+        Assert.Equal(3, card.GetProperty("nominalPoints").GetInt32());
         var withoutGaps = root.GetProperty("xrefsWithoutGaps").EnumerateArray().Select(x => x.GetString()!);
         Assert.Equal(["@I10@"], withoutGaps);
     }
