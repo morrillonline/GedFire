@@ -38,7 +38,7 @@ public class FindingValidatorTests : IDisposable
         Assert.True(result.Valid, string.Join("; ", result.Errors));
         Assert.True(result.ReadyToDraft);
         Assert.Equal("F-100", result.Id);
-        Assert.Equal("1.0", result.SchemaVersion);
+        Assert.Equal(GedFire.Schemas.SchemaCatalog.FindingFile.Version, result.SchemaVersion);
         var target = result.Bindings[0];
         Assert.Equal(new FindingBinding("@I1@", "draft.target.xref") { Exists = true, Name = "Ezra Quillfeather", Lifespan = "1801-1877" }, target);
         Assert.Equal("draft.facts[0].record", result.Bindings[1].At);
@@ -99,6 +99,59 @@ public class FindingValidatorTests : IDisposable
 
         Assert.True(result.ReadyToDraft);
         Assert.Equal(new FindingBinding("@I99@", "draft.target.xref"), result.Bindings[0]);
+    }
+
+    static FindingFile Variant(string fixture, string from, string to) =>
+        FindingFileReader.Read(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(FindingFixtures.Read(fixture).Replace(from, to))), fixture);
+
+    [Theory]
+    [InlineData("F-103.json", null, null)]
+    [InlineData("F-100.json", "\"class\": \"original\"", "\"class\": \"derivative\"")]
+    [InlineData("F-100.json", "\"quay\": 3 } ]", "\"quay\": 3 }, { \"record\": \"@I1@\", \"fact\": \"DEAT\", \"date\": \"1877\", \"quay\": 2 } ]")]
+    public async Task WithoutADocument_EveryRuleTheFindingDecidesIsReportedInTheDocumentsWords(string fixture, string? from, string? to)
+    {
+        var file = from is null ? Fixture(fixture) : Variant(fixture, from, to!);
+
+        var shape = new FindingValidator(null, null, requireDraft: false).Validate(file);
+        var bound = new FindingValidator(await Model(), null, requireDraft: false).Validate(file);
+
+        Assert.False(shape.Valid);
+        Assert.Equal(bound.Errors, shape.Errors);
+    }
+
+    [Fact]
+    public void AFindingWithDraftGaps_IsStillCheckedByTheRules()
+    {
+        var file = Variant("F-102.json", "\"class\": \"original\"", "\"class\": \"derivative\"");
+
+        var result = new FindingValidator(null, null, requireDraft: false).Validate(file);
+
+        Assert.False(result.Valid);
+        Assert.False(result.ReadyToDraft);
+        Assert.StartsWith("F-102.json (findings[0]).facts[0].quay is 3, but a derivative source", Assert.Single(result.Errors));
+    }
+
+    [Fact]
+    public async Task ARecordPersonBoundToAPerson_IsValidAndNamed()
+    {
+        var file = Variant("F-101.json", "\"name\": \"Ezra Quillfeather\",", "\"name\": \"Ezra Quillfeather\", \"xref\": \"@I1@\",");
+
+        var result = new FindingValidator(await Model(), null, requireDraft: false).Validate(file);
+
+        Assert.True(result.Valid, string.Join("; ", result.Errors));
+        Assert.Equal(new FindingBinding("@I1@", "record.persons[0].xref") { Exists = true, Name = "Ezra Quillfeather", Lifespan = "1801-1877" }, Assert.Single(result.Bindings));
+    }
+
+    [Fact]
+    public async Task ARecordPersonBoundToNobody_IsRefusedAgainstTheTree()
+    {
+        var file = Variant("F-101.json", "\"name\": \"Ezra Quillfeather\",", "\"name\": \"Ezra Quillfeather\", \"xref\": \"@S1@\",");
+
+        var bound = new FindingValidator(await Model(), null, requireDraft: false).Validate(file);
+        var shape = new FindingValidator(null, null, requireDraft: false).Validate(file);
+
+        Assert.Equal("F-101.json: record.persons[0].xref @S1@ is not a person in the document.", Assert.Single(bound.Errors));
+        Assert.True(shape.Valid);
     }
 
     [Fact]

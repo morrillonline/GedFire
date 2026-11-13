@@ -24,7 +24,7 @@ public class DescribeSchemasToolTests
     {
         var schema = Assert.Single((await Call("finding-file")).StructuredContent!.Value.GetProperty("schemas").EnumerateArray());
 
-        Assert.Equal("1.0", schema.GetProperty("version").GetString());
+        Assert.Equal(SchemaCatalog.FindingFile.Version, schema.GetProperty("version").GetString());
         Assert.Equal(SchemaCatalog.FindingFile.Id, schema.GetProperty("id").GetString());
         using var expected = JsonDocument.Parse(SchemaCatalog.FindingFile.Document().ToJsonString());
         Assert.True(JsonElement.DeepEquals(expected.RootElement, schema.GetProperty("schema")));

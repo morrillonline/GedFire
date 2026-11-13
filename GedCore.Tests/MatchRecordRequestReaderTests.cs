@@ -189,9 +189,30 @@ public class MatchRecordRequestReaderTests
     {
         var (ok, _, error) = Read(
             persons: """[{ "name": "John" }]""",
-            recordEvent: """{ "date": "sometime" }""");
+            recordEvent: """{ "date": "TO 1880" }""");
         Assert.False(ok);
-        Assert.Equal("event.date must contain a year, got \"sometime\".", error);
+        Assert.Equal("event.date must contain a year, got \"TO 1880\".", error);
+    }
+
+    [Theory]
+    [InlineData("sometime")]
+    [InlineData("accessed 2026-07-06")]
+    [InlineData("1880-06-01")]
+    public void AnEventDateThatIsNotAGedcomDate_IsRefusedByField(string date)
+    {
+        var (ok, _, error) = Read(persons: """[{ "name": "John" }]""", recordEvent: $$"""{ "date": "{{date}}" }""");
+
+        Assert.False(ok);
+        Assert.StartsWith($"event.date \"{date}\" is not a GEDCOM date", error);
+    }
+
+    [Fact]
+    public void ABoundPerson_CarriesTheXref()
+    {
+        var (ok, record, error) = Read(persons: """[{ "name": "John", "xref": "@I2@" }]""");
+
+        Assert.True(ok, error);
+        Assert.Equal("@I2@", record!.Persons[0].Xref);
     }
 
     [Fact]

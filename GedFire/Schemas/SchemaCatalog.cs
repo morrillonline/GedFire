@@ -38,10 +38,10 @@ public static class SchemaCatalog
     public const string RecordName = "record";
     public const string ArgumentName = "argument";
 
-    public static readonly PublishedSchema Finding = new(FindingName, "1.0", "GedFire finding", () => Parse(FindingSchemas.FindingJson));
-    public static readonly PublishedSchema Record = new(RecordName, "1.0", "GedFire record", () => Parse(FindingSchemas.RecordJson));
+    public static readonly PublishedSchema Finding = new(FindingName, "2.0", "GedFire finding", () => Parse(FindingSchemas.FindingJson));
+    public static readonly PublishedSchema Record = new(RecordName, "1.1", "GedFire record", () => Parse(FindingSchemas.RecordJson));
     public static readonly PublishedSchema Argument = new(ArgumentName, "1.0", "GedFire identity argument", () => Parse(FindingSchemas.ArgumentJson));
-    public static readonly PublishedSchema FindingFile = new(FindingFileName, "1.0", "GedFire finding file", FindingFileBody);
+    public static readonly PublishedSchema FindingFile = new(FindingFileName, "2.0", "GedFire finding file", FindingFileBody);
 
     public static readonly IReadOnlyList<PublishedSchema> All = [Finding, FindingFile, Record, Argument];
 

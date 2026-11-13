@@ -70,6 +70,11 @@ public static class MatchRecordRequestReader
             }
         }
 
+        if (date != null && GedDateSyntax.Check("event.date", date) is { } syntaxError)
+        {
+            error = syntaxError;
+            return false;
+        }
         int year = GedDate.ParseYear(date);
         if (date != null && year == 0)
         {
@@ -124,7 +129,7 @@ public static class MatchRecordRequestReader
             return false;
         }
 
-        string? role = null, name = null, birthPlace = null;
+        string? role = null, name = null, birthPlace = null, xref = null;
         bool? isMale = null;
         int? birthYear = null, age = null;
         foreach (var property in element.EnumerateObject())
@@ -140,8 +145,9 @@ public static class MatchRecordRequestReader
                 // Accepted and checked so a stored record keeps them; not yet scored.
                 case "deathYear": if (!ReadInt(property.Value, $"{field}.deathYear", 1, 9999, out _, out error)) return false; break;
                 case "maidenName": if (!ReadString(property.Value, $"{field}.maidenName", out _, out error)) return false; break;
+                case "xref": if (!ReadXref(property.Value, $"{field}.xref", out xref, out error)) return false; break;
                 default:
-                    error = $"{field} has an unrecognized property \"{property.Name}\". Accepted properties: role, name, sex, birthYear, age, birthPlace, deathYear, maidenName.";
+                    error = $"{field} has an unrecognized property \"{property.Name}\". Accepted properties: role, name, sex, birthYear, age, birthPlace, deathYear, maidenName, xref.";
                     return false;
             }
         }
@@ -173,6 +179,7 @@ public static class MatchRecordRequestReader
             IsMale = isMale,
             BirthYear = birthYear,
             BirthPlace = birthPlace,
+            Xref = xref,
         };
         error = null;
         return true;
@@ -276,6 +283,15 @@ public static class MatchRecordRequestReader
         }
         value = text;
         return true;
+    }
+
+    static bool ReadXref(JsonElement element, string field, out string? xref, out string? error)
+    {
+        if (!ReadString(element, field, out xref, out error)) return false;
+        if (xref!.Length > 2 && xref[0] == '@' && xref[^1] == '@' && !xref[1..^1].Contains('@')) return true;
+        error = $"{field} must be an xref such as \"@I1@\", got \"{xref}\".";
+        xref = null;
+        return false;
     }
 
     static bool ReadSex(JsonElement element, string field, out bool? isMale, out string? error)

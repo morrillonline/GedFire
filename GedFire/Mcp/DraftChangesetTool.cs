@@ -74,7 +74,7 @@ public sealed class DraftChangesetTool
               "type": "array",
               "minItems": 1,
               "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
-              "description": "Paths to finding files (gedfire schema finding-file). Each holds the finding's complete entry under \"draft\" (the same shape as one findings item); an optional \"argument\" object beside \"draft\" holds the finding's identity argument, which is carried unchanged into the changeset. The caller's own \"meta\" and the \"record\" slot are never compiled; any other top-level key, or a draft.id that differs from a file named <id>.json, is reported as an open decision and will be refused in a later release. The entries are compiled as one set and the notes several findings of one item wrote on the same record are joined. A file with no draft, a parked finding, or a non-empty draftGaps is reported by name instead of being compiled. Give findingPaths, or findings or inputPath, not both."
+              "description": "Paths to finding files (gedfire schema finding-file). Each holds the finding's complete entry under \"draft\" (the same shape as one findings item); an optional \"argument\" object beside \"draft\" holds the finding's identity argument, which is carried unchanged into the changeset. The caller's own \"meta\" and the \"record\" slot are never compiled; any other top-level key, or a draft.id that differs from the file's name (<id>.json), is refused. The entries are compiled as one set and the notes several findings of one item wrote on the same record are joined. A file with no draft or a non-empty draftGaps is reported by name instead of being compiled. Give findingPaths, or findings or inputPath, not both."
             },
             "outPath": {
               "type": "string",
@@ -198,14 +198,12 @@ public sealed class DraftChangesetTool
 
         var input = ReadFindings(arguments, out error);
         if (error is not null) return CallToolResults.Error(error);
-        var warnings = input.Warnings.Select(w => new DraftDecision(DraftDecisionKinds.Open, w, [])).ToList();
         if (input.Errors.Count > 0)
-            return Respond(new DraftResult(null, warnings, input.Errors), null, report);
+            return Respond(new DraftResult(null, [], input.Errors), null, report);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var draft = new ChangesetDrafter(new ModelDraftLookup(snapshot.Model), _policy).Draft(input.Findings);
         if (input.Files.Count > 0) draft = draft with { Errors = FindingFileLoader.NameFiles(draft.Errors, input.Files) };
-        if (warnings.Count > 0) draft = draft with { Decisions = [.. warnings, .. draft.Decisions] };
 
         string? writtenTo = null;
         if (path is not null && draft.Success)
@@ -218,10 +216,7 @@ public sealed class DraftChangesetTool
     }
 
     // Files names the file each finding came from when they came from findingPaths, so a check can name it.
-    sealed record FindingInput(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Errors, IReadOnlyList<string> Files)
-    {
-        public IReadOnlyList<string> Warnings { get; init; } = [];
-    }
+    sealed record FindingInput(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Errors, IReadOnlyList<string> Files);
 
     // The findings come from exactly one of: the findings argument, the inputPath file, or the finding files.
     static FindingInput ReadFindings(DraftChangesetArguments arguments, out string? error)
@@ -239,7 +234,7 @@ public sealed class DraftChangesetTool
             }
 
             var loaded = FindingFileLoader.Load(arguments.FindingPaths);
-            return new FindingInput(loaded.Findings, loaded.Errors, loaded.Files) { Warnings = loaded.Warnings };
+            return new FindingInput(loaded.Findings, loaded.Errors, loaded.Files);
         }
 
         if (!ArgumentFile.TryResolve(arguments.Findings, "findings", arguments.InputPath, "inputPath", out var findings, out error))

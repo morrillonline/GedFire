@@ -21,15 +21,17 @@ public sealed class ValidateFindingTool
 
     public const string Description =
         "Check findings the way draft_changeset takes them, without drafting: finding files by findingPaths " +
-        "(the finding-file schema: draft, argument, draftGaps, record and the caller's meta), or draft entries by " +
-        "findings or inputPath. Per finding it returns valid and errors (shape faults, by field path), warnings (a " +
-        "top-level key outside the contract, or a draft.id that differs from the file name; both will be refused in " +
-        "a later release), readyToDraft, draftGaps, and bindings: each xref the draft names, with exists, name and " +
-        "lifespan for a document record or declared for a @New...@ placeholder. Against the server's document a " +
-        "finding that is ready is compiled on its own by draft_changeset's own checks, so the errors are the ones " +
-        "draft_changeset gives for the same fault and readyToDraft is true exactly when draft_changeset compiles that " +
-        "file without error. A file with no draft or with draftGaps is valid but not ready, or an error with " +
-        "requireDraft. Writes nothing.";
+        "(the finding-file schema: draft, argument, draftGaps, record and the caller's meta; any other top-level key, or " +
+        "a draft.id that differs from the file name, is refused), or draft entries by findings or inputPath. Per finding " +
+        "it returns valid and errors (by field path), readyToDraft, draftGaps, and bindings: each xref the draft or a " +
+        "record person names, with exists, name and lifespan for a document record or declared for a @New...@ " +
+        "placeholder. Every rule the finding alone decides is checked with or without a document, and even while " +
+        "draftGaps keep it from drafting: field shapes, GEDCOM 7 dates, fact tags, QUAY ceilings, placeholder " +
+        "declarations, sex on a new partner or parent, verbatim excerpts, and one grade per quoted text. Against the " +
+        "server's document a finding that is ready is also compiled on its own by draft_changeset's own checks, so the " +
+        "errors are the ones draft_changeset gives for the same fault and readyToDraft is true exactly when " +
+        "draft_changeset compiles that file without error; each record person's xref must name a person. A file with no " +
+        "draft or with draftGaps is not ready, and is an error only with requireDraft. Writes nothing.";
 
     public static readonly string InputSchemaJson = SchemaComposer.Compose("""
         {
@@ -69,7 +71,7 @@ public sealed class ValidateFindingTool
           "additionalProperties": false,
           "properties": {
             "success": { "type": "boolean", "description": "true when every finding is valid." },
-            "documentChecked": { "type": "boolean", "description": "true when xrefs were resolved against a document; false for a shape-only check." },
+            "documentChecked": { "type": "boolean", "description": "true when xrefs were resolved against a document; false when only the rules that need no document were checked." },
             "findings": {
               "type": "array",
               "items": {
@@ -80,7 +82,6 @@ public sealed class ValidateFindingTool
                   "id": { "type": ["string", "null"], "description": "draft.id as written." },
                   "valid": { "type": "boolean" },
                   "errors": { "type": "array", "items": { "type": "string" } },
-                  "warnings": { "type": "array", "items": { "type": "string" } },
                   "readyToDraft": { "type": "boolean", "description": "true when draft_changeset would compile this finding without error." },
                   "draftGaps": { "type": "array", "items": { "type": "string" } },
                   "bindings": {
@@ -90,8 +91,8 @@ public sealed class ValidateFindingTool
                       "additionalProperties": false,
                       "properties": {
                         "ref": { "type": "string" },
-                        "at": { "type": "string", "description": "Where the draft names it, e.g. draft.facts[0].record." },
-                        "exists": { "type": "boolean", "description": "Whether the document holds the record; absent for a placeholder or a shape-only check." },
+                        "at": { "type": "string", "description": "Where the file names it, e.g. draft.facts[0].record or record.persons[1].xref." },
+                        "exists": { "type": "boolean", "description": "Whether the document holds the record; absent for a placeholder or without a document." },
                         "name": { "type": "string", "description": "The person's name, or the source's title." },
                         "lifespan": { "type": "string", "description": "A person's birth-death years, ? for an unknown end." },
                         "declared": { "type": "boolean", "description": "For a placeholder: declared in people, or named as a relation's family." }
@@ -101,7 +102,7 @@ public sealed class ValidateFindingTool
                   },
                   "schemaVersion": { "type": "string", "description": "The finding-file (or, for an entry, finding) schema version checked against." }
                 },
-                "required": ["file", "id", "valid", "errors", "warnings", "readyToDraft", "draftGaps", "bindings", "schemaVersion"]
+                "required": ["file", "id", "valid", "errors", "readyToDraft", "draftGaps", "bindings", "schemaVersion"]
               }
             }
           },

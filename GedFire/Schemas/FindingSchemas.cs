@@ -76,15 +76,15 @@ public static class FindingSchemas
                 "additionalProperties": false,
                 "properties": {
                   "record": { "type": "string", "pattern": "^@[^@]+@$", "description": "The person or family the fact belongs to." },
-                  "fact": { "type": "string", "description": "The GEDCOM tag, e.g. BIRT, DEAT, BURI, MARR." },
-                  "date": { "type": "string" },
+                  "fact": { "type": "string", "description": "The GEDCOM tag, e.g. BIRT, DEAT, BURI, MARR; describe_changeset_ops lists every tag createOrUpdateVital takes from a draft." },
+                  "date": { "type": "string", "description": "A GEDCOM 7 date, e.g. \"1 JUN 1840\", \"ABT 1840\", \"BET 1840 AND 1845\" or \"FROM 1840 TO 1845\"; case is ignored." },
                   "place": { "type": "string" },
                   "value": { "type": "string", "description": "A text fact's payload, e.g. a NAME change (\"Ralph /Morrill/\"); not combined with date or place." },
                   "allowSurnameChange": { "type": "boolean", "description": "Explicit permission for this NAME value to change the existing person's surname; default false. Only applies to NAME assertions with a value." },
                   "quay": { "type": "integer", "minimum": 0, "maximum": 3 },
                   "class": { "type": "string", "enum": ["original", "image copy", "derivative", "authored", "user-contributed"], "description": "Overrides the source's class for this fact." },
                   "information": { "type": "string", "enum": ["primary", "secondary", "undetermined"], "description": "Overrides the source's information class for this fact." },
-                  "excerpt": { "type": "string", "description": "A narrower extract for this fact's citation." },
+                  "excerpt": { "type": "string", "description": "A narrower extract for this fact's citation, quoted word for word from extract." },
                   "substructures": {
                     "type": "array",
                     "description": "Extra lines under the fact, e.g. [{\"tag\": \"TYPE\", \"value\": \"Pension Application\"}] on an EVEN. A fact with substructures is added, never matched by date.",
@@ -117,7 +117,7 @@ public static class FindingSchemas
                 "properties": {
                   "xref": { "type": "string", "pattern": "^@New[A-Za-z0-9_]+@$", "description": "A placeholder such as @NewI1@; apply mints the real xref." },
                   "name": { "type": "string", "description": "GEDCOM form, e.g. \"Sarah /Blake/\"." },
-                  "sex": { "type": "string", "enum": ["M", "F"], "description": "Required for a partner, so HUSB and WIFE can be assigned." }
+                  "sex": { "type": "string", "enum": ["M", "F"], "description": "Required for a person a relation places as spouse, parent, husb or wife, so the role can be typed." }
                 },
                 "required": ["xref", "name"]
               }
@@ -140,7 +140,7 @@ public static class FindingSchemas
                   "husb": { "type": "string", "description": "child: father, used only when this relation creates the family." },
                   "wife": { "type": "string", "description": "child: mother, used only when this relation creates the family." },
                   "notDuplicateOf": { "type": "array", "items": { "type": "string" }, "description": "spouse and child: existing people already confirmed not to be the new person." },
-                  "excerpt": { "type": "string", "description": "A narrower extract than the finding's for this relation's citation." },
+                  "excerpt": { "type": "string", "description": "A narrower extract than the finding's for this relation's citation, quoted word for word from extract." },
                   "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "Required except for unlink-child and unlink-parent." }
                 },
                 "required": ["kind"]
@@ -166,7 +166,7 @@ public static class FindingSchemas
                       "properties": {
                         "finding": { "type": "string", "description": "The id of the finding cited; default the note's own." },
                         "quay": { "type": "integer", "minimum": 0, "maximum": 3 },
-                        "excerpt": { "type": "string", "description": "A narrower extract than the finding's." }
+                        "excerpt": { "type": "string", "description": "A narrower extract than the cited finding's, quoted word for word from it." }
                       },
                       "required": ["quay"]
                     }
@@ -201,7 +201,8 @@ public static class FindingSchemas
               "age": { "type": "integer", "minimum": 0, "maximum": 120, "description": "Age as the record states it; needs event.date with a year, which gives birthYear = event year minus age. Give birthYear or age, not both." },
               "birthPlace": { "type": "string", "minLength": 1 },
               "deathYear": { "type": "integer", "minimum": 1, "maximum": 9999, "description": "The death year the record states, e.g. on a death record or obituary. Kept with the record; not yet scored." },
-              "maidenName": { "type": "string", "minLength": 1, "description": "The maiden name the record states. Kept with the record; not yet scored." }
+              "maidenName": { "type": "string", "minLength": 1, "description": "The maiden name the record states. Kept with the record; not yet scored." },
+              "xref": { "type": "string", "pattern": "^@[^@]+@$", "description": "The tree person this record person is already bound to. match_record reports them as single on this xref and uses the binding to score the record's other people." }
             },
             "required": ["name"]
           },
@@ -233,7 +234,7 @@ public static class FindingSchemas
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "date": { "type": "string", "minLength": 1, "description": "GEDCOM-style date of the record's own event, e.g. \"1880\" or \"12 JUN 1880\". Must contain a year." },
+            "date": { "type": "string", "minLength": 1, "description": "The GEDCOM 7 date of the record's own event, e.g. \"1880\" or \"12 JUN 1880\". Must contain a year." },
             "place": { "type": "string", "minLength": 1 },
             "type": { "type": "string", "minLength": 1, "description": "Free text, e.g. \"census\" or \"obituary\". Context only; never scored." }
           }

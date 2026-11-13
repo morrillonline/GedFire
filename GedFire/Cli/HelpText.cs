@@ -90,7 +90,8 @@ public static class HelpText
                         --enforce-privacy with the same meaning as mcp.
                         date_calc, describe_changeset_ops and describe_schemas
                         need no --input; validate_finding without --input
-                        checks finding shape only.
+                        checks every rule that needs no
+                        document.
 
           schema    <finding|finding-file|record|argument> [--out <json>]
                         Print the versioned JSON Schema (draft 2020-12) of the

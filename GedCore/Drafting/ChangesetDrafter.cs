@@ -17,6 +17,15 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
 {
     const string DefaultNotePrefix = "needs independent verification:";
 
+    /// <summary>The refusals the findings earn before compiling against the document, without compiling them.</summary>
+    public IReadOnlyList<string> Check(IReadOnlyList<DraftFinding> findings) => [.. DraftChecks.Check(findings, lookup)];
+
+    /// <summary>
+    /// The refusals the findings alone decide, with no document: QUAY ceilings, placeholder declarations, verbatim
+    /// excerpts, one grade per quoted text, and the rest. Each is worded exactly as <see cref="Draft"/> words it.
+    /// </summary>
+    public static IReadOnlyList<string> CheckWithoutDocument(IReadOnlyList<DraftFinding> findings) => [.. DraftChecks.Check(findings, null)];
+
     public DraftResult Draft(IReadOnlyList<DraftFinding> findings)
     {
         var decisions = new List<DraftDecision>();

@@ -217,7 +217,7 @@ public class ChangesetDrafterTests
     public void FactsCitingTheSamePageAndGrade_ShareOneMergedDataText()
     {
         var result = new ChangesetDrafter(new FakeLookup()).Draft([
-            Finding("F-1", Memorial(), "whole extract", [
+            Finding("F-1", Memorial(), "DEATH 1 Jan 1900; BURIAL Salem Cemetery; BIRTH 1 Jan 1850", [
                 Fact("DEAT", "1 JAN 1900", null, 2, excerpt: "DEATH 1 Jan 1900"),
                 Fact("BURI", null, "Salem Cemetery", 2, excerpt: "BURIAL Salem Cemetery")])]);
 
@@ -231,7 +231,7 @@ public class ChangesetDrafterTests
     public void FactsAtDifferentGrades_KeepSeparateCitations()
     {
         var result = new ChangesetDrafter(new FakeLookup()).Draft([
-            Finding("F-1", Memorial(), "whole extract", [
+            Finding("F-1", Memorial(), "DEATH 1 Jan 1900; BURIAL Salem Cemetery; BIRTH 1 Jan 1850", [
                 Fact("DEAT", "1 JAN 1900", null, 2, excerpt: "DEATH 1 Jan 1900"),
                 Fact("BIRT", "1 JAN 1850", null, 1, excerpt: "BIRTH 1 Jan 1850")])]);
 
@@ -324,6 +324,57 @@ public class ChangesetDrafterTests
     }
 
     // ---- refusals ----
+
+    [Fact]
+    public void AnExcerptThatIsNotPartOfTheExtract_IsRefused()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "DEATH 1 Jan 1900", [Fact("DEAT", "1 JAN 1900", null, 2, excerpt: "DEATH 2 Jan 1900")])]);
+
+        Assert.Equal(
+            ["findings[0].facts[0].excerpt is not part of the finding's extract; an excerpt quotes the extract word for word."],
+            result.Errors);
+    }
+
+    [Fact]
+    public void TwoClaimsQuotingTheWholeExtractAtDifferentGrades_AreRefused()
+    {
+        var result = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1 JAN 1900", null, 1), Fact("BURI", "3 JAN 1900", null, 2)])]);
+
+        Assert.Equal(
+            ["findings[0].facts[1].quay is 2, but findings[0].facts[0] cites the same text of finding \"F-1\" at 1; one quoted text carries one grade, so give the differently graded claim its own excerpt."],
+            result.Errors);
+    }
+
+    [Fact]
+    public void ANewSpouseWithoutSex_IsRefused()
+    {
+        var finding = Finding("F-1", Memorial(), "x", [], card: "new-spouse") with
+        {
+            People = [new DraftPerson("@NewI1@", "Hester /Ambrose/", null)],
+            Relations = [new DraftRelation(DraftRelation.Spouse, "@I1@", "@NewI1@", "@NewF1@", null, null, null, 2)],
+        };
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([finding]);
+
+        Assert.Equal(["findings[0].relations[0] places @NewI1@ as spouse, so its people entry needs sex (M or F) to type the role."], result.Errors);
+    }
+
+    [Fact]
+    public void WithoutADocument_TheRulesTheFindingsDecideAreWordedAsTheDraftWordsThem()
+    {
+        var findings = new[]
+        {
+            Finding("F-1", Memorial(info: "secondary"), "x y", [Fact("BIRT", "1924", null, 2), Fact("DEAT", "1990", null, 1, "@NewI_x@", excerpt: "y")]),
+        };
+
+        var withoutDocument = ChangesetDrafter.CheckWithoutDocument(findings);
+        var drafted = new ChangesetDrafter(new KnownRecordsLookup("@I1@")).Draft(findings).Errors;
+
+        Assert.Equal(2, withoutDocument.Count);
+        Assert.All(withoutDocument, error => Assert.Contains(error, drafted));
+    }
 
     sealed class KnownRecordsLookup(params string[] records) : IDraftLookup
     {

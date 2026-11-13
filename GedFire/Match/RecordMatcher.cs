@@ -40,6 +40,10 @@ public sealed class RecordMatcher
     RecordPersonMatch MatchPerson(MatchIndex index, RecordDescription record, int personIndex)
     {
         var person = record.Persons[personIndex];
+        if (person.Xref is { } xref)
+            return MatchBound(index, record, personIndex,
+                index.Entries.FirstOrDefault(e => e.Individual.Xref == xref)?.Individual
+                ?? throw new ArgumentException($"persons[{personIndex}].xref {xref} is not a person in the document.", nameof(record)));
         var kin = StatedKin.Resolve(record, personIndex);
         // Uncapped name-only recall: the survey must be closed, so every
         // same-name person is considered and none is silently dropped.
@@ -82,6 +86,53 @@ public sealed class RecordMatcher
             Candidates = [.. ranked.Select(ToCandidate)],
             SameNameSurvey = BuildSurvey(ranked, excluded, kin),
             PotentialNewPerson = ranked.Count == 0,
+            PossibleDuplicates = [],
+        };
+    }
+
+    // The record already says who this person is: the binding is the match, and the same-name survey still shows who else was considered.
+    RecordPersonMatch MatchBound(MatchIndex index, RecordDescription record, int personIndex, GedIndividual bound)
+    {
+        var person = record.Persons[personIndex];
+        var kin = StatedKin.Resolve(record, personIndex);
+        var outcome = _matcher.Match(index, person.Name, hints: null, maxResults: null);
+        var boundMatch = outcome.Matches.FirstOrDefault(m => ReferenceEquals(m.Individual, bound)) ?? _scorer.Unrecalled(bound, person.Name);
+        var boundScore = _scorer.Score(boundMatch, person, kin, record.Event);
+
+        var excluded = new List<(GedIndividual Individual, string Reason)>();
+        var others = new List<RecordCandidateScore>();
+        foreach (var match in outcome.Matches.Where(m => !ReferenceEquals(m.Individual, bound)))
+        {
+            string? reason = RecordCandidateScorer.ExclusionReason(match.Individual, person, record.Event?.Year);
+            if (reason != null) excluded.Add((match.Individual, reason));
+            else others.Add(_scorer.Score(match, person, kin, record.Event));
+        }
+        var ranked = others
+            .OrderByDescending(s => s.Composite)
+            .ThenByDescending(s => s.NameScore)
+            .ThenBy(s => s.Individual.Xref, StringComparer.Ordinal)
+            .Prepend(boundScore)
+            .ToList();
+
+        var survey = BuildSurvey(ranked, excluded, kin)
+            .Select((entry, rank) => rank is > 0 && rank < ranked.Count
+                ? entry with { Reason = $"the record binds {person.Name} to {bound.Xref}" }
+                : entry)
+            .ToList();
+        return new RecordPersonMatch
+        {
+            Index = personIndex,
+            Role = person.Role,
+            Name = person.Name,
+            Verdict = "single",
+            Bound = true,
+            ConfidentMatchXref = bound.Xref,
+            ConfidentMatchScore = boundScore.Composite,
+            RunnerUpXref = ranked.Count > 1 ? ranked[1].Individual.Xref : null,
+            RunnerUpScore = ranked.Count > 1 ? ranked[1].Composite : null,
+            Candidates = [.. ranked.Select(ToCandidate)],
+            SameNameSurvey = survey,
+            PotentialNewPerson = false,
             PossibleDuplicates = [],
         };
     }

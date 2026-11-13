@@ -254,8 +254,7 @@ public class DraftChangesetToolTests : IDisposable
     }
 
     static string FindingFile(string id, string note) => $$"""
-        { "id": "{{id}}", "correlation": { "kind": "enrich", "target": "@I1@" },
-          "draft": { "id": "{{id}}", "extract": "DEATH 26 Mar 2013",
+        { "draft": { "id": "{{id}}", "extract": "DEATH 26 Mar 2013",
             "source": { "name": "Find a Grave", "locator": "Memorial #{{id}}", "class": "derivative", "information": "primary" },
             "target": { "xref": "@I1@", "card": "enrich-death" },
             "facts": [ { "record": "@I1@", "fact": "DEAT", "date": "26 Mar 2013", "place": "Rugby", "quay": 2 } ],
@@ -277,8 +276,8 @@ public class DraftChangesetToolTests : IDisposable
     [Fact]
     public async Task FindingPaths_CompileTheFindingFilesAsOneSetAndJoinTheirNotes()
     {
-        string one = WriteFinding("one.json", FindingFile("F-1", "Died in Rugby."));
-        string two = WriteFinding("two.json", FindingFile("F-2", "Buried in Rugby."));
+        string one = WriteFinding("F-1.json", FindingFile("F-1", "Died in Rugby."));
+        string two = WriteFinding("F-2.json", FindingFile("F-2", "Buried in Rugby."));
 
         var result = await Tool().HandleAsync(Paths(one, two), CancellationToken.None);
 
@@ -293,21 +292,21 @@ public class DraftChangesetToolTests : IDisposable
     [Fact]
     public async Task FindingPaths_ADraftGapsFileIsReportedAndNothingIsDrafted()
     {
-        string ready = WriteFinding("ready.json", FindingFile("F-1", "Died."));
-        string gap = WriteFinding("gap.json", FindingFile("F-2", "Buried.").Replace("\"draftGaps\": []", "\"draftGaps\": [\"needsSex: Mary\"]"));
+        string ready = WriteFinding("F-1.json", FindingFile("F-1", "Died."));
+        string gap = WriteFinding("F-2.json", FindingFile("F-2", "Buried.").Replace("\"draftGaps\": []", "\"draftGaps\": [\"needsSex: Mary\"]"));
 
         var result = await Tool().HandleAsync(Paths(ready, gap), CancellationToken.None);
 
         var structured = Structured(result);
         Assert.False(structured.GetProperty("success").GetBoolean());
         Assert.Equal(JsonValueKind.Null, structured.GetProperty("changeset").ValueKind);
-        Assert.Contains("gap.json has draftGaps: needsSex: Mary", structured.GetProperty("errors")[0].GetString());
+        Assert.Contains("F-2.json has draftGaps: needsSex: Mary", structured.GetProperty("errors")[0].GetString());
     }
 
     [Fact]
     public async Task FindingPaths_EveryUnreadyFileIsReported()
     {
-        string noDraft = WriteFinding("a.json", """{ "id": "F-1" }""");
+        string noDraft = WriteFinding("a.json", """{ "meta": {} }""");
         string missing = Path.Combine(_dir, "missing.json");
 
         var result = await Tool().HandleAsync(Paths(noDraft, missing), CancellationToken.None);
@@ -350,18 +349,18 @@ public class DraftChangesetToolTests : IDisposable
         Assert.DoesNotContain("anything", changeset);
     }
 
-    [Fact]
-    public async Task FindingPaths_AnUnknownTopLevelKeyIsAnOpenDecisionAndTheFileStillDrafts()
+    [Theory]
+    [InlineData("persons", "[]")]
+    [InlineData("correlation", "{ \"kind\": \"park\" }")]
+    [InlineData("status", "\"new\"")]
+    public async Task FindingPaths_AnUnknownTopLevelKeyIsRefusedByName(string key, string value)
     {
-        string path = WriteFinding("F-1.json", FindingFile("F-1", "Died."));
+        string path = WriteFinding("F-1.json", FindingFile("F-1", "Died.").TrimEnd().TrimEnd('}') + $", \"{key}\": {value} }}");
 
         var structured = Structured(await Tool().HandleAsync(Paths(path), CancellationToken.None));
 
-        Assert.True(structured.GetProperty("success").GetBoolean(), structured.GetRawText());
-        var open = structured.GetProperty("decisions").EnumerateArray()
-            .Where(d => d.GetProperty("kind").GetString() == "open").Select(d => d.GetProperty("detail").GetString()!).ToList();
-        Assert.Contains(open, d => d.StartsWith($"{path}: \"correlation\" is not a finding-file key"));
-        Assert.Contains(open, d => d.StartsWith($"{path}: \"id\" is not a finding-file key"));
+        Assert.False(structured.GetProperty("success").GetBoolean());
+        Assert.StartsWith($"{path}: \"{key}\" is not a finding-file key", structured.GetProperty("errors")[0].GetString());
     }
 
     [Theory]

@@ -2,15 +2,20 @@ using GedCore.Apply;
 
 namespace GedCore.Drafting;
 
-/// <summary>The refusals a draft makes before compiling: a QUAY the evidence cannot support, a target name that is not the person's, and new people or families that are not declared consistently.</summary>
+/// <summary>
+/// The refusals a draft makes before compiling: a QUAY the evidence cannot support, a target name that is not the person's,
+/// new people or families that are not declared consistently, and quotations that are not the record's. Without a lookup
+/// only the rules the findings alone decide are checked, in the same words.
+/// </summary>
 internal static class DraftChecks
 {
-    public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)
+    public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup)
     {
         for (int f = 0; f < findings.Count; f++)
         {
             var finding = findings[f];
-            foreach (var error in TargetNameErrors(finding, $"findings[{f}]", lookup)) yield return error;
+            if (lookup is not null)
+                foreach (var error in TargetNameErrors(finding, $"findings[{f}]", lookup)) yield return error;
             for (int i = 0; i < finding.Facts.Count; i++)
                 if (QuayError(finding, finding.Facts[i].Quay, finding.Facts[i].Class, finding.Facts[i].Information, $"findings[{f}].facts[{i}].quay") is { } error)
                     yield return error;
@@ -18,12 +23,13 @@ internal static class DraftChecks
 
         foreach (var error in NewRecordErrors(findings).Concat(RemovalErrors(findings, lookup))
                      .Concat(NoteCitationErrors(findings)).Concat(EmptyFindingErrors(findings))
-                     .Concat(NameErrors(findings, lookup)).Concat(MissingRecordErrors(findings, lookup)))
+                     .Concat(NameErrors(findings, lookup)).Concat(MissingRecordErrors(findings, lookup))
+                     .Concat(ExcerptErrors(findings)).Concat(GradeErrors(findings)))
             yield return error;
     }
 
     // existingPeople and NAME fact records are checked, in person terms, by NameErrors.
-    static IEnumerable<string> MissingRecordErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)
+    static IEnumerable<string> MissingRecordErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup)
     {
         for (int f = 0; f < findings.Count; f++)
         {
@@ -33,13 +39,13 @@ internal static class DraftChecks
             {
                 if (reference.IsPlaceholder || reference.Path.StartsWith("existingPeople[", StringComparison.Ordinal)
                     || nameRecords.Contains(reference.Path)) continue;
-                if (lookup.HasRecord(reference.Xref) == false)
+                if (lookup?.HasRecord(reference.Xref) == false)
                     yield return $"findings[{f}].{reference.Path} {reference.Xref} is not a record in the document.";
             }
         }
     }
 
-    static IEnumerable<string> NameErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)
+    static IEnumerable<string> NameErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup)
     {
         var referenced = findings.Select(f => f.Target.Xref)
             .Concat(findings.SelectMany(f => f.ExistingPeople))
@@ -51,7 +57,7 @@ internal static class DraftChecks
             for (int p = 0; p < findings[f].ExistingPeople.Count; p++)
             {
                 string xref = findings[f].ExistingPeople[p];
-                if (Placeholder.IsPlaceholder(xref) || !lookup.HasPerson(xref))
+                if (Placeholder.IsPlaceholder(xref) || lookup?.HasPerson(xref) == false)
                     yield return $"findings[{f}].existingPeople[{p}] {xref} is not an existing person in the document.";
             }
             for (int i = 0; i < findings[f].Facts.Count; i++)
@@ -62,12 +68,12 @@ internal static class DraftChecks
                 if (!referenced.Contains(fact.Record))
                     yield return $"{path}.record {fact.Record} is not referenced by the input's targets, existingPeople, people or relations.";
                 else if (fact.Record != findings[f].Target.Xref && !Placeholder.IsPlaceholder(fact.Record)
-                         && !lookup.HasPerson(fact.Record))
+                         && lookup?.HasPerson(fact.Record) == false)
                     yield return $"{path}.record {fact.Record} is not an existing person in the document.";
                 if (fact.Value is null || fact.CiteOnly || fact.Withdraw is not null) continue;
                 if (fact.ReplacedCitations is "keep" or "drop")
                     yield return $"{path}.replacedCitations must be moveToNote for NAME corrections; the previous name's citations must be preserved.";
-                string? heldSurname = lookup.PersonSurname(fact.Record);
+                string? heldSurname = lookup?.PersonSurname(fact.Record);
                 string? newSurname = GedNamePayload.Split(fact.Value).Surname;
                 if (heldSurname is not null && !string.Equals(Fold(heldSurname), Fold(newSurname ?? ""), StringComparison.OrdinalIgnoreCase)
                     && !fact.AllowSurnameChange)
@@ -167,6 +173,9 @@ internal static class DraftChecks
                 }
                 if (relation.Kind == DraftRelation.Spouse && relation.Family is null && PeopleOf(relation).Any(declared.ContainsKey))
                     yield return $"{path}.family is required when a partner is new: give a new family xref such as \"@NewF1@\".";
+                foreach (var (xref, role) in PartnersOf(relation))
+                    if (declared.TryGetValue(xref, out var partner) && partner.Sex is null)
+                        yield return $"{path} places {xref} as {role}, so its people entry needs sex (M or F) to type the role.";
                 if (!relation.IsRemoval && QuayError(finding, relation.Quay, null, null, $"{path}.quay") is { } error) yield return error;
             }
 
@@ -183,7 +192,7 @@ internal static class DraftChecks
     }
 
     // A link can only be removed from a family that already exists and lists the child; otherwise the removal would silently do nothing.
-    static IEnumerable<string> RemovalErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)
+    static IEnumerable<string> RemovalErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup)
     {
         for (int f = 0; f < findings.Count; f++)
             for (int r = 0; r < findings[f].Relations.Count; r++)
@@ -200,18 +209,86 @@ internal static class DraftChecks
             }
     }
 
-    static IEnumerable<string> LeavesFamilyErrors(DraftRelation relation, string family, string path, IDraftLookup lookup)
+    static IEnumerable<string> LeavesFamilyErrors(DraftRelation relation, string family, string path, IDraftLookup? lookup)
     {
         if (Placeholder.IsPlaceholder(family))
             yield return $"{path} {family} is a family this draft creates, so there is no existing link to remove.";
         else if (Placeholder.IsPlaceholder(relation.Other))
             yield return $"{path}: {relation.Other} is a new person, so there is no existing link to remove.";
-        else if (lookup.IsChildOf(relation.Other, family) == false)
+        else if (lookup?.IsChildOf(relation.Other, family) == false)
             yield return $"{path}: {relation.Other} is not a child of {family}, so nothing would be removed.";
     }
 
     static IEnumerable<string> PeopleOf(DraftRelation relation) =>
         new[] { relation.Person, relation.Other, relation.Husb, relation.Wife }.OfType<string>().Where(x => x.Length > 0);
+
+    // The people a relation gives a partner's or parent's role, which only their sex can type.
+    static IEnumerable<(string Xref, string Role)> PartnersOf(DraftRelation relation)
+    {
+        if (relation.Kind == DraftRelation.Spouse) yield return (relation.Other, "spouse");
+        if (relation.Kind == DraftRelation.Parent) yield return (relation.Other, "parent");
+        if (relation.Kind == DraftRelation.Child)
+        {
+            if (relation.Husb is { } husb) yield return (husb, "husb");
+            if (relation.Wife is { } wife) yield return (wife, "wife");
+        }
+    }
+
+    // A citation quotes the record: an excerpt must be the finding's extract, or part of it, word for word.
+    static IEnumerable<string> ExcerptErrors(IReadOnlyList<DraftFinding> findings)
+    {
+        for (int f = 0; f < findings.Count; f++)
+        {
+            var finding = findings[f];
+            string path = $"findings[{f}]";
+            for (int i = 0; i < finding.Facts.Count; i++)
+                if (NotQuoted(finding.Facts[i].Excerpt, finding)) yield return $"{path}.facts[{i}].excerpt is not part of the finding's extract; an excerpt quotes the extract word for word.";
+            for (int r = 0; r < finding.Relations.Count; r++)
+                if (NotQuoted(finding.Relations[r].Excerpt, finding)) yield return $"{path}.relations[{r}].excerpt is not part of the finding's extract; an excerpt quotes the extract word for word.";
+            for (int n = 0; n < finding.Notes.Count; n++)
+                for (int c = 0; c < finding.Notes[n].Cites.Count; c++)
+                {
+                    var cite = finding.Notes[n].Cites[c];
+                    var cited = cite.Finding is null ? finding : findings.FirstOrDefault(x => x.Id == cite.Finding);
+                    if (cited is not null && NotQuoted(cite.Excerpt, cited))
+                        yield return $"{path}.notes[{n}].cites[{c}].excerpt is not part of the extract of finding \"{cited.Id}\"; an excerpt quotes the extract word for word.";
+                }
+        }
+    }
+
+    static bool NotQuoted(string? excerpt, DraftFinding finding) =>
+        excerpt is not null && !finding.Extract.Contains(excerpt, StringComparison.Ordinal);
+
+    // The same quoted text becomes one citation, which carries one QUAY.
+    static IEnumerable<string> GradeErrors(IReadOnlyList<DraftFinding> findings)
+    {
+        var claims = new List<(string Finding, string Text, int Quay, string Path)>();
+        for (int f = 0; f < findings.Count; f++)
+        {
+            var finding = findings[f];
+            string path = $"findings[{f}]";
+            for (int i = 0; i < finding.Facts.Count; i++)
+                if (finding.Facts[i].Withdraw is null)
+                    claims.Add((finding.Id, finding.Facts[i].Excerpt ?? finding.Extract, finding.Facts[i].Quay, $"{path}.facts[{i}]"));
+            for (int r = 0; r < finding.Relations.Count; r++)
+                if (!finding.Relations[r].IsRemoval)
+                    claims.Add((finding.Id, finding.Relations[r].Excerpt ?? finding.Extract, finding.Relations[r].Quay, $"{path}.relations[{r}]"));
+            for (int n = 0; n < finding.Notes.Count; n++)
+                for (int c = 0; c < finding.Notes[n].Cites.Count; c++)
+                {
+                    var cite = finding.Notes[n].Cites[c];
+                    var cited = cite.Finding is null ? finding : findings.FirstOrDefault(x => x.Id == cite.Finding);
+                    if (cited is not null) claims.Add((cited.Id, cite.Excerpt ?? cited.Extract, cite.Quay, $"{path}.notes[{n}].cites[{c}]"));
+                }
+        }
+
+        foreach (var quoted in claims.GroupBy(c => (c.Finding, c.Text)))
+        {
+            var first = quoted.First();
+            foreach (var other in quoted.Where(c => c.Quay != first.Quay))
+                yield return $"{other.Path}.quay is {other.Quay}, but {first.Path} cites the same text of finding \"{first.Finding}\" at {first.Quay}; one quoted text carries one grade, so give the differently graded claim its own excerpt.";
+        }
+    }
 
     static bool AnyFamilyRef(IReadOnlyList<DraftFinding> findings, string family) =>
         findings.SelectMany(f => f.Relations).Any(r => r.Family == family);

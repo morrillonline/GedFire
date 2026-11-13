@@ -193,6 +193,65 @@ public class MatchRecordToolTests : IDisposable
     }
 
     [Fact]
+    public async Task FindingPath_AFileOutsideTheContract_IsRefusedNamingTheKey()
+    {
+        string path = WriteFinding("""{ "record": { "persons": [{ "name": "John Ashworth" }] }, "status": "new" }""");
+
+        var result = await Tool().HandleAsync(ByPath(path), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("\"status\" is not a finding-file key", ErrorText(result));
+    }
+
+    [Fact]
+    public async Task ABoundPerson_IsSingleOnTheBindingAndTheSurveyStillListsTheOthers()
+    {
+        var result = await Call(Tool(), """[{ "name": "John Ashworth", "xref": "@I10@" }, { "name": "Mary Ashworth" }]""",
+            HouseholdRelationships, HouseholdEvent, focus: "0");
+
+        var person = result.StructuredContent!.Value.GetProperty("persons")[0];
+        Assert.Equal("single", person.GetProperty("verdict").GetString());
+        Assert.True(person.GetProperty("bound").GetBoolean());
+        Assert.Equal("@I10@", person.GetProperty("confidentMatchXref").GetString());
+        Assert.Equal("@I10@", person.GetProperty("candidates")[0].GetProperty("xref").GetString());
+        var rival = person.GetProperty("sameNameSurvey").EnumerateArray().Single(e => e.GetProperty("xref").GetString() == "@I1@");
+        Assert.Equal("the record binds John Ashworth to @I10@", rival.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task ABoundKin_AnchorsTheOtherPeopleWhateverItsSpelling()
+    {
+        var result = await Call(Tool(), """[{ "name": "John Ashworth", "birthYear": 1848 }, { "name": "Polly Whitcomb", "xref": "@I2@" }]""",
+            HouseholdRelationships, HouseholdEvent, focus: "0");
+
+        var leader = result.StructuredContent!.Value.GetProperty("persons")[0].GetProperty("candidates")[0];
+        Assert.Equal("@I1@", leader.GetProperty("xref").GetString());
+        var kin = Assert.Single(leader.GetProperty("matchedKin").EnumerateArray());
+        Assert.Equal("@I2@", kin.GetProperty("treeXref").GetString());
+    }
+
+    [Fact]
+    public async Task ABindingToNoPerson_IsRefused()
+    {
+        var result = await Call(Tool(), """[{ "name": "John Ashworth", "xref": "@I99@" }]""");
+
+        Assert.True(result.IsError);
+        Assert.Equal("persons[0].xref @I99@ is not a person in the document.", ErrorText(result));
+    }
+
+    [Fact]
+    public async Task FindingPath_ABoundRecordPerson_IsSingleOnTheBinding()
+    {
+        string path = WriteFinding("""{ "record": { "persons": [{ "name": "John Ashworth" }, { "name": "Mary Ashworth", "xref": "@I2@" }] } }""");
+
+        var result = await Tool().HandleAsync(ByPath(path, focus: "1"), CancellationToken.None);
+
+        var person = result.StructuredContent!.Value.GetProperty("persons")[0];
+        Assert.Equal("single", person.GetProperty("verdict").GetString());
+        Assert.Equal("@I2@", person.GetProperty("confidentMatchXref").GetString());
+    }
+
+    [Fact]
     public async Task MatchRecord_MissingPersons_IsAnError()
     {
         var result = await Tool().HandleAsync(default, default, default, default, CancellationToken.None);
