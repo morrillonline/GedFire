@@ -36,6 +36,25 @@ public class MatchRecordRequestReaderTests
     }
 
     [Fact]
+    public void DeathYearAndMaidenName_AreAccepted()
+    {
+        var (ok, _, error) = Read(persons: """[{ "name": "Hester Quillfeather", "deathYear": 1880, "maidenName": "Ambrose" }]""");
+
+        Assert.True(ok, error);
+    }
+
+    [Theory]
+    [InlineData("""{ "name": "A", "deathYear": 0 }""", "persons[0].deathYear must be an integer between 1 and 9999, not a number.")]
+    [InlineData("""{ "name": "A", "maidenName": " " }""", "persons[0].maidenName must be a non-blank string, not a blank string.")]
+    public void AMalformedDeathYearOrMaidenName_IsRefusedByField(string person, string expected)
+    {
+        var (ok, _, error) = Read(persons: $"[{person}]");
+
+        Assert.False(ok);
+        Assert.Equal(expected, error);
+    }
+
+    [Fact]
     public void FullRecord_ReadsEveryField()
     {
         var (ok, record, error) = Read(

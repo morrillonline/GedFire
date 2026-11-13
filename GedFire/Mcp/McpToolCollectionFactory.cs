@@ -20,9 +20,13 @@ public static class McpToolCollectionFactory
     {
         public bool RequiresDocument => Standalone is null;
 
-        public McpServerTool Create(ToolContext? context = null) => Standalone is { } standalone
-            ? standalone(context?.Gate ?? new ToolGate())
-            : Bound!(context ?? throw new ArgumentException($"{Definition.Name} requires a GEDCOM document."));
+        // A tool that runs either way is bound whenever a document is given.
+        public McpServerTool Create(ToolContext? context = null) => (context, Bound, Standalone) switch
+        {
+            ({ } bound, { } create, _) => create(bound),
+            (_, _, { } standalone) => standalone(context?.Gate ?? new ToolGate()),
+            _ => throw new ArgumentException($"{Definition.Name} requires a GEDCOM document."),
+        };
     }
 
     static readonly IReadOnlyList<Registration> Registrations =
@@ -39,6 +43,9 @@ public static class McpToolCollectionFactory
         new(new(DescribeChangesetOpsTool.ToolName, DescribeChangesetOpsTool.Description,
                 DescribeChangesetOpsTool.InputSchemaJson, DescribeChangesetOpsTool.OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent),
             Standalone: gate => new DescribeChangesetOpsTool(gate).ToMcpServerTool()),
+        new(new(DescribeSchemasTool.ToolName, DescribeSchemasTool.Description,
+                DescribeSchemasTool.InputSchemaJson, DescribeSchemasTool.OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent),
+            Standalone: gate => new DescribeSchemasTool(gate).ToMcpServerTool()),
         new(new(DraftChangesetTool.ToolName, DraftChangesetTool.Description,
                 DraftChangesetTool.InputSchemaJson, DraftChangesetTool.OutputSchemaJson, ToolBehavior.CreatesFiles),
             s => new DraftChangesetTool(s.Session, s.Gate, s.Policy).ToMcpServerTool()),
@@ -84,6 +91,10 @@ public static class McpToolCollectionFactory
         new(new(ValidateDocumentTool.ToolName, ValidateDocumentTool.Description,
                 ValidateDocumentTool.InputSchemaJson, ValidateDocumentTool.OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent),
             s => new ValidateDocumentTool(s.DocumentPath, s.Gate).ToMcpServerTool()),
+        new(new(ValidateFindingTool.ToolName, ValidateFindingTool.Description,
+                ValidateFindingTool.InputSchemaJson, ValidateFindingTool.OutputSchemaJson, ToolBehavior.ReadOnlyIdempotent),
+            s => new ValidateFindingTool(s.Session, s.Gate, s.Policy).ToMcpServerTool(),
+            gate => new ValidateFindingTool(null, gate).ToMcpServerTool()),
     ];
 
     static readonly IReadOnlyDictionary<string, Registration> ByName = Registrations.ToDictionary(r => r.Definition.Name, StringComparer.Ordinal);

@@ -21,6 +21,9 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
 
     public bool HasPerson(string xref) => model.Individuals.ContainsKey(xref);
 
+    public bool? HasRecord(string xref) =>
+        model.Individuals.ContainsKey(xref) || model.Families.ContainsKey(xref) || model.Sources.ContainsKey(xref);
+
     public IReadOnlyList<ExistingFact> FactsOn(string record, string tag) =>
         [.. EventsOf(record, tag).Select(e => new ExistingFact(NullIfEmpty(e.Date), NullIfEmpty(e.Place), CitationsOf(e)))];
 

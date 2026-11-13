@@ -106,7 +106,7 @@ public class McpServerIntegrationTests : IDisposable
 
         var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Equal(19, tools.GetArrayLength());
+        Assert.Equal(21, tools.GetArrayLength());
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
@@ -115,9 +115,9 @@ public class McpServerIntegrationTests : IDisposable
         // membership is asserted.
         Assert.Equal(
             new HashSet<string> {
-                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "draft_changeset", "draft_package", "find_family", "find_person", "find_source",
+                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "describe_schemas", "draft_changeset", "draft_package", "find_family", "find_person", "find_source",
                 "get_document_stats", "get_record", "get_records", "list_people", "list_unanchored_people", "match_record", "research_brief", "select_targets",
-                "validate_changeset", "validate_document",
+                "validate_changeset", "validate_document", "validate_finding",
             },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
 

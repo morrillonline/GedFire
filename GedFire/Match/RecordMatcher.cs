@@ -108,7 +108,7 @@ public sealed class RecordMatcher
         Name = PersonDisplay.FullName(s.Individual),
         Born = EventDisplay(s.Individual.Birth),
         Died = EventDisplay(s.Individual.DeathOrBurial),
-        Lifespan = Lifespan(s.Individual),
+        Lifespan = PersonDisplay.Lifespan(s.Individual),
         Score = s.Composite,
         Subscores = new RecordSubscores
         {
@@ -172,13 +172,6 @@ public sealed class RecordMatcher
 
     static string Names(IReadOnlyList<RecordPersonDescription> persons) =>
         string.Join(", ", persons.Select(p => p.Name));
-
-    static string? Lifespan(GedIndividual indi)
-    {
-        int born = GedDate.ParseYear(indi.Birth?.Date), died = GedDate.ParseYear(indi.DeathOrBurial?.Date);
-        if (born == 0 && died == 0) return null;
-        return $"{(born == 0 ? "?" : born.ToString())}-{(died == 0 ? "?" : died.ToString())}";
-    }
 
     static string? EventDisplay(GedEvent? ev)
     {

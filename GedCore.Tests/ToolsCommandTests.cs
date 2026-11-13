@@ -313,4 +313,21 @@ public class ToolsCommandTests : IDisposable
         Assert.Equal(1, result.Exit);
         Assert.NotEmpty(result.Error);
     }
+
+    [Fact]
+    public async Task Call_ValidateFindingChecksShapeWithoutInputAndBindingsWithIt()
+    {
+        string finding = JsonFile("F-104.json", FindingFixtures.Read("F-104.json"));
+        string arguments = JsonSerializer.Serialize(new { findingPaths = new[] { finding } });
+
+        var shape = await Run(["call", "validate_finding", "--read-only", "--args", "-"], arguments);
+        var bound = await Run(["call", "validate_finding", "--input", Document(), "--read-only", "--args", "-"], arguments);
+
+        Assert.Equal(0, shape.Exit);
+        using (var json = JsonDocument.Parse(shape.Output))
+            Assert.False(json.RootElement.GetProperty("documentChecked").GetBoolean());
+        Assert.Equal(1, bound.Exit);
+        using (var json = JsonDocument.Parse(bound.Output))
+            Assert.Contains("@I99@ is not a record in the document", json.RootElement.GetProperty("findings")[0].GetProperty("errors")[0].GetString());
+    }
 }
