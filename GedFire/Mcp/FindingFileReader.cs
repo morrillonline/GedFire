@@ -7,10 +7,10 @@ namespace GedFire.Mcp;
 // ---------------------------------------------------------------------------
 // Reads one finding file against the finding-file contract (gedfire schema
 // finding-file): draft, argument, draftGaps, record and the caller's meta.
-// Shape faults are errors; what only blocks drafting (no draft, draftGaps)
-// is left to the caller to treat as an error or as "not ready". A top-level
-// key outside the contract, and a draft.id that differs from the file name,
-// are warnings for now and will be refused in a later release.
+// Shape faults, a top-level key outside the contract, and a draft.id that
+// differs from the file name are errors; what only blocks drafting (no
+// draft, draftGaps) is left to the caller to treat as an error or as "not
+// ready".
 // ---------------------------------------------------------------------------
 
 /// <summary>One finding file as read against the finding-file contract.</summary>
@@ -31,9 +31,7 @@ public sealed record FindingFile(string Name)
     public JsonElement? Record { get; init; }
 
     public IReadOnlyList<string> Gaps { get; init; } = [];
-    public bool Parked { get; init; }
     public IReadOnlyList<string> Errors { get; init; } = [];
-    public IReadOnlyList<string> Warnings { get; init; } = [];
 
     public bool IsValid => Errors.Count == 0;
 
@@ -41,7 +39,7 @@ public sealed record FindingFile(string Name)
     public string? NotReadyReason =>
         !Parsed ? null
         : Gaps.Count > 0 ? $"{Name} has draftGaps: {string.Join("; ", Gaps)}. Supply them at the stage that owns them and re-run correlation with --force."
-        : !HasDraft ? (Parked ? $"{Name} is parked; a park verdict writes no draft." : $"{Name} has no draft; correlate the finding to write one.")
+        : !HasDraft ? $"{Name} has no draft; correlate the finding to write one."
         : null;
 
     public bool ReadyToDraft => IsValid && NotReadyReason is null;
@@ -83,26 +81,24 @@ public static class FindingFileReader
         if (root.ValueKind != JsonValueKind.Object)
             return new FindingFile(name) { Errors = [$"{name} must hold a finding object, not {ToolArguments.Describe(root)}."] };
 
-        var errors = new List<string>();
-        var warnings = UnknownKeyWarnings(root, name).ToList();
+        var errors = UnknownKeyErrors(root, name).ToList();
         var gaps = ReadGaps(root, name, errors);
         CheckMeta(root, name, errors);
         var record = ReadRecord(root, name, errors);
         var argument = ReadArgument(root, name, errors);
         var (id, draft, hasDraft) = ReadDraft(root, name, argument, errors);
         if (id is not null && Path.GetFileNameWithoutExtension(name) != id)
-            warnings.Add($"{name}: draft.id \"{id}\" differs from the file name; name the file {id}.json. This will be refused in a later release.");
+            errors.Add($"{name}: draft.id \"{id}\" differs from the file name; name the file {id}.json.");
 
         return new FindingFile(name)
         {
-            Parsed = true, Id = id, Draft = draft, HasDraft = hasDraft, Record = record, Gaps = gaps, Parked = IsParked(root),
-            Errors = errors, Warnings = warnings,
+            Parsed = true, Id = id, Draft = draft, HasDraft = hasDraft, Record = record, Gaps = gaps, Errors = errors,
         };
     }
 
-    static IEnumerable<string> UnknownKeyWarnings(JsonElement root, string name) =>
+    static IEnumerable<string> UnknownKeyErrors(JsonElement root, string name) =>
         root.EnumerateObject().Select(p => p.Name).Where(key => !Keys.Contains(key))
-            .Select(key => $"{name}: \"{key}\" is not a finding-file key; accepted keys: {string.Join(", ", Keys)}. It is ignored now and will be refused in a later release.");
+            .Select(key => $"{name}: \"{key}\" is not a finding-file key; accepted keys: {string.Join(", ", Keys)}.");
 
     static List<string> ReadGaps(JsonElement root, string name, List<string> errors)
     {
@@ -173,12 +169,4 @@ public static class FindingFileReader
         errors.AddRange(argumentErrors.Select(e => $"{name}: {e}"));
         return carried;
     }
-
-    // Deprecated: correlation is the caller's field. Removed when unknown keys are refused.
-    static bool IsParked(JsonElement root) =>
-        root.TryGetProperty("correlation", out var correlation)
-        && correlation.ValueKind == JsonValueKind.Object
-        && correlation.TryGetProperty("kind", out var kind)
-        && kind.ValueKind == JsonValueKind.String
-        && kind.GetString() == "park";
 }

@@ -18,6 +18,9 @@ public sealed record RecordPersonMatch
     /// <summary>"single", "candidates", or "none" — the same confidence floors as find_person.</summary>
     public required string Verdict { get; init; }
 
+    /// <summary>True when the record bound this person to a tree person by xref, which then is the confident match.</summary>
+    public bool Bound { get; init; }
+
     public string? ConfidentMatchXref { get; init; }
     public double? ConfidentMatchScore { get; init; }
 

@@ -36,7 +36,10 @@ public sealed class MatchRecordTool
         "returns the same result. maxCandidates (default 5) caps candidates per person and candidatesOmitted counts " +
         "the rest; compact returns candidates as {xref, name, lifespan, score, matchedKin} and survey rows as " +
         "{xref, name, reason}. The verdict and runner-up are decided before either applies, and the survey is never capped. " +
-        "Instead of giving persons, relationships and event, findingPath reads them from a finding file's record slot.";
+        "Instead of giving persons, relationships and event, findingPath reads them from a finding file's record slot; " +
+        "the file must be a valid finding file. A record person with an xref is already bound to that tree person: it is " +
+        "reported as single on that xref with bound true, its same-name survey still lists the others, and the binding " +
+        "anchors the kin scoring of the record's other people.";
 
     public static readonly string InputSchemaJson = SchemaComposer.Compose("""
         {
@@ -81,7 +84,8 @@ public sealed class MatchRecordTool
                   "index": { "type": "integer", "description": "Index into the request's persons." },
                   "role": { "type": ["string", "null"] },
                   "name": { "type": "string" },
-                  "verdict": { "type": "string", "enum": ["single", "candidates", "none"], "description": "single means a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10." },
+                  "verdict": { "type": "string", "enum": ["single", "candidates", "none"], "description": "single means a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10, or a person the record binds by xref." },
+                  "bound": { "type": "boolean", "description": "True when the record bound this person by xref; confidentMatchXref is then that xref." },
                   "confidentMatchXref": { "type": ["string", "null"] },
                   "confidentMatchScore": { "type": ["number", "null"] },
                   "runnerUpXref": { "type": ["string", "null"], "description": "The second-ranked candidate, kept even when maxCandidates drops it." },
@@ -221,6 +225,7 @@ public sealed class MatchRecordTool
             return CallToolResults.Error(error!);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        if (UnknownBinding(record!, snapshot) is { } unknown) return CallToolResults.Error(unknown);
         var result = _recordMatcher.Match(snapshot.MatchIndex, record!);
         return CallToolResults.Success(view!.Present(result), CallToolResults.JsonOptions);
     }
@@ -243,14 +248,25 @@ public sealed class MatchRecordTool
         }
 
         var file = FindingFileReader.ReadPath(Path.GetFullPath(path.Trim()));
+        if (file.Errors.Count > 0)
+        {
+            error = string.Join(" ", file.Errors);
+            return false;
+        }
         if (file.Record is not { } slot)
         {
-            error = file.Errors.Count > 0 ? string.Join(" ", file.Errors) : $"{file.Name} has no record.";
+            error = $"{file.Name} has no record.";
             return false;
         }
         described = arguments with { Persons = Member(slot, "persons"), Relationships = Member(slot, "relationships"), Event = Member(slot, "event") };
         return true;
     }
+
+    static string? UnknownBinding(RecordDescription record, DocumentSnapshot snapshot) =>
+        record.Persons.Select((person, index) => (person.Xref, index))
+            .Where(p => p.Xref is not null && !snapshot.Model.Individuals.ContainsKey(p.Xref))
+            .Select(p => $"persons[{p.index}].xref {p.Xref} is not a person in the document.")
+            .FirstOrDefault();
 
     static JsonElement Member(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) ? value : default;

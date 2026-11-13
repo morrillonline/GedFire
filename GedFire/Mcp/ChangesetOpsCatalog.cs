@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore.Apply;
 
 namespace GedFire.Mcp;
 
@@ -86,7 +87,7 @@ public static class ChangesetOpsCatalog
             "overwrite an existing instance without \"match\" or \"mode\":\"add\".",
             [
                 new("record", "string", true, "Target person or family xref."),
-                new("fact", "string", true, "The GEDCOM tag to assert, e.g. BIRT, DEAT, MARR, CENS, NAME."),
+                new("fact", "string", true, "The GEDCOM tag to assert, e.g. BIRT, DEAT, MARR, CENS, NAME. draft_changeset writes only these: " + string.Join(", ", CreateOrUpdateVitalOp.Facts) + "."),
                 new("value", "string | object", true, EventValueNote),
                 new("match", "string | object", false, FactMatchNote),
                 new("mode", "string", false, "\"upsert\" (default) or \"add\" (always creates a new instance; forbids \"match\")."),

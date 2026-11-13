@@ -390,7 +390,7 @@ errors or failed validation/plausibility checks.
 `mcp`. Read-only prevents GEDCOM changes, not separate draft or report files.
 Discovery needs no GEDCOM. Calls to `date_calc`, `describe_changeset_ops` and
 `describe_schemas` need no `--input`. Without `--input`, `validate_finding`
-checks only shape. Existing convenience commands remain unchanged. See the
+checks every rule that needs no document. Existing convenience commands remain unchanged. See the
 [script interface](docs/mcp-reference.md#command-line-tool-interface) for output details.
 
 ## Building from source

@@ -10,15 +10,11 @@ namespace GedFire.Mcp;
 // the gap can fix it, rather than compiling a draft with a hole in it.
 // ---------------------------------------------------------------------------
 
-/// <summary>One finding file as loaded for drafting: its draft when ready, otherwise why not, and any warnings either way.</summary>
-public sealed record LoadedFindingFile(string Name, DraftFinding? Finding, IReadOnlyList<string> Errors)
-{
-    public IReadOnlyList<string> Warnings { get; init; } = [];
-}
+/// <summary>One finding file as loaded for drafting: its draft when ready, otherwise why not.</summary>
+public sealed record LoadedFindingFile(string Name, DraftFinding? Finding, IReadOnlyList<string> Errors);
 
 /// <summary>The drafts of a set of finding files; <see cref="Files"/> holds each finding's file, in order.</summary>
-public sealed record LoadedFindings(
-    IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Files, IReadOnlyList<string> Errors, IReadOnlyList<string> Warnings);
+public sealed record LoadedFindings(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Files, IReadOnlyList<string> Errors);
 
 public static partial class FindingFileLoader
 {
@@ -26,17 +22,15 @@ public static partial class FindingFileLoader
     public static LoadedFindings Load(JsonElement paths)
     {
         if (!ToolArguments.TryReadOptionalStringList(paths, "findingPaths", out var names, out string? error))
-            return new LoadedFindings([], [], [error!], []);
+            return new LoadedFindings([], [], [error!]);
         if (names.Count == 0)
-            return new LoadedFindings([], [], ["findingPaths must name at least one finding file."], []);
+            return new LoadedFindings([], [], ["findingPaths must name at least one finding file."]);
 
         var loaded = LoadAll(names);
         var errors = loaded.SelectMany(f => f.Errors).ToList();
-        var warnings = loaded.SelectMany(f => f.Warnings).ToList();
-        if (errors.Count > 0) return new LoadedFindings([], [], errors, warnings);
+        if (errors.Count > 0) return new LoadedFindings([], [], errors);
 
-        return new LoadedFindings(
-            DraftNoteJoiner.Join([.. loaded.Select(f => f.Finding!)]), [.. loaded.Select(f => f.Name)], [], warnings);
+        return new LoadedFindings(DraftNoteJoiner.Join([.. loaded.Select(f => f.Finding!)]), [.. loaded.Select(f => f.Name)], []);
     }
 
     /// <summary>Reads each named file, in order; a file that cannot be read comes back with its error.</summary>
@@ -59,7 +53,7 @@ public static partial class FindingFileLoader
     public static LoadedFindingFile ForDrafting(FindingFile file)
     {
         IReadOnlyList<string> errors = file.NotReadyReason is { } reason ? [reason, .. file.Errors] : file.Errors;
-        return new LoadedFindingFile(file.Name, errors.Count == 0 ? file.Draft : null, errors) { Warnings = file.Warnings };
+        return new LoadedFindingFile(file.Name, errors.Count == 0 ? file.Draft : null, errors);
     }
 
     /// <summary>Rewrites the <c>findings[i]</c> a draft check names to the file the i-th finding came from.</summary>

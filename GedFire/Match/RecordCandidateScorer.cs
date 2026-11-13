@@ -127,6 +127,10 @@ public sealed class RecordCandidateScorer
     (GedIndividual Person, double Similarity)? BestKinMatch(
         RecordPersonDescription recordKin, List<GedIndividual> treeKin)
     {
+        // A kin the record binds to a tree person matches that person only, whatever the spelling.
+        if (recordKin.Xref is { } bound)
+            return treeKin.FirstOrDefault(t => t.Xref == bound) is { } person ? (person, 1.0) : null;
+
         (GedIndividual Person, double Similarity)? best = null;
         foreach (var tree in treeKin)
         {
@@ -144,6 +148,13 @@ public sealed class RecordCandidateScorer
             }
         }
         return best;
+    }
+
+    /// <summary>A tree person the name search did not recall, scored on the name alone, so a bound person can still be presented.</summary>
+    public ScoredMatch Unrecalled(GedIndividual individual, string recordName)
+    {
+        double score = Math.Round(NameSimilarity(recordName, individual) * 100.0, 1);
+        return new ScoredMatch(individual, score, score, score);
     }
 
     // A record often names kin by given name alone, so compare against both the

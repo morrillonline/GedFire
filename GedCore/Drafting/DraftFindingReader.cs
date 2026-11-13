@@ -88,8 +88,11 @@ public sealed class DraftFindingReader
         if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange")) return null;
         int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
-        string? tag = Text(el, "fact", path, required: true);
+        string? tag = Text(el, "fact", path, required: true)?.ToUpperInvariant();
         string? date = Text(el, "date", path);
+        if (tag is not null && !CreateOrUpdateVitalOp.Facts.Contains(tag))
+            _errors.Add($"{path}.fact \"{tag}\" is not a GEDCOM tag the changeset dialect writes; use one of {string.Join(", ", CreateOrUpdateVitalOp.Facts)}.");
+        if (date is not null && GedDateSyntax.Check($"{path}.date", date) is { } dateError) _errors.Add(dateError);
         string? place = Text(el, "place", path);
         string? value = Text(el, "value", path);
         string? cls = Choice(el, "class", path, SourceClasses, required: false);
@@ -120,7 +123,7 @@ public sealed class DraftFindingReader
             _errors.Add($"{path} needs a date, a place or a value.");
 
         if (_errors.Count > before || record is null || tag is null) return null;
-        return new DraftFact(record, tag.ToUpperInvariant(), date, place, quay, cls, info, Text(el, "excerpt", path), value)
+        return new DraftFact(record, tag, date, place, quay, cls, info, Text(el, "excerpt", path), value)
         {
             Substructures = substructures,
             ReplacedCitations = replaced is null ? null : replaced == "movetonote" ? "moveToNote" : replaced,

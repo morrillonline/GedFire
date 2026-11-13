@@ -36,7 +36,7 @@ one tool's metadata. Neither opens a GEDCOM file.
 `call` accepts the tool's unchanged MCP arguments object from `--args <file>`
 or stdin with `--args -`; omitting `--args` supplies `{}`. All tools require
 `--input` except `date_calc`, `describe_changeset_ops`, `describe_schemas` and
-`validate_finding`, which without `--input` checks finding shape only. Tool names and JSON
+`validate_finding`, which without `--input` checks every rule that needs no document. Tool names and JSON
 field names are case-sensitive. Relative paths, including paths inside the
 arguments object, resolve against the process's working directory.
 
@@ -154,12 +154,18 @@ record against tree family subgraphs. Supply:
 
 - `persons`: roles, names, sex, birth year or age, and birth place. Each
   person can also carry `deathYear` and `maidenName`. GedFire keeps and checks
-  both but does not score them yet.
+  both but does not score them yet. A person can also carry `xref`, the
+  tree person the record is already bound to. That person is reported as
+  `single` on the xref with `bound: true`. Its same-name survey still lists
+  the others. The binding also anchors the kin scoring of the record's other
+  people, whatever spelling the record uses. An xref that is not a person is
+  refused.
 - `relationships`: person-index pairs using `spouse-of`, `child-of`,
   `parent-of`, or `sibling-of`.
-- `event`: the record's date and place.
+- `event`: the record's date, a GEDCOM 7 date with a year, and place.
 - Or `findingPath` instead of the three above: a finding file whose `record`
-  slot holds them. The result matches the same record given inline.
+  slot holds them. The file must be a valid finding file. The result matches
+  the same record given inline.
 - Optional `focus`: the person whose result you want.
 - Optional `maxCandidates` (1-20, default 5): candidates returned per person;
   `candidatesOmitted` counts the rest.
@@ -276,9 +282,9 @@ To price an enrich-person card during validation, use `gap: "enrich-fact"`,
 | `findingPaths` | Finding files, each with a complete entry under `draft`. |
 
 The compiler rejects unrecognized fields by path. File-based errors name the
-file. A missing `draft`, parked finding, or non-empty `draftGaps` prevents
-drafting. A finding that names a record the document does not hold, such as
-an absent `target.xref`, is refused by path.
+file. A missing `draft` or a non-empty `draftGaps` prevents drafting. A
+finding that names a record the document does not hold, such as an absent
+`target.xref`, is refused by path.
 
 ### Finding files
 
@@ -293,34 +299,56 @@ these top-level keys:
 | `record` | No | The record exactly as `match_record` takes it: `persons`, `relationships`, `event`. |
 | `meta` | No | Any object. It belongs to the caller; GedFire never reads, validates, or rewrites its content. |
 
-`meta` and `record` never reach the changeset. In this release, two faults
-are warnings rather than errors: any other top-level key (such as `persons`,
-`correlation` or `status`), and a `draft.id` that differs from the file name.
-`draft_changeset` reports each warning as an `open` decision and still
-drafts. A later release will refuse both, and will stop reading
-`correlation` to detect a parked finding. A file with no `draft` reads as
-"has no draft".
+`meta` and `record` never reach the changeset. Any other top-level key (such
+as `persons`, `correlation` or `status`) is refused, naming the key. So is a
+`draft.id` that differs from the file name. `draft_changeset`, `match_record`
+and `validate_finding` all refuse such a file. A file with no `draft` reports
+"has no draft"; GedFire reads nothing of the caller's to explain why.
 
 `validate_finding` checks finding files (`findingPaths`), or draft entries
 (`findings` or `inputPath`), without drafting. It is read-only. For each
 finding it reports:
 
 - `valid` and `errors`
-- `warnings`
 - `readyToDraft`
 - `draftGaps`
-- `bindings`: each xref the draft names and where. A document record carries
-  `exists`, plus a person's `name` and `lifespan` or a source's title. A
-  `@New…@` placeholder carries `declared`.
+- `bindings`: each xref the draft or a record person names, and where. A
+  document record carries `exists`, plus a person's `name` and `lifespan` or
+  a source's title. A `@New?@` placeholder carries `declared`.
 - `schemaVersion`
 
-A file with no draft or with `draftGaps` is valid but not ready, unless
-`requireDraft` is true, which makes it an error. Against a document, a ready
-finding is also compiled on its own by `draft_changeset`'s checks. Its
-errors therefore match `draft_changeset`'s word for word, and `readyToDraft`
-is true exactly when `draft_changeset` compiles that file without error.
-Without a document (`gedfire tools call validate_finding` with no `--input`),
-only shape is checked.
+These rules need only the finding, so they are checked with or without a
+document. They are also checked while `draftGaps` keep the finding from
+drafting, so a harvest is checked before correlation settles its gaps:
+
+- Field shapes and the finding-file keys.
+- GEDCOM 7 date syntax on each fact `date` and on `record.event.date`. An ISO
+  date, free text, or a date with a place appended is refused. Every GEDCOM 7
+  form is accepted, case ignored: `1 JUN 1840`, `ABT`, `CAL`, `EST`, `BEF`,
+  `AFT`, `BET ? AND ?`, `FROM ? TO ?`, calendars and `BCE`.
+- Fact tags. Each `fact` must be a tag the dialect writes; `describe_changeset_ops`
+  lists them under `createOrUpdateVital`.
+- The QUAY ceiling of each fact, relation and note citation, using the item's
+  own `class` and `information`, else the source's.
+- Placeholder declarations. Every `@New?@` person a fact, note or relation
+  names is declared in `people`, and every new family is named by a relation.
+- Sex on a new person a relation places as `spouse`, `parent`, `husb` or
+  `wife`, so the role can be typed.
+- Verbatim excerpts. An `excerpt` on a fact, relation or note citation must
+  be part of the cited finding's `extract`, word for word.
+- One grade per quoted text. Two claims that quote the same text of a
+  finding, such as the whole extract, must carry the same `quay`. Give a
+  differently graded claim its own `excerpt`.
+
+`draft_changeset` refuses the same faults in the same words. Without a
+document (`gedfire tools call validate_finding` with no `--input`), these are
+the only checks, and their text is the document mode's. With a document,
+xrefs are also resolved. A record person's `xref` must name a person. A
+finding that is ready is compiled on its own by `draft_changeset`'s checks,
+so its errors match `draft_changeset`'s word for word, and `readyToDraft` is
+true exactly when `draft_changeset` compiles that file without error. A file
+with no draft or with `draftGaps` is not ready; it is an error only with
+`requireDraft`.
 
 ### Schemas and versions
 
@@ -336,8 +364,10 @@ these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-The `finding-file` schema already refuses unknown top-level keys, so a file
-that passes it will also pass the release that enforces them. In its default
+Current versions: `finding` 2.0 (tighter date, tag, excerpt, grade and sex
+rules), `finding-file` 2.0 (unknown keys and a mismatched `draft.id` refused),
+`record` 1.1 (optional `persons[].xref`), and `argument` 1.0. A schema
+document states structure only. `validate_finding` is the full check. In its default
 strict mode, ajv rejects the `x-schemaVersion` annotation. Register it with
 `ajv.addKeyword("x-schemaVersion")`, or pass `--strict=false` to `ajv-cli`.
 

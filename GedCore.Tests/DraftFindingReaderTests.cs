@@ -31,6 +31,25 @@ public class DraftFindingReaderTests
     }
 
     [Theory]
+    [InlineData("1840-06-01")]
+    [InlineData("sometime in June")]
+    [InlineData("1 JUN 1840 Salem")]
+    public void AFactDateThatIsNotAGedcomDate_IsRefusedByField(string date)
+    {
+        var (_, errors) = Read($"[{Valid.Replace("\"1 Jan 1900\"", $"\"{date}\"")}]");
+
+        Assert.StartsWith($"findings[0].facts[0].date \"{date}\" is not a GEDCOM date", Assert.Single(errors));
+    }
+
+    [Fact]
+    public void AFactTagTheDialectCannotWrite_IsRefusedByField()
+    {
+        var (_, errors) = Read($"[{Valid.Replace("\"deat\"", "\"xyzq\"")}]");
+
+        Assert.StartsWith("findings[0].facts[0].fact \"XYZQ\" is not a GEDCOM tag the changeset dialect writes", Assert.Single(errors));
+    }
+
+    [Theory]
     [InlineData("Biography", "biography", null)]
     [InlineData("obituary", null, "notes[0].purpose must be one of biography")]
     public void ANotePurpose_IsReadOrRefusedByName(string purpose, string? expected, string? error)

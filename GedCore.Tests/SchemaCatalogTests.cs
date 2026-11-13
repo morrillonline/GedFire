@@ -19,11 +19,10 @@ public class SchemaCatalogTests
         return FindingFile.Evaluate(document.RootElement).IsValid;
     }
 
-    // In this release an unknown key is only a warning; the schema already refuses it.
     static bool ReaderAccepts(string json, string name)
     {
         var file = FindingFileReader.Read(new MemoryStream(Encoding.UTF8.GetBytes(json)), name);
-        return file.IsValid && file.Warnings.Count == 0;
+        return file.IsValid;
     }
 
     public static IEnumerable<object[]> Fixtures() => FindingFixtures.Names.Select(name => new object[] { name });
@@ -47,7 +46,7 @@ public class SchemaCatalogTests
     [InlineData("\"record\": { \"persons\": [] }")]
     [InlineData("\"record\": { \"persons\": [{ \"name\": \"Ada\", \"focus\": 0 }] }")]
     [InlineData("\"argument\": { \"difficulty\": \"easy\" }")]
-    public void TheSchemaRefusesWhatTheReaderRefusesOrWarnsAbout(string member)
+    public void TheSchemaRefusesWhatTheReaderRefuses(string member)
     {
         string json = "{ " + member + " }";
 
@@ -71,7 +70,7 @@ public class SchemaCatalogTests
         {
             var document = schema.Document();
             Assert.Equal("https://json-schema.org/draft/2020-12/schema", (string?)document["$schema"]);
-            Assert.Equal($"{SchemaCatalog.BaseUri}{schema.Name}/1", (string?)document["$id"]);
+            Assert.Equal($"{SchemaCatalog.BaseUri}{schema.Name}/{schema.Version.Split('.')[0]}", (string?)document["$id"]);
             Assert.Matches(@"^\d+\.\d+$", (string?)document["x-schemaVersion"]);
             Compile(schema);
         }

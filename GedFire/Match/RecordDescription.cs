@@ -26,6 +26,9 @@ public sealed record RecordPersonDescription
     public bool? IsMale { get; init; }
     public int? BirthYear { get; init; }
     public string? BirthPlace { get; init; }
+
+    /// <summary>The tree person the record already binds this person to; matching then confirms rather than searches.</summary>
+    public string? Xref { get; init; }
 }
 
 public enum RecordRelationshipKind { SpouseOf, ChildOf, ParentOf, SiblingOf }

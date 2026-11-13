@@ -96,7 +96,7 @@ public class ChangesetDrafterNoteAndCitationTests
     [Fact]
     public void ANoteCitingOneFinding_UsesTheSingularCitationKey()
     {
-        var finding = Finding("F-1", Source("Register", "Register p. 2"), "Hiram.",
+        var finding = Finding("F-1", Source("Register", "Register p. 2"), "Hiram, narrower. Hiram.",
             notes: [new DraftNote("@I1@", "A cited note.") { Cites = [new DraftNoteCitation(null, 2, "Hiram, narrower.")] }]);
 
         var note = Ops(Draft(finding))[0];
@@ -133,7 +133,7 @@ public class ChangesetDrafterNoteAndCitationTests
         var finding = Finding("F-1", Source("Register", "p. 2"), "x",
             notes: [new DraftNote("@I1@", "N.") { Cites = [new DraftNoteCitation("F-2", 1, null)] }]);
 
-        Assert.Contains("aimed at a different target", Assert.Single(Draft(finding, other).Errors));
+        Assert.Contains(Draft(finding, other).Errors, e => e.Contains("aimed at a different target"));
     }
 
     [Fact]

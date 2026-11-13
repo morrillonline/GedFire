@@ -48,6 +48,19 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
 
     internal static bool IsSingleValued(string tag) => SingleValuedFacts.Contains(tag);
 
+    /// <summary>
+    /// The GEDCOM 7 tags a vital can carry: the standard individual and family events and attributes, plus NAME and SEX.
+    /// LDS ordinances are left out because their structure is not an event's.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Facts =
+    [
+        "NAME", "SEX",
+        "ADOP", "BAPM", "BARM", "BASM", "BIRT", "BLES", "BURI", "CENS", "CHR", "CHRA", "CONF", "CREM", "DEAT", "EMIG",
+        "FCOM", "GRAD", "IMMI", "NATU", "ORDN", "PROB", "RETI", "WILL", "EVEN",
+        "CAST", "DSCR", "EDUC", "IDNO", "NATI", "NCHI", "NMR", "OCCU", "PROP", "RELI", "RESI", "SSN", "TITL", "FACT",
+        "ANUL", "DIV", "DIVF", "ENGA", "MARB", "MARC", "MARL", "MARR", "MARS",
+    ];
+
     internal static CreateOrUpdateVitalOp Read(JsonElement el) => new()
     {
         Record = JsonRead.Req(el, "record", "createOrUpdateVital"),
