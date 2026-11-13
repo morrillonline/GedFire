@@ -1,0 +1,11 @@
+{
+  "record": {
+    "persons": [
+      { "role": "head", "name": "Ezra Quillfeather", "sex": "M", "age": 49 },
+      { "role": "wife", "name": "Hester Quillfeather", "sex": "F", "maidenName": "Ambrose", "deathYear": 1880 }
+    ],
+    "relationships": [ { "type": "spouse-of", "from": 1, "to": 0 } ],
+    "event": { "date": "1850", "place": "Larkspur, Fictional County", "type": "census" }
+  },
+  "meta": { "status": "harvested" }
+}

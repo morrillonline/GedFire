@@ -325,6 +325,43 @@ public class ChangesetDrafterTests
 
     // ---- refusals ----
 
+    sealed class KnownRecordsLookup(params string[] records) : IDraftLookup
+    {
+        public IReadOnlyList<ExistingFact> FactsOn(string record, string tag) => [];
+        public IReadOnlyList<string> NotesOn(string record) => [];
+        public string? FindSource(string title, string? author) => null;
+        public string? PersonName(string xref) => records.Contains(xref) ? "Ezra /Quillfeather/" : null;
+        public bool? HasRecord(string xref) => records.Contains(xref);
+    }
+
+    [Fact]
+    public void ARecordTheDocumentLacks_IsRefusedAtEachPlaceItIsNamed()
+    {
+        var finding = Finding("F-1", Memorial(), "x", [Fact("DEAT", "1 JAN 1900", null, 2, "@I9@")], xref: "@I8@") with
+        {
+            Notes = [new DraftNote("@I1@", "A note.")],
+        };
+
+        var result = new ChangesetDrafter(new KnownRecordsLookup("@I1@")).Draft([finding]);
+
+        Assert.Equal(
+            ["findings[0].target.xref @I8@ is not a record in the document.", "findings[0].facts[0].record @I9@ is not a record in the document."],
+            result.Errors);
+    }
+
+    [Fact]
+    public void ExistingPeopleAndVoid_AreNotReportedAsMissingRecords()
+    {
+        var finding = Finding("F-1", Memorial(), "x", [Fact("DEAT", "1 JAN 1900", null, 2)]) with
+        {
+            ExistingPeople = ["@I7@"],
+            Relations = [new DraftRelation(DraftRelation.Child, "", "@I1@", "@F1@", null, "@VOID@", null, 2)],
+        };
+
+        var result = new ChangesetDrafter(new KnownRecordsLookup("@I1@", "@F1@")).Draft([finding]);
+
+        Assert.Equal(["findings[0].existingPeople[0] @I7@ is not an existing person in the document."], result.Errors);
+    }
     [Fact]
     public void AQuayAboveWhatTheEvidenceSupports_IsRefusedNamingTheField()
     {

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using GedCore.Matching;
 using GedFire.Match;
+using GedFire.Schemas;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -34,54 +35,19 @@ public sealed class MatchRecordTool
         "possibleDuplicates, never force-matched to the nearest name. Deterministic: the same input always " +
         "returns the same result. maxCandidates (default 5) caps candidates per person and candidatesOmitted counts " +
         "the rest; compact returns candidates as {xref, name, lifespan, score, matchedKin} and survey rows as " +
-        "{xref, name, reason}. The verdict and runner-up are decided before either applies, and the survey is never capped.";
+        "{xref, name, reason}. The verdict and runner-up are decided before either applies, and the survey is never capped. " +
+        "Instead of giving persons, relationships and event, findingPath reads them from a finding file's record slot.";
 
-    public const string InputSchemaJson = """
+    public static readonly string InputSchemaJson = SchemaComposer.Compose("""
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "persons": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 50,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "role": { "type": "string", "minLength": 1, "description": "The record's own label for the person, e.g. \"head\", \"wife\", \"son\", \"survivor\", \"deceased\". Free text, echoed back." },
-                  "name": { "type": "string", "minLength": 1, "description": "The name as the record spells it." },
-                  "sex": { "type": "string", "enum": ["M", "F"] },
-                  "birthYear": { "type": "integer", "minimum": 1, "maximum": 9999 },
-                  "age": { "type": "integer", "minimum": 0, "maximum": 120, "description": "Age as the record states it; needs event.date with a year, which gives birthYear = event year minus age. Give birthYear or age, not both." },
-                  "birthPlace": { "type": "string", "minLength": 1 }
-                },
-                "required": ["name"]
-              },
-              "description": "Every person the record names."
-            },
-            "relationships": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "type": { "type": "string", "enum": ["spouse-of", "child-of", "parent-of", "sibling-of"] },
-                  "from": { "type": "integer", "minimum": 0 },
-                  "to": { "type": "integer", "minimum": 0 }
-                },
-                "required": ["type", "from", "to"]
-              },
-              "description": "Relationships the record itself states, by index into persons: for child-of, from is the child of to; for parent-of, from is a parent of to; spouse-of and sibling-of are symmetric."
-            },
-            "event": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "date": { "type": "string", "minLength": 1, "description": "GEDCOM-style date of the record's own event, e.g. \"1880\" or \"12 JUN 1880\". Must contain a year." },
-                "place": { "type": "string", "minLength": 1 },
-                "type": { "type": "string", "minLength": 1, "description": "Free text, e.g. \"census\" or \"obituary\". Context only; never scored." }
-              }
+            "findingPath": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "description": "Path to a finding file whose \"record\" slot holds persons, relationships and event, so a stored record is re-matched without reassembly. Give findingPath or persons, not both; focus, maxCandidates and compact still apply."
             },
             "focus": {
               "type": "integer",
@@ -98,10 +64,9 @@ public sealed class MatchRecordTool
               "type": "boolean",
               "description": "Return candidates as {xref, name, lifespan, score, matchedKin} without subscores, and sameNameSurvey rows as {xref, name, reason}."
             }
-          },
-          "required": ["persons"]
+          }
         }
-        """;
+        """, FindingSchemas.AddRecordProperties);
 
     public const string OutputSchemaJson = """
         {
@@ -223,31 +188,80 @@ public sealed class MatchRecordTool
     Task<CallToolResult> InvokeAsync(
         JsonElement? persons = null, JsonElement? relationships = null, JsonElement? @event = null,
         JsonElement? focus = null, JsonElement? maxCandidates = null, JsonElement? compact = null,
-        CancellationToken cancellationToken = default)
-        => HandleAsync(persons ?? default, relationships ?? default, @event ?? default, focus ?? default,
-            maxCandidates ?? default, compact ?? default, cancellationToken);
+        JsonElement? findingPath = null, CancellationToken cancellationToken = default)
+        => HandleAsync(
+            new MatchRecordArguments(persons ?? default, relationships ?? default, @event ?? default, focus ?? default)
+            {
+                MaxCandidates = maxCandidates ?? default, Compact = compact ?? default, FindingPath = findingPath ?? default,
+            },
+            cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         JsonElement persons, JsonElement relationships, JsonElement recordEvent, JsonElement focus,
         CancellationToken cancellationToken) =>
-        HandleAsync(persons, relationships, recordEvent, focus, default, default, cancellationToken);
+        HandleAsync(new MatchRecordArguments(persons, relationships, recordEvent, focus), cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         JsonElement persons, JsonElement relationships, JsonElement recordEvent, JsonElement focus,
         JsonElement maxCandidates, JsonElement compact, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(persons, relationships, recordEvent, focus, maxCandidates, compact, ct), cancellationToken);
+        HandleAsync(
+            new MatchRecordArguments(persons, relationships, recordEvent, focus) { MaxCandidates = maxCandidates, Compact = compact },
+            cancellationToken);
 
-    async Task<CallToolResult> ExecuteAsync(
-        JsonElement persons, JsonElement relationships, JsonElement recordEvent, JsonElement focus,
-        JsonElement maxCandidates, JsonElement compact, CancellationToken cancellationToken)
+    public Task<CallToolResult> HandleAsync(MatchRecordArguments arguments, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(arguments, ct), cancellationToken);
+
+    async Task<CallToolResult> ExecuteAsync(MatchRecordArguments arguments, CancellationToken cancellationToken)
     {
-        if (!MatchRecordRequestReader.TryRead(persons, relationships, recordEvent, focus, out var record, out string? error))
+        if (!TryResolveRecord(arguments, out var described, out string? error))
             return CallToolResults.Error(error!);
-        if (!MatchRecordRequestReader.TryReadView(maxCandidates, compact, out var view, out error))
+        if (!MatchRecordRequestReader.TryRead(described.Persons, described.Relationships, described.Event, arguments.Focus, out var record, out error))
+            return CallToolResults.Error(error!);
+        if (!MatchRecordRequestReader.TryReadView(arguments.MaxCandidates, arguments.Compact, out var view, out error))
             return CallToolResults.Error(error!);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var result = _recordMatcher.Match(snapshot.MatchIndex, record!);
         return CallToolResults.Success(view!.Present(result), CallToolResults.JsonOptions);
     }
+
+    // The record is given inline, or read from the record slot of a finding file.
+    static bool TryResolveRecord(MatchRecordArguments arguments, out MatchRecordArguments described, out string? error)
+    {
+        described = arguments;
+        if (!ToolArguments.TryReadOptionalString(arguments.FindingPath, "findingPath", out string? path, out error)) return false;
+        if (path is null) return true;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            error = "findingPath must not be blank.";
+            return false;
+        }
+        if (!IsAbsent(arguments.Persons) || !IsAbsent(arguments.Relationships) || !IsAbsent(arguments.Event))
+        {
+            error = "give findingPath, or persons, relationships and event, not both.";
+            return false;
+        }
+
+        var file = FindingFileReader.ReadPath(Path.GetFullPath(path.Trim()));
+        if (file.Record is not { } slot)
+        {
+            error = file.Errors.Count > 0 ? string.Join(" ", file.Errors) : $"{file.Name} has no record.";
+            return false;
+        }
+        described = arguments with { Persons = Member(slot, "persons"), Relationships = Member(slot, "relationships"), Event = Member(slot, "event") };
+        return true;
+    }
+
+    static JsonElement Member(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) ? value : default;
+
+    static bool IsAbsent(JsonElement element) => element.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null;
+}
+
+/// <summary>match_record's raw arguments: the record inline (persons, relationships, event), or a finding file holding it.</summary>
+public sealed record MatchRecordArguments(JsonElement Persons, JsonElement Relationships, JsonElement Event, JsonElement Focus)
+{
+    public JsonElement MaxCandidates { get; init; }
+    public JsonElement Compact { get; init; }
+    public JsonElement FindingPath { get; init; }
 }

@@ -210,6 +210,12 @@ typed operations. It reconciles compatible facts, preserves their citations,
 and leaves genuine disagreements as `open` decisions. Fix the findings and
 draft again when validation exposes a defect.
 
+Findings saved to disk follow GedFire's versioned finding-file schema
+(`gedfire schema finding-file`). It holds the draft entry, the identity argument,
+the record it was matched from, and a `meta` object that belongs to your own
+workflow. `validate_finding` checks those files before drafting, using the same
+error text `draft_changeset` gives.
+
 NAME facts can correct the target or an existing relative bound by
 `existingPeople: ["@I10@"]` or a relation. Corrections preserve the previous
 name and its citations in a note. An intentional surname change requires
@@ -250,6 +256,8 @@ different file or provider.
 | `select_targets` | Draw people with research gaps, or score specified people, returning every card that pays for each, including a man's repeatable Biography card. |
 | `date_calc` | Normalize dual dates, add or subtract ages, or calculate elapsed time. |
 | `describe_changeset_ops` | Return the changeset envelope, operation schemas, and worked examples. |
+| `describe_schemas` | Return the versioned JSON Schemas of the finding-file contract. |
+| `validate_finding` | Check finding files for shape, readiness, and xref bindings without drafting. |
 | `draft_changeset` | Compile findings into cited changesets and report unresolved decisions. |
 | `draft_package` | Write a review proposal from finished changesets. |
 | `validate_changeset` | Preview selected edits, enforce policy, and optionally score gap closures. |
@@ -349,6 +357,7 @@ The CLI uses the same engine as the MCP server.
 | `select-targets` | Draw people with research gaps for study surnames, with every card that pays for each. |
 | `date-calc` | Normalize dual dates or calculate dates and ages. |
 | `find-person` / `get-record` / `get-document-stats` | Run one lookup and print JSON without starting a server. |
+| `schema` | Print a versioned JSON Schema of the finding-file contract (`finding`, `finding-file`, `record`, `argument`). |
 | `pack` / `unpack` | Create or extract a GEDZIP archive. |
 | `mcp` | Start the local-only stdio MCP server; no HTTP or remote transport. |
 | `tools list` / `tools describe` / `tools call` | Discover or invoke any MCP tool directly using the same JSON schemas and handlers. |
@@ -379,8 +388,9 @@ errors or failed validation/plausibility checks.
 
 `--policy`, `--read-only`, and `--enforce-privacy` have the same meaning as on
 `mcp`. Read-only prevents GEDCOM changes, not separate draft or report files.
-Discovery needs no GEDCOM, and calls to `date_calc` and `describe_changeset_ops`
-need no `--input`. Existing convenience commands remain unchanged. See the
+Discovery needs no GEDCOM. Calls to `date_calc`, `describe_changeset_ops` and
+`describe_schemas` need no `--input`. Without `--input`, `validate_finding`
+checks only shape. Existing convenience commands remain unchanged. See the
 [script interface](docs/mcp-reference.md#command-line-tool-interface) for output details.
 
 ## Building from source

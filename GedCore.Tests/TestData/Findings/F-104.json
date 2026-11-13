@@ -1,0 +1,9 @@
+{
+  "draft": {
+    "id": "F-104",
+    "extract": "Ezra Quillfeather, buried 2 Mar 1877 at Larkspur.",
+    "source": { "name": "Fictional County Register", "locator": "Burials, p. 14", "class": "original", "information": "primary" },
+    "target": { "xref": "@I99@", "card": "enrich-death" },
+    "facts": [ { "record": "@I99@", "fact": "BURI", "date": "2 MAR 1877", "quay": 3 } ]
+  }
+}

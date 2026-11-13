@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using GedFire.Schemas;
 
 namespace GedFire.Mcp;
 
@@ -85,7 +86,7 @@ static class ChangesetToolSchemas
         """;
 
     /// <summary>The input schema with the optional <c>reportPath</c> and <c>overwrite</c> arguments.</summary>
-    public static readonly string InputSchemaWithReportJson = Compose(InputSchemaJson, AddReportProperties);
+    public static readonly string InputSchemaWithReportJson = SchemaComposer.Compose(InputSchemaJson, AddReportProperties);
 
     static void AddReportProperties(JsonNode schema)
     {
@@ -112,7 +113,7 @@ static class ChangesetToolSchemas
     }
 
     /// <summary>The input schema with the optional <c>cards</c> argument validate_changeset adds.</summary>
-    public static readonly string InputSchemaWithCardsJson = Compose(InputSchemaJson, schema =>
+    public static readonly string InputSchemaWithCardsJson = SchemaComposer.Compose(InputSchemaJson, schema =>
     {
         AddReportProperties(schema);
         schema["properties"]!["cardsPath"] = JsonNode.Parse("""
@@ -167,18 +168,11 @@ static class ChangesetToolSchemas
             """;
 
     /// <summary>The output schema with the optional <c>pointsPreview</c> validate_changeset returns when cards are given.</summary>
-    public static readonly string OutputSchemaWithPreviewJson = Compose(OutputSchemaJson, schema =>
+    public static readonly string OutputSchemaWithPreviewJson = SchemaComposer.Compose(OutputSchemaJson, schema =>
     {
         schema["properties"]!["pointsPreview"] = JsonNode.Parse(PointsPreviewJson);
         schema["properties"]!["pointsPreviewTotal"] = JsonNode.Parse("""
             { "type": "integer", "description": "Digest only, and only when cards were given: pointsPreview's total; the report file holds the full preview." }
             """);
     });
-
-    static string Compose(string baseSchema, Action<JsonNode> addTo)
-    {
-        var schema = JsonNode.Parse(baseSchema)!;
-        addTo(schema);
-        return schema.ToJsonString();
-    }
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using GedCore.Drafting;
 using GedCore.Policy;
+using GedFire.Schemas;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -46,13 +47,13 @@ public sealed class DraftChangesetTool
         "which is what draft_package presents; with outPath it also " +
         "writes the changeset to a new file, replacing an existing one only when overwrite is true. Findings may be " +
         "given inline or by inputPath, a file holding {\"findings\": [...]}, to re-draft a saved input without " +
-        "passing it back, or by findingPaths, the lake's correlated finding files, whose \"draft\" entries are compiled " +
+        "passing it back, or by findingPaths, finding files (see describe_schemas, finding-file) whose \"draft\" entries are compiled " +
         "as one set. Pass reportPath to write the full result JSON to a file a script can read; the response is then " +
         "only a digest (per item its number, target and op count, plus the decisions counted by kind), unless verbose " +
         "is true. Reads the " +
         "document for existing sources and names, writes nothing to it; run validate_changeset on the result.";
 
-    public const string InputSchemaJson = """
+    public static readonly string InputSchemaJson = SchemaComposer.Compose("""
         {
           "type": "object",
           "additionalProperties": false,
@@ -61,167 +62,7 @@ public sealed class DraftChangesetTool
               "type": "array",
               "minItems": 1,
               "description": "The findings to compile; required unless inputPath or findingPaths is given. Unrecognized fields are rejected.",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "id": { "type": "string", "description": "The finding's identifier, echoed in decisions." },
-                  "extract": { "type": "string", "description": "The verbatim extract cited as the citation's dataText unless a fact gives its own excerpt." },
-                  "source": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "name": { "type": "string", "description": "The collection, e.g. \"Find a Grave\"; one source record is made per name and author." },
-                      "author": { "type": "string" },
-                      "url": { "type": "string", "description": "Written on the source record only when every finding of the collection gives the same one." },
-                      "locator": { "type": "string", "description": "Copied verbatim into each citation's page." },
-                      "accessed": { "type": "string" },
-                      "class": { "type": "string", "enum": ["original", "image copy", "derivative", "authored", "user-contributed"] },
-                      "information": { "type": "string", "enum": ["primary", "secondary", "undetermined"] }
-                    },
-                    "required": ["name", "locator", "class", "information"]
-                  },
-                  "target": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "description": "The person the work is for; findings with the same xref and card become one item.",
-                    "properties": {
-                      "xref": { "type": "string", "pattern": "^@[^@]+@$" },
-                      "card": { "type": "string" },
-                      "name": { "type": "string", "description": "Checked against the name recorded for the xref." }
-                    },
-                    "required": ["xref"]
-                  },
-                  "facts": {
-                    "type": "array",
-                    "description": "The facts to assert, each graded on its own.",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "record": { "type": "string", "pattern": "^@[^@]+@$", "description": "The person or family the fact belongs to." },
-                        "fact": { "type": "string", "description": "The GEDCOM tag, e.g. BIRT, DEAT, BURI, MARR." },
-                        "date": { "type": "string" },
-                        "place": { "type": "string" },
-                        "value": { "type": "string", "description": "A text fact's payload, e.g. a NAME change (\"Ralph /Morrill/\"); not combined with date or place." },
-                        "allowSurnameChange": { "type": "boolean", "description": "Explicit permission for this NAME value to change the existing person's surname; default false. Only applies to NAME assertions with a value." },
-                        "quay": { "type": "integer", "minimum": 0, "maximum": 3 },
-                        "class": { "type": "string", "enum": ["original", "image copy", "derivative", "authored", "user-contributed"], "description": "Overrides the source's class for this fact." },
-                        "information": { "type": "string", "enum": ["primary", "secondary", "undetermined"], "description": "Overrides the source's information class for this fact." },
-                        "excerpt": { "type": "string", "description": "A narrower extract for this fact's citation." },
-                        "substructures": {
-                          "type": "array",
-                          "description": "Extra lines under the fact, e.g. [{\"tag\": \"TYPE\", \"value\": \"Pension Application\"}] on an EVEN. A fact with substructures is added, never matched by date.",
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": { "tag": { "type": "string" }, "value": { "type": "string" } },
-                            "required": ["tag", "value"]
-                          }
-                        },
-                        "replacedCitations": { "type": "string", "enum": ["keep", "drop", "moveToNote"], "description": "What becomes of the citations on a fact whose value this replaces; default keep except NAME, which requires moveToNote and preserves the previous name even when uncited." },
-                        "citeOnly": { "type": "boolean", "description": "Only add this finding's citation to a fact the record already holds. date and place then select the instance when the record has several." },
-                        "replaceHeld": { "type": "string", "minLength": 1, "description": "The reason to write this value over the one the record holds, even a more specific or better-cited one (a single-valued fact). Its citations move to a note unless replacedCitations says otherwise." },
-                        "withdraw": { "type": "string", "minLength": 1, "description": "The reason to delete the fact the record holds, with nothing in its place; date and place select the instance. Its citations move to a note. Cite the evidence in a note." }
-                      },
-                      "required": ["record", "fact", "quay"]
-                    }
-                  },
-                  "existingPeople": {
-                    "type": "array",
-                    "description": "Existing people explicitly bound by xref, without creating a person or asserting a relationship. Targets and person references in relations also bind people; a facts[].record alone does not.",
-                    "items": { "type": "string", "pattern": "^@[^@]+@$" }
-                  },
-                  "people": {
-                    "type": "array",
-                    "description": "New people this finding adds, each named by a placeholder xref. A person is created by the relation that links them; give their facts under facts with the placeholder as record.",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "xref": { "type": "string", "pattern": "^@New[A-Za-z0-9_]+@$", "description": "A placeholder such as @NewI1@; apply mints the real xref." },
-                        "name": { "type": "string", "description": "GEDCOM form, e.g. \"Sarah /Blake/\"." },
-                        "sex": { "type": "string", "enum": ["M", "F"], "description": "Required for a partner, so HUSB and WIFE can be assigned." }
-                      },
-                      "required": ["xref", "name"]
-                    }
-                  },
-                  "relations": {
-                    "type": "array",
-                    "description": "Links this finding establishes or, with the unlink kinds, removes, in the changeset dialect's terms. Each added link is cited with the finding's source at its own quay; a child relation with from moves an existing child between families. Family xrefs for new families are placeholders such as @NewF1@; facts about the family (MARR) use that xref as record.",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "kind": { "type": "string", "enum": ["spouse", "child", "parent", "unlink-child", "unlink-parent"], "description": "unlink-child and unlink-parent remove an existing link; they take no quay or excerpt, because a removal op carries no citation: say why in a note that cites the finding." },
-                        "person": { "type": "string", "description": "spouse, parent and unlink-parent: the known person (the child, for parent and unlink-parent). An existing xref, or a person an earlier relation created." },
-                        "spouse": { "type": "string", "description": "spouse: the partner, existing or declared in people." },
-                        "child": { "type": "string", "description": "child and unlink-child: the child, existing or declared in people (an existing person for unlink-child, or for a child with from)." },
-                        "parent": { "type": "string", "description": "parent: the parent, existing or declared in people." },
-                        "role": { "type": "string", "enum": ["father", "mother"], "description": "parent and unlink-parent: which parent." },
-                        "family": { "type": "string", "description": "The family: required for spouse, child and unlink-child (the family the child leaves), optional for parent and unlink-parent. A placeholder creates it, except for the removals." },
-                        "from": { "type": "string", "description": "child: an existing family the child is moved out of, so the child ends up in family only. The child must be listed in it." },
-                        "husb": { "type": "string", "description": "child: father, used only when this relation creates the family." },
-                        "wife": { "type": "string", "description": "child: mother, used only when this relation creates the family." },
-                        "notDuplicateOf": { "type": "array", "items": { "type": "string" }, "description": "spouse and child: existing people already confirmed not to be the new person." },
-                        "excerpt": { "type": "string", "description": "A narrower extract than the finding's for this relation's citation." },
-                        "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "Required except for unlink-child and unlink-parent." }
-                      },
-                      "required": ["kind"]
-                    }
-                  },
-                  "argument": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "description": "The identity argument correlation wrote for this finding: why this person and not a same-named rival. Carried unchanged into the changeset's findings table for draft_package to present; never judged and never applied. Every field is optional.",
-                    "properties": {
-                      "anchors": { "type": "array", "items": { "type": "string" }, "description": "Why him: the anchoring facts, one sentence each." },
-                      "identity": { "type": "string", "description": "The sentence the author wrote saying how the identity was resolved, e.g. the find_person survey; presented as written." },
-                      "exclusions": {
-                        "type": "array",
-                        "description": "Why not others: one entry per excluded rival.",
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "properties": { "name": { "type": "string" }, "xref": { "type": "string" }, "fact": { "type": "string" }, "finding": { "type": "string" } }
-                        }
-                      },
-                      "cautions": { "type": "string", "description": "Conflicts weighed; omit for none." },
-                      "difficulty": { "type": "string", "enum": ["low", "medium", "high"] }
-                    }
-                  },
-                  "notes": {
-                    "type": "array",
-                    "description": "Notes you wrote, passed through unchanged and checked against the policy.",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "record": { "type": "string", "pattern": "^@[^@]+@$" },
-                        "text": { "type": "string" },
-                        "match": { "type": "string", "description": "The exact text of an existing note on the record, to rewrite instead of adding a new note." },
-                        "purpose": { "type": "string", "enum": ["biography"], "description": "biography: the note is the person's cited biographical prose (service, occupation, migration, probate...), compiled to a createOrUpdateNote with purpose biography so a citation it adds earns biography credit. Biography notes are joined only with other biography notes." },
-                        "cites": {
-                          "type": "array",
-                          "description": "Citations on the note. Each cites a finding of this draft aimed at the same target (the note's own finding when finding is omitted), graded on its own.",
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                              "finding": { "type": "string", "description": "The id of the finding cited; default the note's own." },
-                              "quay": { "type": "integer", "minimum": 0, "maximum": 3 },
-                              "excerpt": { "type": "string", "description": "A narrower extract than the finding's." }
-                            },
-                            "required": ["quay"]
-                          }
-                        }
-                      },
-                      "required": ["record", "text"]
-                    }
-                  }
-                },
-                "required": ["id", "extract", "source", "target"]
-              }
+              "items": {}
             },
             "inputPath": {
               "type": "string",
@@ -233,7 +74,7 @@ public sealed class DraftChangesetTool
               "type": "array",
               "minItems": 1,
               "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
-              "description": "Paths to correlated finding files from the lake. Each holds the finding's complete entry under \"draft\" (the same shape as one findings item); an optional \"argument\" object beside \"draft\" holds the finding's identity argument, which is carried unchanged into the changeset. The entries are compiled as one set and the notes several findings of one item wrote on the same record are joined. A file with no draft, a parked finding, or a non-empty draftGaps is reported by name instead of being compiled. Give findingPaths, or findings or inputPath, not both."
+              "description": "Paths to finding files (gedfire schema finding-file). Each holds the finding's complete entry under \"draft\" (the same shape as one findings item); an optional \"argument\" object beside \"draft\" holds the finding's identity argument, which is carried unchanged into the changeset. The caller's own \"meta\" and the \"record\" slot are never compiled; any other top-level key, or a draft.id that differs from a file named <id>.json, is reported as an open decision and will be refused in a later release. The entries are compiled as one set and the notes several findings of one item wrote on the same record are joined. A file with no draft, a parked finding, or a non-empty draftGaps is reported by name instead of being compiled. Give findingPaths, or findings or inputPath, not both."
             },
             "outPath": {
               "type": "string",
@@ -257,7 +98,7 @@ public sealed class DraftChangesetTool
             }
           }
         }
-        """;
+        """, schema => schema["properties"]!["findings"]!["items"] = JsonNode.Parse(FindingSchemas.FindingJson));
 
     public const string OutputSchemaJson = """
         {
@@ -357,12 +198,14 @@ public sealed class DraftChangesetTool
 
         var input = ReadFindings(arguments, out error);
         if (error is not null) return CallToolResults.Error(error);
+        var warnings = input.Warnings.Select(w => new DraftDecision(DraftDecisionKinds.Open, w, [])).ToList();
         if (input.Errors.Count > 0)
-            return Respond(new DraftResult(null, [], input.Errors), null, report);
+            return Respond(new DraftResult(null, warnings, input.Errors), null, report);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var draft = new ChangesetDrafter(new ModelDraftLookup(snapshot.Model), _policy).Draft(input.Findings);
         if (input.Files.Count > 0) draft = draft with { Errors = FindingFileLoader.NameFiles(draft.Errors, input.Files) };
+        if (warnings.Count > 0) draft = draft with { Decisions = [.. warnings, .. draft.Decisions] };
 
         string? writtenTo = null;
         if (path is not null && draft.Success)
@@ -375,9 +218,12 @@ public sealed class DraftChangesetTool
     }
 
     // Files names the file each finding came from when they came from findingPaths, so a check can name it.
-    sealed record FindingInput(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Errors, IReadOnlyList<string> Files);
+    sealed record FindingInput(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Errors, IReadOnlyList<string> Files)
+    {
+        public IReadOnlyList<string> Warnings { get; init; } = [];
+    }
 
-    // The findings come from exactly one of: the findings argument, the inputPath file, or the lake's finding files.
+    // The findings come from exactly one of: the findings argument, the inputPath file, or the finding files.
     static FindingInput ReadFindings(DraftChangesetArguments arguments, out string? error)
     {
         error = null;
@@ -392,8 +238,8 @@ public sealed class DraftChangesetTool
                 return new FindingInput([], [], []);
             }
 
-            FindingFileLoader.TryLoad(arguments.FindingPaths, out var loaded, out var files, out var loadErrors);
-            return new FindingInput(loaded, loadErrors, files);
+            var loaded = FindingFileLoader.Load(arguments.FindingPaths);
+            return new FindingInput(loaded.Findings, loaded.Errors, loaded.Files) { Warnings = loaded.Warnings };
         }
 
         if (!ArgumentFile.TryResolve(arguments.Findings, "findings", arguments.InputPath, "inputPath", out var findings, out error))

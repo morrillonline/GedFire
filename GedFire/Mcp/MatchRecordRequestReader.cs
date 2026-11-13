@@ -137,8 +137,11 @@ public static class MatchRecordRequestReader
                 case "sex": if (!ReadSex(property.Value, $"{field}.sex", out isMale, out error)) return false; break;
                 case "birthYear": if (!ReadInt(property.Value, $"{field}.birthYear", 1, 9999, out birthYear, out error)) return false; break;
                 case "age": if (!ReadInt(property.Value, $"{field}.age", 0, 120, out age, out error)) return false; break;
+                // Accepted and checked so a stored record keeps them; not yet scored.
+                case "deathYear": if (!ReadInt(property.Value, $"{field}.deathYear", 1, 9999, out _, out error)) return false; break;
+                case "maidenName": if (!ReadString(property.Value, $"{field}.maidenName", out _, out error)) return false; break;
                 default:
-                    error = $"{field} has an unrecognized property \"{property.Name}\". Accepted properties: role, name, sex, birthYear, age, birthPlace.";
+                    error = $"{field} has an unrecognized property \"{property.Name}\". Accepted properties: role, name, sex, birthYear, age, birthPlace, deathYear, maidenName.";
                     return false;
             }
         }

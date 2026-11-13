@@ -1,3 +1,4 @@
+using GedCore;
 using GedFire.Gen;
 
 namespace GedFire.Match;
@@ -16,5 +17,14 @@ public static class PersonDisplay
     {
         ArgumentNullException.ThrowIfNull(individual);
         return (individual.FirstMiddle() + " " + individual.LastName).Trim();
+    }
+
+    /// <summary>Birth year to death (or burial) year, with ? for an unknown end; null when neither is known.</summary>
+    public static string? Lifespan(GedIndividual individual)
+    {
+        ArgumentNullException.ThrowIfNull(individual);
+        int born = GedDate.ParseYear(individual.Birth?.Date), died = GedDate.ParseYear(individual.DeathOrBurial?.Date);
+        if (born == 0 && died == 0) return null;
+        return $"{(born == 0 ? "?" : born.ToString())}-{(died == 0 ? "?" : died.ToString())}";
     }
 }

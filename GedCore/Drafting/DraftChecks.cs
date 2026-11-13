@@ -18,8 +18,25 @@ internal static class DraftChecks
 
         foreach (var error in NewRecordErrors(findings).Concat(RemovalErrors(findings, lookup))
                      .Concat(NoteCitationErrors(findings)).Concat(EmptyFindingErrors(findings))
-                     .Concat(NameErrors(findings, lookup)))
+                     .Concat(NameErrors(findings, lookup)).Concat(MissingRecordErrors(findings, lookup)))
             yield return error;
+    }
+
+    // existingPeople and NAME fact records are checked, in person terms, by NameErrors.
+    static IEnumerable<string> MissingRecordErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)
+    {
+        for (int f = 0; f < findings.Count; f++)
+        {
+            var nameRecords = findings[f].Facts.Select((fact, i) => (fact, i)).Where(x => x.fact.Tag == "NAME")
+                .Select(x => $"facts[{x.i}].record").ToHashSet(StringComparer.Ordinal);
+            foreach (var reference in DraftReferences.Of(findings[f]))
+            {
+                if (reference.IsPlaceholder || reference.Path.StartsWith("existingPeople[", StringComparison.Ordinal)
+                    || nameRecords.Contains(reference.Path)) continue;
+                if (lookup.HasRecord(reference.Xref) == false)
+                    yield return $"findings[{f}].{reference.Path} {reference.Xref} is not a record in the document.";
+            }
+        }
     }
 
     static IEnumerable<string> NameErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup lookup)

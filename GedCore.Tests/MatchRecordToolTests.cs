@@ -8,8 +8,13 @@ namespace GedCore.Tests;
 public class MatchRecordToolTests : IDisposable
 {
     readonly TempDocumentSessions _sessions = new();
+    readonly string _dir = Directory.CreateTempSubdirectory("gedfire-match-record-tests-").FullName;
 
-    public void Dispose() => _sessions.Dispose();
+    public void Dispose()
+    {
+        _sessions.Dispose();
+        try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ }
+    }
 
     const string Ged = """
         0 HEAD
@@ -137,6 +142,54 @@ public class MatchRecordToolTests : IDisposable
         Assert.Equal(
             first.StructuredContent!.Value.GetRawText(),
             second.StructuredContent!.Value.GetRawText());
+    }
+
+    string WriteFinding(string content)
+    {
+        string path = Path.Combine(_dir, "F-1.json");
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    static MatchRecordArguments ByPath(string path, string? focus = null) =>
+        new(default, default, default, focus is null ? default : Json(focus)) { FindingPath = Json(JsonSerializer.Serialize(path)) };
+
+    [Fact]
+    public async Task FindingPath_MatchesTheFilesRecordExactlyAsIfGivenInline()
+    {
+        var tool = Tool();
+        string path = WriteFinding($$"""
+            { "record": { "persons": {{HouseholdPersons}}, "relationships": {{HouseholdRelationships}}, "event": {{HouseholdEvent}} },
+              "meta": { "status": "harvested" } }
+            """);
+
+        var byPath = await tool.HandleAsync(ByPath(path, focus: "1"), CancellationToken.None);
+        var inline = await Call(tool, HouseholdPersons, HouseholdRelationships, HouseholdEvent, focus: "1");
+
+        Assert.NotEqual(true, byPath.IsError);
+        Assert.Equal(inline.StructuredContent!.Value.GetRawText(), byPath.StructuredContent!.Value.GetRawText());
+    }
+
+    [Fact]
+    public async Task FindingPath_WithPersons_IsRefused()
+    {
+        string path = WriteFinding("""{ "record": { "persons": [{ "name": "John Ashworth" }] } }""");
+
+        var result = await Tool().HandleAsync(ByPath(path) with { Persons = Json(HouseholdPersons) }, CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Equal("give findingPath, or persons, relationships and event, not both.", ErrorText(result));
+    }
+
+    [Fact]
+    public async Task FindingPath_AFileWithNoRecord_IsRefusedByName()
+    {
+        string path = WriteFinding("""{ "meta": {} }""");
+
+        var result = await Tool().HandleAsync(ByPath(path), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Equal($"{path} has no record.", ErrorText(result));
     }
 
     [Fact]

@@ -1,0 +1,9 @@
+{
+  "draft": {
+    "id": "F-103",
+    "extract": "Ezra Quillfeather married a widow of the parish.",
+    "source": { "name": "Fictional County Register", "locator": "Marriages, p. 4", "class": "original", "information": "primary" },
+    "target": { "xref": "@I1@", "card": "new-spouse" },
+    "relations": [ { "kind": "spouse", "person": "@I1@", "spouse": "@NewI_x@", "family": "@NewF1@", "quay": 3 } ]
+  }
+}

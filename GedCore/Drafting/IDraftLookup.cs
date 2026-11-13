@@ -34,6 +34,9 @@ public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory
 {
     /// <summary>Whether the document lists the person as a child of the family; null when it cannot say (a record it does not hold, or a lookup that does not track families).</summary>
     bool? IsChildOf(string child, string family) => null;
+
+    /// <summary>Whether the document holds a record with this xref; null when the lookup cannot say.</summary>
+    bool? HasRecord(string xref) => null;
 }
 
 /// <summary>One fact instance the document already holds, with the citations on it.</summary>

@@ -337,6 +337,58 @@ public class DraftChangesetToolTests : IDisposable
     }
 
     [Fact]
+    public async Task FindingPaths_TheCallersMetaNeverReachesTheChangeset()
+    {
+        string path = WriteFinding("F-100.json", FindingFixtures.Read("F-100.json"));
+
+        var structured = Structured(await Tool().HandleAsync(Paths(path), CancellationToken.None));
+
+        Assert.True(structured.GetProperty("success").GetBoolean(), structured.GetRawText());
+        Assert.DoesNotContain(structured.GetProperty("decisions").EnumerateArray(), d => d.GetProperty("kind").GetString() == "open");
+        string changeset = structured.GetProperty("changeset").GetRawText();
+        Assert.DoesNotContain("meta", changeset);
+        Assert.DoesNotContain("anything", changeset);
+    }
+
+    [Fact]
+    public async Task FindingPaths_AnUnknownTopLevelKeyIsAnOpenDecisionAndTheFileStillDrafts()
+    {
+        string path = WriteFinding("F-1.json", FindingFile("F-1", "Died."));
+
+        var structured = Structured(await Tool().HandleAsync(Paths(path), CancellationToken.None));
+
+        Assert.True(structured.GetProperty("success").GetBoolean(), structured.GetRawText());
+        var open = structured.GetProperty("decisions").EnumerateArray()
+            .Where(d => d.GetProperty("kind").GetString() == "open").Select(d => d.GetProperty("detail").GetString()!).ToList();
+        Assert.Contains(open, d => d.StartsWith($"{path}: \"correlation\" is not a finding-file key"));
+        Assert.Contains(open, d => d.StartsWith($"{path}: \"id\" is not a finding-file key"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FindingPaths_EachFindingsEntryTracesBackToItsFile(bool withArgument)
+    {
+        using var source = JsonDocument.Parse(FindingFixtures.Read("F-100.json"));
+        var file = System.Text.Json.Nodes.JsonNode.Parse(source.RootElement.GetRawText())!.AsObject();
+        if (!withArgument) file.Remove("argument");
+        string path = WriteFinding("F-100.json", file.ToJsonString());
+
+        var structured = Structured(await Tool().HandleAsync(Paths(path), CancellationToken.None));
+
+        var entry = structured.GetProperty("changeset").GetProperty("findings")[0];
+        var draft = source.RootElement.GetProperty("draft");
+        Assert.Equal(draft.GetProperty("id").GetString(), entry.GetProperty("id").GetString());
+        Assert.Equal(draft.GetProperty("extract").GetString(), entry.GetProperty("extract").GetString());
+        foreach (string field in new[] { "name", "locator", "class", "information" })
+            Assert.Equal(draft.GetProperty("source").GetProperty(field).GetString(), entry.GetProperty("source").GetProperty(field).GetString());
+        if (withArgument)
+            Assert.True(JsonElement.DeepEquals(source.RootElement.GetProperty("argument"), entry.GetProperty("argument")));
+        else
+            Assert.False(entry.TryGetProperty("argument", out _));
+    }
+
+    [Fact]
     public async Task ABlankOutPath_IsRefused()
     {
         var result = await Tool().HandleAsync(Arg(Findings), Arg("\"  \""), default, CancellationToken.None);

@@ -5,103 +5,46 @@ using GedCore.Drafting;
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// Reads the lake's correlated finding files for draft_changeset's findingPaths.
-// Each file carries the finding's complete draft_changeset
-// entry under "draft" and what it could not place under "draftGaps"; a file
-// that is not ready (no draft, or draftGaps) is reported by name so the stage
-// that owns the gap can fix it, rather than compiling a draft with a hole in it.
+// Loads finding files for draft_changeset's findingPaths. A file that is not
+// ready (no draft, or draftGaps) is reported by name so the stage that owns
+// the gap can fix it, rather than compiling a draft with a hole in it.
 // ---------------------------------------------------------------------------
 
-/// <summary>One finding file as read: its draft when ready, otherwise why not.</summary>
-public sealed record LoadedFindingFile(string Name, DraftFinding? Finding, IReadOnlyList<string> Errors);
+/// <summary>One finding file as loaded for drafting: its draft when ready, otherwise why not, and any warnings either way.</summary>
+public sealed record LoadedFindingFile(string Name, DraftFinding? Finding, IReadOnlyList<string> Errors)
+{
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+}
+
+/// <summary>The drafts of a set of finding files; <see cref="Files"/> holds each finding's file, in order.</summary>
+public sealed record LoadedFindings(
+    IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Files, IReadOnlyList<string> Errors, IReadOnlyList<string> Warnings);
 
 public static partial class FindingFileLoader
 {
-    /// <summary>Reads every finding file named in <paramref name="paths"/>; false with every error, each naming its file. <paramref name="files"/> holds each finding's file, in order.</summary>
-    public static bool TryLoad(JsonElement paths, out IReadOnlyList<DraftFinding> findings, out IReadOnlyList<string> files, out List<string> errors)
+    /// <summary>Reads every finding file named in <paramref name="paths"/>; the findings are empty when any file has an error, each naming its file.</summary>
+    public static LoadedFindings Load(JsonElement paths)
     {
-        findings = [];
-        files = [];
-        errors = [];
         if (!ToolArguments.TryReadOptionalStringList(paths, "findingPaths", out var names, out string? error))
-        {
-            errors.Add(error!);
-            return false;
-        }
+            return new LoadedFindings([], [], [error!], []);
         if (names.Count == 0)
-        {
-            errors.Add("findingPaths must name at least one finding file.");
-            return false;
-        }
+            return new LoadedFindings([], [], ["findingPaths must name at least one finding file."], []);
 
         var loaded = LoadAll(names);
-        errors.AddRange(loaded.SelectMany(f => f.Errors));
-        if (errors.Count > 0) return false;
+        var errors = loaded.SelectMany(f => f.Errors).ToList();
+        var warnings = loaded.SelectMany(f => f.Warnings).ToList();
+        if (errors.Count > 0) return new LoadedFindings([], [], errors, warnings);
 
-        findings = DraftNoteJoiner.Join([.. loaded.Select(f => f.Finding!)]);
-        files = [.. loaded.Select(f => f.Name)];
-        return true;
+        return new LoadedFindings(
+            DraftNoteJoiner.Join([.. loaded.Select(f => f.Finding!)]), [.. loaded.Select(f => f.Name)], [], warnings);
     }
 
     /// <summary>Reads each named file, in order; a file that cannot be read comes back with its error.</summary>
     public static IReadOnlyList<LoadedFindingFile> LoadAll(IEnumerable<string> names) =>
-        [.. names.Select(name => Path.GetFullPath(name)).Select(ReadFile)];
-
-    static LoadedFindingFile ReadFile(string fullPath)
-    {
-        try
-        {
-            using var stream = File.OpenRead(fullPath);
-            return Read(stream, fullPath);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            return new LoadedFindingFile(fullPath, null, [$"{fullPath} could not be read: {ex.Message}"]);
-        }
-    }
+        [.. names.Select(name => Path.GetFullPath(name)).Select(path => ForDrafting(FindingFileReader.ReadPath(path)))];
 
     /// <summary>Reads one finding file's stream; <paramref name="name"/> labels its errors.</summary>
-    public static LoadedFindingFile Read(Stream stream, string name)
-    {
-        JsonElement root;
-        try
-        {
-            using var document = JsonDocument.Parse(stream);
-            root = document.RootElement.Clone();
-        }
-        catch (JsonException ex)
-        {
-            return Failed(name, $"{name} is not valid JSON: {ex.Message}");
-        }
-
-        if (root.ValueKind != JsonValueKind.Object)
-            return Failed(name, $"{name} must hold a finding object, not {ToolArguments.Describe(root)}.");
-
-        var errors = new List<string>();
-        var gaps = GapsOf(root, name, errors);
-        if (errors.Count > 0) return new LoadedFindingFile(name, null, errors);
-        if (gaps.Count > 0)
-            return Failed(name, $"{name} has draftGaps: {string.Join("; ", gaps)}. Supply them at the stage that owns them and re-run correlation with --force.");
-
-        if (!root.TryGetProperty("draft", out var draft) || draft.ValueKind == JsonValueKind.Null)
-            return Failed(name, IsParked(root)
-                ? $"{name} is parked; a park verdict writes no draft."
-                : $"{name} has no draft; correlate the finding to write one.");
-
-        using var single = JsonDocument.Parse("[" + draft.GetRawText() + "]");
-        var (read, readErrors) = DraftFindingReader.Read(single.RootElement);
-        if (readErrors.Count > 0)
-            return new LoadedFindingFile(name, null, [.. readErrors.Select(e => $"{name}: {e.Replace("findings[0]", "draft")}")]);
-
-        if (!root.TryGetProperty("argument", out var argument) || argument.ValueKind == JsonValueKind.Null)
-            return new LoadedFindingFile(name, read[0], []);
-
-        var argumentErrors = new List<string>();
-        var carried = FindingArgumentReader.Read(argument, "argument", argumentErrors);
-        return carried is null
-            ? new LoadedFindingFile(name, null, [.. argumentErrors.Select(e => $"{name}: {e}")])
-            : new LoadedFindingFile(name, read[0] with { Argument = carried }, []);
-    }
+    public static LoadedFindingFile Read(Stream stream, string name) => ForDrafting(FindingFileReader.Read(stream, name));
 
     /// <summary>Reads the draft entry of one finding file's stream; <paramref name="name"/> labels its errors.</summary>
     public static bool TryRead(Stream stream, string name, out DraftFinding? finding, out List<string> errors)
@@ -112,6 +55,13 @@ public static partial class FindingFileLoader
         return finding is not null;
     }
 
+    /// <summary>The file as draft_changeset takes it: anything that keeps it from drafting is an error.</summary>
+    public static LoadedFindingFile ForDrafting(FindingFile file)
+    {
+        IReadOnlyList<string> errors = file.NotReadyReason is { } reason ? [reason, .. file.Errors] : file.Errors;
+        return new LoadedFindingFile(file.Name, errors.Count == 0 ? file.Draft : null, errors) { Warnings = file.Warnings };
+    }
+
     /// <summary>Rewrites the <c>findings[i]</c> a draft check names to the file the i-th finding came from.</summary>
     public static IReadOnlyList<string> NameFiles(IReadOnlyList<string> errors, IReadOnlyList<string> files) =>
         [.. errors.Select(e => FindingIndex().Replace(e, m =>
@@ -119,27 +69,4 @@ public static partial class FindingFileLoader
 
     [GeneratedRegex(@"findings\[(\d+)\]")]
     private static partial Regex FindingIndex();
-
-    static LoadedFindingFile Failed(string name, string error) => new(name, null, [error]);
-
-    static List<string> GapsOf(JsonElement root, string name, List<string> errors)
-    {
-        var gaps = new List<string>();
-        if (!root.TryGetProperty("draftGaps", out var list) || list.ValueKind == JsonValueKind.Null) return gaps;
-        if (list.ValueKind != JsonValueKind.Array)
-        {
-            errors.Add($"{name}: draftGaps must be an array of strings.");
-            return gaps;
-        }
-
-        gaps.AddRange(list.EnumerateArray().Select(g => g.ValueKind == JsonValueKind.String ? g.GetString()! : g.GetRawText()));
-        return gaps;
-    }
-
-    static bool IsParked(JsonElement root) =>
-        root.TryGetProperty("correlation", out var correlation)
-        && correlation.ValueKind == JsonValueKind.Object
-        && correlation.TryGetProperty("kind", out var kind)
-        && kind.ValueKind == JsonValueKind.String
-        && kind.GetString() == "park";
 }
