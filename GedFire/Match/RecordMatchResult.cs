@@ -21,6 +21,9 @@ public sealed record RecordPersonMatch
     /// <summary>True when the record bound this person to a tree person by xref, which then is the confident match.</summary>
     public bool Bound { get; init; }
 
+    /// <summary>The bound record person whose one matching tree relative this person is, when that identified them.</summary>
+    public string? AnchoredBy { get; init; }
+
     public string? ConfidentMatchXref { get; init; }
     public double? ConfidentMatchScore { get; init; }
 

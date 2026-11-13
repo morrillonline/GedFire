@@ -159,7 +159,12 @@ record against tree family subgraphs. Supply:
   `single` on the xref with `bound: true`. Its same-name survey still lists
   the others. The binding also anchors the kin scoring of the record's other
   people, whatever spelling the record uses. An xref that is not a person is
-  refused.
+  refused. A person the record relates to a bound person resolves to that
+  person's one tree relative of the stated kind (spouse, child, parent or
+  sibling) whose given name agrees, also as `single`, with `anchoredBy`
+  naming the bound person. The surname is not compared, so a wife recorded
+  under her married name still resolves. With no such relative, or several,
+  the person is matched as usual.
 - `relationships`: person-index pairs using `spouse-of`, `child-of`,
   `parent-of`, or `sibling-of`.
 - `event`: the record's date, a GEDCOM 7 date with a year, and place.
@@ -340,7 +345,14 @@ drafting, so a harvest is checked before correlation settles its gaps:
   finding, such as the whole extract, must carry the same `quay`. Give a
   differently graded claim its own `excerpt`.
 
-`draft_changeset` refuses the same faults in the same words. Without a
+Two checks are about completeness rather than validity: a person declared
+in `people` that no relation links to the tree, and a finding with no facts,
+relations or notes that no note cites. While `draftGaps` is non-empty they
+only make the finding not ready. Once the gaps close they are errors, worded
+as `draft_changeset` words them.
+
+`draft_changeset` refuses the same faults in the same words, and refuses any
+file with `draftGaps`. Without a
 document (`gedfire tools call validate_finding` with no `--input`), these are
 the only checks, and their text is the document mode's. With a document,
 xrefs are also resolved. A record person's `xref` must name a person. A

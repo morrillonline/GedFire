@@ -103,10 +103,10 @@ public sealed class RecordCandidateScorer
     {
         var categories = new (string Relation, IReadOnlyList<RecordPersonDescription> Stated, List<GedIndividual> Tree)[]
         {
-            ("spouse", kin.Spouses, Spouses(indi)),
-            ("parent", kin.Parents, Parents(indi)),
-            ("child", kin.Children, Children(indi)),
-            ("sibling", kin.Siblings, Siblings(indi)),
+            ("spouse", kin.Spouses, TreeKin.Spouses(indi)),
+            ("parent", kin.Parents, TreeKin.Parents(indi)),
+            ("child", kin.Children, TreeKin.Children(indi)),
+            ("sibling", kin.Siblings, TreeKin.Siblings(indi)),
         };
 
         double total = 0;
@@ -157,6 +157,19 @@ public sealed class RecordCandidateScorer
         return new ScoredMatch(individual, score, score, score);
     }
 
+    /// <summary>
+    /// Whether the record's first given name is the tree person's, allowing variant spellings and nicknames. A surname is
+    /// not compared, because a wife is often recorded under her married surname and held under her maiden one.
+    /// </summary>
+    public bool GivenNameAgrees(string recordName, GedIndividual tree)
+    {
+        string recordGiven = FirstToken(PersonNameNormalizer.Normalize(recordName));
+        string treeGiven = FirstToken(PersonNameNormalizer.Normalize(tree.FirstMiddle()));
+        if (recordGiven.Length == 0 || treeGiven.Length == 0) return false;
+        bool? isMale = tree.SexRecorded ? tree.IsMale : null;
+        return JaroWinkler.Similarity(recordGiven, treeGiven) >= KinNameFloor || _nicknames.AreEquivalent(recordGiven, treeGiven, isMale);
+    }
+
     // A record often names kin by given name alone, so compare against both the
     // given and the full name and take the better, with nickname equivalence
     // standing in for similarity as the person matcher's given-name scoring does.
@@ -179,23 +192,6 @@ public sealed class RecordCandidateScorer
         int space = normalized.IndexOf(' ');
         return space < 0 ? normalized : normalized[..space];
     }
-
-    static List<GedIndividual> Spouses(GedIndividual indi) =>
-        [.. indi.FamSpouse.Select(f => f.SpouseOf(indi)).OfType<GedIndividual>()];
-
-    static List<GedIndividual> Children(GedIndividual indi) =>
-        [.. indi.FamSpouse.SelectMany(f => f.Children)];
-
-    static List<GedIndividual> Parents(GedIndividual indi)
-    {
-        var parents = new List<GedIndividual>(2);
-        if (indi.FamChild?.Husband is { } husband) parents.Add(husband);
-        if (indi.FamChild?.Wife is { } wife) parents.Add(wife);
-        return parents;
-    }
-
-    static List<GedIndividual> Siblings(GedIndividual indi) =>
-        indi.FamChild is { } fam ? [.. fam.Children.Where(c => !ReferenceEquals(c, indi))] : [];
 
     static double? PlaceScore(GedIndividual indi, RecordPersonDescription person, RecordEventDescription? recordEvent)
     {

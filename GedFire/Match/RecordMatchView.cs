@@ -28,6 +28,7 @@ public sealed record RecordMatchView(int MaxCandidates = RecordMatchView.Default
         Name = person.Name,
         Verdict = person.Verdict,
         Bound = person.Bound,
+        AnchoredBy = person.AnchoredBy,
         ConfidentMatchXref = person.ConfidentMatchXref,
         ConfidentMatchScore = person.ConfidentMatchScore,
         RunnerUpXref = person.RunnerUpXref,

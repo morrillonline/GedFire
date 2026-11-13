@@ -239,6 +239,75 @@ public class MatchRecordToolTests : IDisposable
         Assert.Equal("persons[0].xref @I99@ is not a person in the document.", ErrorText(result));
     }
 
+    const string MarriedNameGed = """
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        1 NAME Abner /Quillfeather/
+        1 SEX M
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Sarah Eastman /Nichols/
+        1 SEX F
+        1 FAMS @F1@
+        0 @I3@ INDI
+        1 NAME Sarah E. /Quillfeather/
+        1 SEX F
+        0 @I4@ INDI
+        1 NAME Ruth /Quillfeather/
+        1 SEX F
+        1 FAMC @F1@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        1 CHIL @I4@
+        0 TRLR
+        """;
+
+    async Task<JsonElement> MatchHousehold(string wifeName, string? childName = null)
+    {
+        string persons = $$"""[{ "name": "A. Quillfeather", "xref": "@I1@" }, { "name": "{{wifeName}}" }{{(childName is null ? "" : $$""", { "name": "{{childName}}" }""")}}]""";
+        string relationships = childName is null
+            ? """[{ "type": "spouse-of", "from": 1, "to": 0 }]"""
+            : """[{ "type": "spouse-of", "from": 1, "to": 0 }, { "type": "child-of", "from": 2, "to": 0 }]""";
+        var tool = new MatchRecordTool(_sessions.Open(MarriedNameGed), new ToolGate(), NicknameDirectory.LoadEmbedded());
+        var result = await Call(tool, persons, relationships, """{ "date": "1880" }""");
+        Assert.NotEqual(true, result.IsError);
+        return result.StructuredContent!.Value.GetProperty("persons");
+    }
+
+    [Fact]
+    public async Task ABoundHeadsOnlyTreeSpouse_IsTheWifeRecordedUnderHerMarriedName()
+    {
+        var wife = (await MatchHousehold("Sarah E. Quillfeather"))[1];
+
+        Assert.Equal("single", wife.GetProperty("verdict").GetString());
+        Assert.Equal("@I2@", wife.GetProperty("confidentMatchXref").GetString());
+        Assert.Equal("@I1@", wife.GetProperty("anchoredBy").GetString());
+        Assert.False(wife.GetProperty("bound").GetBoolean());
+        var decoy = wife.GetProperty("sameNameSurvey").EnumerateArray().Single(e => e.GetProperty("xref").GetString() == "@I3@");
+        Assert.Equal("the record binds A. Quillfeather to @I1@, whose only matching tree spouse is @I2@", decoy.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task ABoundParentsTreeChild_IsTheRecordsChild()
+    {
+        var child = (await MatchHousehold("Sarah E. Quillfeather", "Ruth Quillfeather"))[2];
+
+        Assert.Equal("@I4@", child.GetProperty("confidentMatchXref").GetString());
+        Assert.Equal("@I1@", child.GetProperty("anchoredBy").GetString());
+    }
+
+    [Fact]
+    public async Task ASpouseWhoseGivenNameDiffers_IsNotAnchored()
+    {
+        var wife = (await MatchHousehold("Lucy Quillfeather"))[1];
+
+        Assert.Equal(JsonValueKind.Null, wife.GetProperty("anchoredBy").ValueKind);
+        Assert.NotEqual("@I2@", wife.GetProperty("confidentMatchXref").GetString());
+    }
+
     [Fact]
     public async Task FindingPath_ABoundRecordPerson_IsSingleOnTheBinding()
     {
