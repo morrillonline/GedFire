@@ -39,7 +39,9 @@ public sealed class MatchRecordTool
         "Instead of giving persons, relationships and event, findingPath reads them from a finding file's record slot; " +
         "the file must be a valid finding file. A record person with an xref is already bound to that tree person: it is " +
         "reported as single on that xref with bound true, its same-name survey still lists the others, and the binding " +
-        "anchors the kin scoring of the record's other people.";
+        "anchors the kin scoring of the record's other people. A person the record relates to a bound person is " +
+        "resolved to that person's only tree relative of the stated kind whose given name agrees, whatever surname the " +
+        "record uses (a wife under her married name), and reported as single with anchoredBy naming the bound person.";
 
     public static readonly string InputSchemaJson = SchemaComposer.Compose("""
         {
@@ -84,8 +86,9 @@ public sealed class MatchRecordTool
                   "index": { "type": "integer", "description": "Index into the request's persons." },
                   "role": { "type": ["string", "null"] },
                   "name": { "type": "string" },
-                  "verdict": { "type": "string", "enum": ["single", "candidates", "none"], "description": "single means a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10, or a person the record binds by xref." },
+                  "verdict": { "type": "string", "enum": ["single", "candidates", "none"], "description": "single means a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10, or a person the record binds by xref, or a bound person's only matching tree relative of the stated kind." },
                   "bound": { "type": "boolean", "description": "True when the record bound this person by xref; confidentMatchXref is then that xref." },
+                  "anchoredBy": { "type": ["string", "null"], "description": "The xref of the bound record person whose only matching tree relative of the stated kind (given name agreeing, surname not compared) this person was resolved to; null otherwise." },
                   "confidentMatchXref": { "type": ["string", "null"] },
                   "confidentMatchScore": { "type": ["number", "null"] },
                   "runnerUpXref": { "type": ["string", "null"], "description": "The second-ranked candidate, kept even when maxCandidates drops it." },

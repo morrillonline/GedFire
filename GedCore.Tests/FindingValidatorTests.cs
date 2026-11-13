@@ -119,6 +119,43 @@ public class FindingValidatorTests : IDisposable
         Assert.Equal(bound.Errors, shape.Errors);
     }
 
+    static FindingFile Harvest(string draftBody, bool gaps) => FindingFileReader.Read(new MemoryStream(System.Text.Encoding.UTF8.GetBytes($$"""
+        { "draft": { "id": "F-200", "extract": "Ezra Quillfeather, 49; Hannah, 12.",
+            "source": { "name": "Fictional Census", "locator": "p. 3", "class": "original", "information": "secondary" },
+            "target": { "xref": "@I1@", "card": "new-child" }{{draftBody}} }
+          {{(gaps ? ", \"draftGaps\": [\"child unbound: Hannah\"]" : "")}} }
+        """)), "F-200.json");
+
+    const string UnlinkedHannah = """, "people": [{ "xref": "@NewI_hannah@", "name": "Hannah /Quillfeather/", "sex": "F" }]""";
+
+    [Theory]
+    [InlineData(UnlinkedHannah, "@NewI_hannah@ is declared in people but no relation links it to the tree.")]
+    [InlineData("", "F-200.json (findings[0]) has no facts, relations or notes, and no note cites it.")]
+    public async Task ACompletenessRule_IsNotReadyWhileGapsAreOpenAndAnErrorOnceTheyClose(string draftBody, string error)
+    {
+        foreach (var model in new[] { null, await Model() })
+        {
+            var open = new FindingValidator(model, null, requireDraft: false).Validate(Harvest(draftBody, gaps: true));
+            var closed = new FindingValidator(model, null, requireDraft: false).Validate(Harvest(draftBody, gaps: false));
+
+            Assert.True(open.Valid, string.Join("; ", open.Errors));
+            Assert.False(open.ReadyToDraft);
+            Assert.False(closed.Valid);
+            Assert.Contains(error, closed.Errors);
+        }
+    }
+
+    [Fact]
+    public void WithGapsOpen_AQuayAboveItsCeilingIsStillAnError()
+    {
+        var file = Harvest(UnlinkedHannah + """, "facts": [{ "record": "@I1@", "fact": "BIRT", "date": "1801", "quay": 3 }]""", gaps: true);
+
+        var result = new FindingValidator(null, null, requireDraft: false).Validate(file);
+
+        Assert.False(result.Valid);
+        Assert.StartsWith("F-200.json (findings[0]).facts[0].quay is 3, but a original source with secondary information supports at most 2", Assert.Single(result.Errors));
+    }
+
     [Fact]
     public void AFindingWithDraftGaps_IsStillCheckedByTheRules()
     {

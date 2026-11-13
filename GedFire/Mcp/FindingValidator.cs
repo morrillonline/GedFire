@@ -32,14 +32,17 @@ public sealed record FindingValidation(
 /// <summary>Validates findings against <paramref name="model"/> when given, or without a document when null.</summary>
 public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, bool requireDraft)
 {
-    /// <summary>A finding file, read by <see cref="FindingFileReader"/>. Its draft is checked even while draftGaps keep it from drafting.</summary>
+    /// <summary>
+    /// A finding file, read by <see cref="FindingFileReader"/>. Its draft is checked even while draftGaps keep it from drafting;
+    /// what only a complete finding needs (every new person linked, something to compile) then shows as not ready, not as an error.
+    /// </summary>
     public FindingValidation Validate(FindingFile file)
     {
         var errors = file.Errors.ToList();
         if (requireDraft && file.NotReadyReason is { } reason) errors.Insert(0, reason);
         bool compiles = errors.Count == 0 && file.NotReadyReason is null;
         if (file.Draft is { } draft)
-            errors.AddRange(FindingFileLoader.NameFiles(RuleErrors(DraftNoteJoiner.Join([draft]), compiles), [file.Name]));
+            errors.AddRange(FindingFileLoader.NameFiles(RuleErrors(DraftNoteJoiner.Join([draft]), compiles, complete: file.Gaps.Count == 0), [file.Name]));
         var recordBindings = RecordBindings(file.Record);
         errors.AddRange(recordBindings.Where(b => b.Exists == false).Select(b => $"{file.Name}: {b.At} {b.Ref} is not a person in the document."));
 
@@ -56,7 +59,7 @@ public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, b
         var (read, readErrors) = DraftFindingReader.Read(single.RootElement);
         var errors = readErrors.Select(e => e.Replace("findings[0]", path)).ToList();
         var draft = errors.Count == 0 ? read[0] : null;
-        if (draft is not null) errors.AddRange(RuleErrors([draft], compiles: true).Select(e => e.Replace("findings[0]", path)));
+        if (draft is not null) errors.AddRange(RuleErrors([draft], compiles: true, complete: true).Select(e => e.Replace("findings[0]", path)));
 
         string? id = entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty("id", out var given)
                      && given.ValueKind == JsonValueKind.String ? given.GetString() : null;
@@ -65,11 +68,11 @@ public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, b
     }
 
     // Without a document, the rules the finding alone decides; with one, the drafter's own refusals, compiling when the finding could be drafted.
-    IReadOnlyList<string> RuleErrors(IReadOnlyList<DraftFinding> findings, bool compiles)
+    IReadOnlyList<string> RuleErrors(IReadOnlyList<DraftFinding> findings, bool compiles, bool complete)
     {
-        if (model is null) return ChangesetDrafter.CheckWithoutDocument(findings);
+        if (model is null) return ChangesetDrafter.CheckWithoutDocument(findings, complete);
         var drafter = new ChangesetDrafter(new ModelDraftLookup(model), policy);
-        return compiles ? drafter.Draft(findings).Errors : drafter.Check(findings);
+        return compiles ? drafter.Draft(findings).Errors : drafter.Check(findings, complete);
     }
 
     IReadOnlyList<FindingBinding> Bindings(DraftFinding? draft, string prefix) =>

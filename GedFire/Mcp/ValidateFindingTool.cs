@@ -27,7 +27,9 @@ public sealed class ValidateFindingTool
         "record person names, with exists, name and lifespan for a document record or declared for a @New...@ " +
         "placeholder. Every rule the finding alone decides is checked with or without a document, and even while " +
         "draftGaps keep it from drafting: field shapes, GEDCOM 7 dates, fact tags, QUAY ceilings, placeholder " +
-        "declarations, sex on a new partner or parent, verbatim excerpts, and one grade per quoted text. Against the " +
+        "declarations, sex on a new partner or parent, verbatim excerpts, and one grade per quoted text. While draftGaps " +
+        "are open, a new person no relation links yet and a finding with nothing to compile are not errors, only not " +
+        "ready; once the gaps close they are errors. Against the " +
         "server's document a finding that is ready is also compiled on its own by draft_changeset's own checks, so the " +
         "errors are the ones draft_changeset gives for the same fault and readyToDraft is true exactly when " +
         "draft_changeset compiles that file without error; each record person's xref must name a person. A file with no " +

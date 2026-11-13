@@ -41,9 +41,14 @@ public sealed class RecordMatcher
     {
         var person = record.Persons[personIndex];
         if (person.Xref is { } xref)
-            return MatchBound(index, record, personIndex,
-                index.Entries.FirstOrDefault(e => e.Individual.Xref == xref)?.Individual
-                ?? throw new ArgumentException($"persons[{personIndex}].xref {xref} is not a person in the document.", nameof(record)));
+        {
+            var bound = Find(index, xref)
+                ?? throw new ArgumentException($"persons[{personIndex}].xref {xref} is not a person in the document.", nameof(record));
+            return MatchKnown(index, record, personIndex, bound, $"the record binds {person.Name} to {bound.Xref}") with { Bound = true };
+        }
+        if (AnchoredCandidate(index, record, personIndex) is var (anchored, anchor))
+            return MatchKnown(index, record, personIndex, anchored,
+                $"the record binds {anchor.Name} to {anchor.Xref}, whose only matching tree {anchor.Relation} is {anchored.Xref}") with { AnchoredBy = anchor.Xref };
         var kin = StatedKin.Resolve(record, personIndex);
         // Uncapped name-only recall: the survey must be closed, so every
         // same-name person is considered and none is silently dropped.
@@ -90,34 +95,71 @@ public sealed class RecordMatcher
         };
     }
 
-    // The record already says who this person is: the binding is the match, and the same-name survey still shows who else was considered.
-    RecordPersonMatch MatchBound(MatchIndex index, RecordDescription record, int personIndex, GedIndividual bound)
+    static GedIndividual? Find(MatchIndex index, string xref) =>
+        index.Entries.FirstOrDefault(e => e.Individual.Xref == xref)?.Individual;
+
+    sealed record Anchor(string Xref, string Name, string Relation);
+
+    // A person the record relates to a bound person is that person's tree relative of the same kind, when the tree holds
+    // exactly one whose given name agrees and who could be the record's person. The surname is not compared: a wife is
+    // often recorded under her married name and held under her maiden one.
+    (GedIndividual Person, Anchor Anchor)? AnchoredCandidate(MatchIndex index, RecordDescription record, int personIndex)
+    {
+        var person = record.Persons[personIndex];
+        var found = new List<(GedIndividual Person, Anchor Anchor)>();
+        foreach (var rel in record.Relationships.Where(r => r.From == personIndex || r.To == personIndex))
+        {
+            int other = rel.From == personIndex ? rel.To : rel.From;
+            if (record.Persons[other].Xref is not { } xref || Find(index, xref) is not { } bound) continue;
+            var (relation, relatives) = RelativesOf(bound, rel, personIndex);
+            found.AddRange(relatives
+                .Where(r => RecordCandidateScorer.ExclusionReason(r, person, record.Event?.Year) is null && _scorer.GivenNameAgrees(person.Name, r))
+                .Select(r => (r, new Anchor(xref, record.Persons[other].Name, relation))));
+        }
+        var distinct = found.DistinctBy(f => f.Person.Xref).ToList();
+        return distinct.Count == 1 ? distinct[0] : null;
+    }
+
+    // The tree relatives of the bound person in the place the record gives this person.
+    static (string Relation, List<GedIndividual> Relatives) RelativesOf(GedIndividual bound, RecordRelationship rel, int personIndex)
+    {
+        bool personIsFrom = rel.From == personIndex;
+        return rel.Kind switch
+        {
+            RecordRelationshipKind.SpouseOf => ("spouse", TreeKin.Spouses(bound)),
+            RecordRelationshipKind.SiblingOf => ("sibling", TreeKin.Siblings(bound)),
+            RecordRelationshipKind.ChildOf => personIsFrom ? ("child", TreeKin.Children(bound)) : ("parent", TreeKin.Parents(bound)),
+            _ => personIsFrom ? ("parent", TreeKin.Parents(bound)) : ("child", TreeKin.Children(bound)),
+        };
+    }
+
+    // The record says who this person is, by its own binding or through a bound relative: that person is the match, and the
+    // same-name survey still shows who else was considered.
+    RecordPersonMatch MatchKnown(MatchIndex index, RecordDescription record, int personIndex, GedIndividual known, string reason)
     {
         var person = record.Persons[personIndex];
         var kin = StatedKin.Resolve(record, personIndex);
         var outcome = _matcher.Match(index, person.Name, hints: null, maxResults: null);
-        var boundMatch = outcome.Matches.FirstOrDefault(m => ReferenceEquals(m.Individual, bound)) ?? _scorer.Unrecalled(bound, person.Name);
-        var boundScore = _scorer.Score(boundMatch, person, kin, record.Event);
+        var knownMatch = outcome.Matches.FirstOrDefault(m => ReferenceEquals(m.Individual, known)) ?? _scorer.Unrecalled(known, person.Name);
+        var knownScore = _scorer.Score(knownMatch, person, kin, record.Event);
 
         var excluded = new List<(GedIndividual Individual, string Reason)>();
         var others = new List<RecordCandidateScore>();
-        foreach (var match in outcome.Matches.Where(m => !ReferenceEquals(m.Individual, bound)))
+        foreach (var match in outcome.Matches.Where(m => !ReferenceEquals(m.Individual, known)))
         {
-            string? reason = RecordCandidateScorer.ExclusionReason(match.Individual, person, record.Event?.Year);
-            if (reason != null) excluded.Add((match.Individual, reason));
+            string? exclusion = RecordCandidateScorer.ExclusionReason(match.Individual, person, record.Event?.Year);
+            if (exclusion != null) excluded.Add((match.Individual, exclusion));
             else others.Add(_scorer.Score(match, person, kin, record.Event));
         }
         var ranked = others
             .OrderByDescending(s => s.Composite)
             .ThenByDescending(s => s.NameScore)
             .ThenBy(s => s.Individual.Xref, StringComparer.Ordinal)
-            .Prepend(boundScore)
+            .Prepend(knownScore)
             .ToList();
 
         var survey = BuildSurvey(ranked, excluded, kin)
-            .Select((entry, rank) => rank is > 0 && rank < ranked.Count
-                ? entry with { Reason = $"the record binds {person.Name} to {bound.Xref}" }
-                : entry)
+            .Select((entry, rank) => rank is > 0 && rank < ranked.Count ? entry with { Reason = reason } : entry)
             .ToList();
         return new RecordPersonMatch
         {
@@ -125,9 +167,8 @@ public sealed class RecordMatcher
             Role = person.Role,
             Name = person.Name,
             Verdict = "single",
-            Bound = true,
-            ConfidentMatchXref = bound.Xref,
-            ConfidentMatchScore = boundScore.Composite,
+            ConfidentMatchXref = known.Xref,
+            ConfidentMatchScore = knownScore.Composite,
             RunnerUpXref = ranked.Count > 1 ? ranked[1].Individual.Xref : null,
             RunnerUpScore = ranked.Count > 1 ? ranked[1].Composite : null,
             Candidates = [.. ranked.Select(ToCandidate)],

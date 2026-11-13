@@ -10,6 +10,7 @@ public sealed record CompactRecordPersonMatch
     public required string Name { get; init; }
     public required string Verdict { get; init; }
     public bool Bound { get; init; }
+    public string? AnchoredBy { get; init; }
     public string? ConfidentMatchXref { get; init; }
     public double? ConfidentMatchScore { get; init; }
     public string? RunnerUpXref { get; init; }

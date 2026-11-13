@@ -9,7 +9,8 @@ namespace GedCore.Drafting;
 /// </summary>
 internal static class DraftChecks
 {
-    public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup)
+    /// <param name="complete">False for a finding still open (draftGaps): a new person nothing links yet, or a finding with nothing to compile, is then not yet complete rather than wrong.</param>
+    public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup, bool complete = true)
     {
         for (int f = 0; f < findings.Count; f++)
         {
@@ -21,8 +22,8 @@ internal static class DraftChecks
                     yield return error;
         }
 
-        foreach (var error in NewRecordErrors(findings).Concat(RemovalErrors(findings, lookup))
-                     .Concat(NoteCitationErrors(findings)).Concat(EmptyFindingErrors(findings))
+        foreach (var error in NewRecordErrors(findings, complete).Concat(RemovalErrors(findings, lookup))
+                     .Concat(NoteCitationErrors(findings)).Concat(complete ? EmptyFindingErrors(findings) : [])
                      .Concat(NameErrors(findings, lookup)).Concat(MissingRecordErrors(findings, lookup))
                      .Concat(ExcerptErrors(findings)).Concat(GradeErrors(findings)))
             yield return error;
@@ -139,7 +140,7 @@ internal static class DraftChecks
                 }
     }
 
-    static IEnumerable<string> NewRecordErrors(IReadOnlyList<DraftFinding> findings)
+    static IEnumerable<string> NewRecordErrors(IReadOnlyList<DraftFinding> findings, bool complete)
     {
         var declared = new Dictionary<string, DraftPerson>(StringComparer.Ordinal);
         var referenced = new HashSet<string>(StringComparer.Ordinal);
@@ -187,6 +188,7 @@ internal static class DraftChecks
             }
         }
 
+        if (!complete) yield break;
         foreach (string xref in declared.Keys.Where(x => !referenced.Contains(x)))
             yield return $"{xref} is declared in people but no relation links it to the tree.";
     }
