@@ -7,12 +7,14 @@ namespace GedCore.Tests;
 
 public class ChangesetDrafterRelationTests
 {
-    sealed class FakeLookup(Dictionary<string, string>? names = null) : IDraftLookup
+    sealed class FakeLookup(Dictionary<string, string>? names = null, Dictionary<string, string[]>? couples = null) : IDraftLookup
     {
         public IReadOnlyList<ExistingFact> FactsOn(string record, string tag) => [];
         public IReadOnlyList<string> NotesOn(string record) => [];
         public string? FindSource(string title, string? author) => null;
         public string? PersonName(string xref) => names?.GetValueOrDefault(xref);
+        public IReadOnlyList<string> FamiliesOfCouple(string partner, string otherPartner) =>
+            couples?.GetValueOrDefault($"{partner}+{otherPartner}") ?? couples?.GetValueOrDefault($"{otherPartner}+{partner}") ?? [];
     }
 
     const string Document = """
@@ -292,5 +294,64 @@ public class ChangesetDrafterRelationTests
             [Finding([], [], [Fact("@NewF7@", "MARR", "1842", null)])]);
 
         Assert.Contains("facts[0].record @NewF7@", Assert.Single(result.Errors));
+    }
+
+    // ---- partners who already share a family ----
+
+    const string MarriedDocument = """
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        1 NAME Hiram /Test/
+        1 SEX M
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Mary /Test/
+        1 SEX F
+        1 FAMS @F1@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        0 @F2@ FAM
+        0 TRLR
+        """;
+
+    static ChangesetDrafter Married(params string[] families) => new(new FakeLookup(couples: new() { ["@I1@+@I2@"] = families }));
+
+    [Fact]
+    public void ASpouseRelationBetweenExistingPartners_CompilesOntoTheirFamily_AndCreatesNone()
+    {
+        var finding = Finding([], [Spouse("@I1@", "@I2@", "@NewF1@")], [Fact("@NewF1@", "MARR", "1842", null)]);
+
+        var result = Married("@F1@").Draft([finding]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var ops = Ops(result);
+        Assert.Equal("@F1@", ops.Single(o => Verb(o) == "createOrUpdateSpouse").GetProperty("family").GetString());
+        Assert.Equal("@F1@", ops.Single(o => Verb(o) == "createOrUpdateVital").GetProperty("record").GetString());
+        Assert.DoesNotContain("@NewF1@", result.Changeset!.ToJsonString());
+        Assert.Contains(result.Decisions, d => d.Kind == "resolved" && d.Detail == "@I1@ and @I2@ are already partners in @F1@, so relations[0].family compiles onto it instead of creating @NewF1@");
+        var applied = ChangesetApplier.Run(Encoding.UTF8.GetBytes(MarriedDocument), Changeset.Parse(result.Changeset!.ToJsonString()), [1], dryRun: false);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        Assert.Equal(2, GedReader.Read(applied.OutputBytes!).Records.Count(r => r.Tag == "FAM"));
+    }
+
+    [Fact]
+    public void ASpouseRelationNamingAnotherExistingFamily_IsRefusedWithTheSharedOne()
+    {
+        var result = Married("@F1@").Draft([Finding([], [Spouse("@I1@", "@I2@", "@F2@")])]);
+
+        Assert.Equal("findings[0].relations[0].family @F2@ is not the family of @I1@ and @I2@, who are already partners in @F1@; name that family or leave family out.",
+            Assert.Single(result.Errors));
+    }
+
+    [Fact]
+    public void ASpouseRelationForPartnersInSeveralFamilies_IsRefusedListingThem()
+    {
+        var result = Married("@F1@", "@F3@").Draft([Finding([], [Spouse("@I1@", "@I2@", "@NewF1@")])]);
+
+        Assert.Equal("findings[0].relations[0]: @I1@ and @I2@ are already partners in 2 families (@F1@, @F3@); give the family this relation belongs to.",
+            Assert.Single(result.Errors));
     }
 }

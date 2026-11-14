@@ -27,10 +27,13 @@ public sealed class ValidateFindingTool
         "record person names, with exists, name and lifespan for a document record or declared for a @New...@ " +
         "placeholder. Every rule the finding alone decides is checked with or without a document, and even while " +
         "draftGaps keep it from drafting: field shapes, GEDCOM 7 dates, fact tags, QUAY ceilings, placeholder " +
-        "declarations, sex on a new partner or parent, verbatim excerpts, and one grade per quoted text. While draftGaps " +
+        "declarations, sex on a new partner or parent, verbatim excerpts, one grade per quoted text, and cites on a " +
+        "biography note. A note's cites[].finding is resolved against the other findings checked with it and, when one " +
+        "file is checked, against the file <id>.json beside it; the cited finding must aim at the same target, and its " +
+        "excerpt must be in that finding's extract. While draftGaps " +
         "are open, a new person no relation links yet and a finding with nothing to compile are not errors, only not " +
         "ready; once the gaps close they are errors. Against the " +
-        "server's document a finding that is ready is also compiled on its own by draft_changeset's own checks, so the " +
+        "server's document a finding that is ready is also compiled, with the findings its notes cite, by draft_changeset's own checks, so the " +
         "errors are the ones draft_changeset gives for the same fault and readyToDraft is true exactly when " +
         "draft_changeset compiles that file without error; each record person's xref must name a person. A file with no " +
         "draft or with draftGaps is not ready, and is an error only with requireDraft. Writes nothing.";
@@ -153,7 +156,8 @@ public sealed class ValidateFindingTool
             if (!ToolArguments.TryReadOptionalStringList(arguments.FindingPaths, "findingPaths", out var names, out error))
                 return CallToolResults.Error(error!);
             if (names.Count == 0) return CallToolResults.Error("findingPaths must name at least one finding file.");
-            results = [.. names.Select(name => validator.Validate(FindingFileReader.ReadPath(Path.GetFullPath(name))))];
+            var batch = FindingBatch.Read(names);
+            results = [.. batch.Files.Select(file => validator.Validate(file, batch.Citable))];
         }
         else
         {
@@ -161,7 +165,7 @@ public sealed class ValidateFindingTool
                 return CallToolResults.Error(error!);
             if (entries.ValueKind != JsonValueKind.Array || entries.GetArrayLength() == 0)
                 return CallToolResults.Error("give findingPaths, findings or inputPath: a non-empty array of finding entries or files.");
-            results = [.. entries.EnumerateArray().Select((entry, index) => validator.Validate(entry, index))];
+            results = validator.ValidateEntries(entries);
         }
 
         return CallToolResults.Success(

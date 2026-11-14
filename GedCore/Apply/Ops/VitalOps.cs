@@ -26,8 +26,9 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
     public FactMatch? Match { get; init; }
 
     /// <summary>"upsert" (default) updates a matched/sole instance or creates when
-    /// absent; "add" always creates a new instance (idempotent: an identical
-    /// instance already present makes it a no-op). "add" forbids "match".</summary>
+    /// absent; "add" creates a new instance unless one with the same value, date
+    /// and place is already present, which gains the citations instead ("cited
+    /// existing"). "add" forbids "match".</summary>
     public string Mode { get; init; } = "upsert";
 
     public IReadOnlyList<SubStructure> Substructures { get; init; } = [];
@@ -134,7 +135,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
             : res.Fact ?? (Match is not null ? FactSatisfyingRequest(target) : null);
 
         if (existingFact is null) CreateFact(state, target, citations, log);
-        else UpdateFact(state, target, existingFact, citations, log);
+        else UpdateFact(state, target, existingFact, citations, log, Mode == "add" ? FactUpdate.CiteExisting : FactUpdate.Update);
     }
 
     private void CreateFact(ApplyState state, GedRecord target, IReadOnlyList<Citation> citations, List<string> log)
@@ -150,8 +151,17 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         log.Add($"{LogContext}: created" + string.Concat(citations.Select(c => $"; {NodeBuilder.DescribeCitation(c)}")));
     }
 
+    /// <summary>How an op changes an instance it lands on, and how the log names it.</summary>
+    private sealed record FactUpdate(string Outcome, CitationUpsertMode Citations)
+    {
+        public static readonly FactUpdate Update = new("updated", CitationUpsertMode.CorrectPageInPlace);
+
+        // An add that finds its instance already held only cites it: another changeset's citation there is kept, not corrected.
+        public static readonly FactUpdate CiteExisting = new("cited existing", CitationUpsertMode.AddBeside);
+    }
+
     private void UpdateFact(ApplyState state, GedRecord target, GedRecord existingFact,
-                            IReadOnlyList<Citation> citations, List<string> log)
+                            IReadOnlyList<Citation> citations, List<string> log, FactUpdate style)
     {
         var updates = PendingValueUpdates(existingFact);
         GedRecord? previousNameNote = null;
@@ -181,10 +191,10 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
                 state.Touch(target);
                 changes.Add($"{sub.Tag} added '{sub.Value}'");
             }
-        changes.AddRange(CitationReconciler.Upsert(state, existingFact, citations));
+        changes.AddRange(CitationReconciler.Upsert(state, existingFact, citations, style.Citations));
 
         log.Add(changes.Count > 0
-            ? $"{LogContext}: updated ({string.Join("; ", changes)})"
+            ? $"{LogContext}: {style.Outcome} ({string.Join("; ", changes)})"
             : $"{LogContext}: no-op (already matches)");
     }
 

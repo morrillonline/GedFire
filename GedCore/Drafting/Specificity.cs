@@ -34,6 +34,11 @@ internal static partial class Specificity
 
     public static bool SameDate(string a, string b) => Canonical(a) == Canonical(b);
 
+    /// <summary>True when <paramref name="year"/> is a bare year and <paramref name="date"/> a plain date within it.</summary>
+    public static bool InYear(string date, string year) =>
+        !IsApproximate(year) && Parse(year) is { Month: null, Day: null } y
+        && !IsApproximate(date) && Parse(date) is { } d && d.Year == y.Year;
+
     /// <summary>Dates that can both be true: one refines the other, or an approximate one fits a specific one.</summary>
     public static bool Consistent(string a, string b)
     {

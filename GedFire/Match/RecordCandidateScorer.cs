@@ -40,6 +40,12 @@ public sealed class RecordCandidateScorer
     public const int BirthYearExclusionGap = 10;
     public const int MaxAgeAtEvent = 120;
 
+    /// <summary>find_person's recall threshold: a name score below it is not a name match.</summary>
+    public const double NameFloor = 70.0;
+
+    // A surname alone scores below the name floor, so it can never carry a match by itself.
+    const double UnknownGivenNameCap = 60.0;
+
     readonly NicknameDirectory _nicknames;
 
     public RecordCandidateScorer(NicknameDirectory nicknames) =>
@@ -72,8 +78,9 @@ public sealed class RecordCandidateScorer
         var matchedKin = new List<RecordKinMatch>();
         double? kinOverlap = kin.Any ? KinOverlapScore(indi, kin, matchedKin) : null;
         double? place = PlaceScore(indi, person, recordEvent);
+        double name = GivenNameUnknown(person.Name, indi) ? Math.Min(match.NameOnlyScore, UnknownGivenNameCap) : match.NameOnlyScore;
 
-        double points = match.NameOnlyScore / 100.0 * NameWeight;
+        double points = name / 100.0 * NameWeight;
         double weight = NameWeight;
         if (lifespan is double l) { points += l / 100.0 * LifespanWeight; weight += LifespanWeight; }
         if (kinOverlap is double k) { points += k / 100.0 * KinWeight; weight += KinWeight; }
@@ -82,11 +89,18 @@ public sealed class RecordCandidateScorer
         return new RecordCandidateScore(
             indi,
             Math.Round(points * 100.0 / weight, 1),
-            Math.Round(match.NameOnlyScore, 1),
+            Math.Round(name, 1),
             Round(lifespan),
             Round(kinOverlap),
             Round(place),
             matchedKin);
+    }
+
+    // A blank or Unknown given name on either side leaves only the surname to agree, which is not a name match.
+    static bool GivenNameUnknown(string recordName, GedIndividual tree)
+    {
+        var (_, given, oneToken) = PersonMatchCore.SplitQuery(recordName);
+        return UnknownName.IsPlaceholder(PersonNameNormalizer.Normalize(tree.FirstMiddle())) || !oneToken && UnknownName.IsPlaceholder(given);
     }
 
     static double? Round(double? value) => value is double d ? Math.Round(d, 1) : null;

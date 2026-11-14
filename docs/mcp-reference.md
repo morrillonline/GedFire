@@ -184,10 +184,25 @@ the survey is never capped.
 Results rank candidates by name, lifespan, kin overlap, and place. Each
 person's `sameNameSurvey` lists the same-name candidates considered and the
 reason each non-leader lost: incompatible dates, wrong spouse, impossible age,
-or a lower score. The verdict is `single`, `candidates`, or `none`.
-Unlike `find_person`, `match_record` still returns `single` for a lone viable
-candidate; with multiple viable candidates it requires a composite score of
-at least 90 and a lead of at least 10 points.
+or a lower score. The verdict is `single`, `weak`, `candidates`, or `none`:
+
+- `single`: a lone viable candidate, or a composite score of at least 90 and
+  a lead of at least 10 points, that something besides the name supports: a
+  `lifespan`, `place` or `kinOverlap` subscore above 0. A bound or anchored
+  person is also `single`.
+- `weak`: such a lead with nothing but the name behind it, or a candidate the
+  tree does not hold as the stated relative of a bound or anchored person.
+  `confidentMatchXref` is null and the candidates are listed as usual.
+- `candidates`: several candidates and no decisive lead.
+- `none`: no viable candidate, or none whose `name` subscore reaches 70.
+
+A blank or Unknown given name (`____`, `Unknown`, or empty) on either side
+adds nothing to the name score: the surname is scored alone and capped at 60,
+below the name floor, so a surname alone never makes a match. When the record
+relates the person to a bound or anchored person, each candidate who is not
+that person's relative of the stated kind in the tree carries a survey
+reason such as `not the father of @I1@ (Hetty Dunmore) in the tree`, even as
+the leader, and is never `single`.
 
 A person matching nobody receives `potentialNewPerson` and any near-miss
 `possibleDuplicates`, not a forced match. The same inputs yield the same
@@ -319,7 +334,10 @@ finding it reports:
 - `draftGaps`
 - `bindings`: each xref the draft or a record person names, and where. A
   document record carries `exists`, plus a person's `name` and `lifespan` or
-  a source's title. A `@New?@` placeholder carries `declared`.
+  a source's title. A `@New?@` placeholder carries `declared`. A spouse
+  relation between two people who already share a family is bound to that
+  family, e.g. `{"ref": "@F1@", "at": "draft.relations[0].family", "exists": true}`,
+  in place of the new family it named.
 - `schemaVersion`
 
 These rules need only the finding, so they are checked with or without a
@@ -344,6 +362,16 @@ drafting, so a harvest is checked before correlation settles its gaps:
 - One grade per quoted text. Two claims that quote the same text of a
   finding, such as the whole extract, must carry the same `quay`. Give a
   differently graded claim its own `excerpt`.
+- Cited notes. A note with `purpose: "biography"` needs at least one entry in
+  `cites`; with none, or an empty array, it is refused as `notes[0] is a
+  biography note with no cites`.
+- Cross-finding cites. A note's `cites[].finding` is resolved against the
+  other findings checked with it (the other `findingPaths` files, or the other
+  `findings` entries) and, when one file is checked alone, against the file
+  `<id>.json` beside it. The cited finding must aim at the same target, and an
+  `excerpt` must be in its `extract` word for word. A cited id found nowhere
+  stays an error. An error of the cited finding alone is reported when that
+  finding is checked, not against the note that cites it.
 
 Two checks are about completeness rather than validity: a person declared
 in `people` that no relation links to the tree, and a finding with no facts,
@@ -356,9 +384,10 @@ file with `draftGaps`. Without a
 document (`gedfire tools call validate_finding` with no `--input`), these are
 the only checks, and their text is the document mode's. With a document,
 xrefs are also resolved. A record person's `xref` must name a person. A
-finding that is ready is compiled on its own by `draft_changeset`'s checks,
-so its errors match `draft_changeset`'s word for word, and `readyToDraft` is
-true exactly when `draft_changeset` compiles that file without error. A file
+finding that is ready is compiled, with the findings its notes cite, by
+`draft_changeset`'s checks, so its errors match `draft_changeset`'s word for
+word, and `readyToDraft` is true exactly when `draft_changeset` compiles that
+file (with them) without error. A file
 with no draft or with `draftGaps` is not ready; it is an error only with
 `requireDraft`.
 
@@ -376,9 +405,11 @@ these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-Current versions: `finding` 2.0 (tighter date, tag, excerpt, grade and sex
-rules), `finding-file` 2.0 (unknown keys and a mismatched `draft.id` refused),
-`record` 1.1 (optional `persons[].xref`), and `argument` 1.0. A schema
+Current versions: `finding` 3.0 (a biography note needs `cites`; 2.0
+tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.0 (embeds
+`finding` 3.0; 2.0 refused unknown keys and a mismatched `draft.id`),
+`record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
+`persons[].xref`), and `argument` 1.0. A schema
 document states structure only. `validate_finding` is the full check. In its default
 strict mode, ajv rejects the `x-schemaVersion` annotation. Register it with
 `ajv.addKeyword("x-schemaVersion")`, or pass `--strict=false` to `ajv-cli`.
@@ -424,8 +455,19 @@ assigns each fact's grade. Policy can require verification notes for low grades.
 
 ### Reconciliation
 
-- Repeatable events such as `CENS` and `RESI` retain separate values. A date
-  matching an existing event updates that instance; another date adds an event.
+- Repeatable events such as `CENS`, `RESI` and `OCCU` are placed by date, so a
+  drafted op still lands where it was meant to after another changeset adds
+  instances of the tag. A date no existing instance has drafts
+  `"mode": "add"`, even for a person with none. A date exactly one instance
+  has drafts `"match": {"date": …}` on it; a bare year names any plain date in
+  that year, whose fuller date is kept. A date several instances have is
+  refused, naming them. A fact with no date, or with `substructures`, is
+  always added.
+- At apply, `"mode": "add"` creates nothing when the person already holds an
+  instance with the same value, date and place: the op's citations are added
+  to it beside the ones it has, and the log says `cited existing`. Two
+  changesets that both add `CENS 1900, Maine` leave one census with both
+  citations.
 - Single-valued facts such as `BIRT`, `DEAT`, `BURI`, and `MARR` reconcile date
   and place separately. Agreeing findings all contribute citations.
 - A more precise compatible date or place wins. A specific date supersedes an
@@ -481,6 +523,14 @@ Relations cite the finding at their own `quay`:
 the compiler reports `dropped-seed` when it removes them. Marriage facts use
 the family placeholder as `record`.
 
+A `spouse` relation between two existing people who already share a family
+compiles onto that family, never a new one. A new family placeholder it names
+is replaced by the shared family wherever the findings use it (a `MARR` fact,
+a child relation), a `resolved` decision says so, and `validate_finding`
+binds the relation's `family` to it. A relation naming a different existing
+family is refused with the family the couple shares; so is one for a couple
+who share several families and does not name one of them.
+
 An existing person's `SEX` fact uses a string `value`, such as `"M"` or `"F"`.
 Within each item, the compiler places these corrections before relationships,
 so role validation uses the corrected sex. Facts on new people follow the
@@ -519,13 +569,14 @@ The warning requests source review, is not an error, and does not block applicat
   The reason is shown to the reviewer in the changeset's findings table.
 - A note's `match` names the exact text to rewrite. `cites` lists
   `{"finding", "quay", "excerpt"}` entries; omitting `finding` uses its own.
+  A cited finding aims at the same target and is drafted in the same batch.
   The compiler joins notes on the same record within a changeset and retains
   every finding's citations.
 - A note's `purpose: "biography"` claims biography credit for the citations it
   adds to the person's cited biographical prose (service, occupation,
-  migration, probate). It compiles to a `createOrUpdateNote` with the same
-  purpose and joins only other biography notes. The note itself is a plain
-  cited note.
+  migration, probate). It must carry at least one `cites` entry. It compiles
+  to a `createOrUpdateNote` with the same purpose and joins only other
+  biography notes. The note itself is a plain cited note.
 
 ### Correcting an existing person's name
 
@@ -707,6 +758,16 @@ specificity is not recommended except when correcting an error. A conflicting
 or more detailed replacement is not flagged, and nothing is blocked.
 `validate_document` checks whole-file
 GEDCOM 7 conformance separately; `warningsAsErrors` promotes warnings.
+
+`validate_changeset` and `check_plausibility` accept an optional `after`: a
+list of `{changesetPath, items}` applied in memory, in order, before the
+target changeset is checked. Use it to check an approved changeset against the
+tree as it will stand when its turn comes, so an order dependency between
+packages (a census another package adds first, an edit to a fact another
+replaced) shows before apply. Nothing is written. The log names each earlier
+changeset applied; one that does not apply fails the run with its errors,
+prefixed `after[<i>] <path>:`. A missing file or a bad `items` selection in
+`after` is an error. Omit `after` to check against the document as it is.
 
 New records use reserved `@New<token>@` placeholders. Tokens contain letters,
 digits, and underscores. The first creation fixes the record kind; later

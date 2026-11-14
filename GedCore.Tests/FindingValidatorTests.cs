@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore.Drafting;
 using GedFire.Gen;
 using GedFire.Mcp;
 
@@ -201,5 +202,130 @@ public class FindingValidatorTests : IDisposable
         Assert.Null(result.File);
         Assert.Contains("findings[2].target.xref @I99@ is not a record in the document.", result.Errors);
         Assert.Equal("findings[2].target.xref", result.Bindings[0].At);
+    }
+
+    // ---- notes citing another finding ----
+
+    static DraftFinding Cited(string from = "", string to = "") =>
+        (from.Length == 0 ? Fixture("F-105.json") : Variant("F-105.json", from, to)).Draft!;
+
+    [Fact]
+    public async Task ANoteCitingAnotherFindingOfTheBatch_IsValidAndReady()
+    {
+        foreach (var model in new[] { null, await Model() })
+        {
+            var result = new FindingValidator(model, null, requireDraft: false).Validate(Fixture("F-106.json"), [Cited()]);
+
+            Assert.True(result.Valid, string.Join("; ", result.Errors));
+            Assert.True(result.ReadyToDraft);
+        }
+    }
+
+    [Fact]
+    public async Task ANoteCitingAFindingWithADifferentTarget_IsRefused()
+    {
+        var other = Cited("\"card\": \"enrich-life\"", "\"card\": \"enrich-death\"");
+
+        var result = new FindingValidator(await Model(), null, requireDraft: false).Validate(Fixture("F-106.json"), [other]);
+
+        Assert.Contains("F-106.json (findings[0]).notes[0].cites[1].finding \"F-105\" is aimed at a different target, so it lands in another item; a note cites findings of its own item.", result.Errors);
+    }
+
+    [Fact]
+    public void ANoteExcerptNotInTheCitedFindingsExtract_IsRefused()
+    {
+        var other = Cited("49, farmer", "49, miller");
+
+        var result = new FindingValidator(null, null, requireDraft: false).Validate(Fixture("F-106.json"), [other]);
+
+        Assert.Equal("F-106.json (findings[0]).notes[0].cites[1].excerpt is not part of the extract of finding \"F-105\"; an excerpt quotes the extract word for word.", Assert.Single(result.Errors));
+    }
+
+    [Fact]
+    public void ANoteCitingAFindingNotGiven_IsStillRefused()
+    {
+        var result = new FindingValidator(null, null, requireDraft: false).Validate(Fixture("F-106.json"), [Fixture("F-100.json").Draft!]);
+
+        Assert.Equal("F-106.json (findings[0]).notes[0].cites[1].finding \"F-105\" is not a finding of this draft.", Assert.Single(result.Errors));
+    }
+
+    [Theory]
+    [InlineData("\"cites\": []")]
+    [InlineData("\"cites\": null")]
+    public void ABiographyNoteWithNoCites_IsRefusedInShapeMode(string cites)
+    {
+        var file = Variant("F-106.json", "\"cites\": [ { \"quay\": 3 }, { \"finding\": \"F-105\", \"quay\": 2, \"excerpt\": \"Ezra Quillfeather, 49, farmer\" } ]", cites);
+
+        var result = new FindingValidator(null, null, requireDraft: false).Validate(file);
+
+        Assert.Equal("F-106.json (findings[0]).notes[0] is a biography note with no cites; a biography note cites the findings that support it.", Assert.Single(result.Errors));
+    }
+
+    [Fact]
+    public void ABiographyNoteCitingItsOwnFinding_PassesInShapeMode()
+    {
+        var file = Variant("F-106.json", "\"cites\": [ { \"quay\": 3 }, { \"finding\": \"F-105\", \"quay\": 2, \"excerpt\": \"Ezra Quillfeather, 49, farmer\" } ]", "\"cites\": [{ \"quay\": 1 }]");
+
+        Assert.True(new FindingValidator(null, null, requireDraft: false).Validate(file).Valid);
+    }
+
+    [Fact]
+    public void AnErrorOfTheCitedFindingAlone_IsLeftToThatFinding()
+    {
+        var other = Cited("\"quay\": 2 }", "\"quay\": 3 }");
+
+        var result = new FindingValidator(null, null, requireDraft: false).Validate(Fixture("F-106.json"), [other]);
+
+        Assert.True(result.Valid, string.Join("; ", result.Errors));
+    }
+
+    // ---- a spouse relation between existing partners ----
+
+    const string MarriedGed = """
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        1 NAME Ezra /Quillfeather/
+        1 SEX M
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Hannah /Quillfeather/
+        1 SEX F
+        1 FAMS @F1@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        0 @F2@ FAM
+        0 TRLR
+        """;
+
+    static FindingFile Marriage(string family) => FindingFileReader.Read(new MemoryStream(System.Text.Encoding.UTF8.GetBytes($$"""
+        { "draft": { "id": "F-300", "extract": "Ezra Quillfeather and his wife Hannah.",
+            "source": { "name": "Fictional Census", "locator": "p. 3", "class": "original", "information": "primary" },
+            "target": { "xref": "@I1@", "card": "new-spouse" },
+            "relations": [{ "kind": "spouse", "person": "@I1@", "spouse": "@I2@", "family": "{{family}}", "quay": 2 }] } }
+        """)), "F-300.json");
+
+    [Fact]
+    public async Task ASpouseRelationBetweenExistingPartners_IsBoundToTheirFamily()
+    {
+        var model = (await _sessions.Open(MarriedGed).GetSnapshotAsync(CancellationToken.None)).Model;
+
+        var result = new FindingValidator(model, null, requireDraft: false).Validate(Marriage("@NewF1@"));
+
+        Assert.True(result.ReadyToDraft, string.Join("; ", result.Errors));
+        Assert.Contains(new FindingBinding("@F1@", "draft.relations[0].family") { Exists = true }, result.Bindings);
+        Assert.DoesNotContain(result.Bindings, b => b.Ref == "@NewF1@");
+    }
+
+    [Fact]
+    public async Task ASpouseRelationNamingAnotherFamily_IsRefusedWithTheSharedOne()
+    {
+        var model = (await _sessions.Open(MarriedGed).GetSnapshotAsync(CancellationToken.None)).Model;
+
+        var result = new FindingValidator(model, null, requireDraft: false).Validate(Marriage("@F2@"));
+
+        Assert.Contains("F-300.json (findings[0]).relations[0].family @F2@ is not the family of @I1@ and @I2@, who are already partners in @F1@; name that family or leave family out.", result.Errors);
     }
 }

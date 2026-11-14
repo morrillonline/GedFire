@@ -191,6 +191,52 @@ public class ApplyOpTests : ApplyTestBase
         Assert.Single(ReadDoc().ByXref["@I00002@"].ChildrenByTag("CENS"));
     }
 
+    [Fact]
+    public void Vital_ModeAdd_StillApplies_AfterAnotherChangesetAddedOtherCensuses()
+    {
+        WriteBaseFile();
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
+                "value": { "date": "1910", "place": "Maine" } },
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
+                "value": { "date": "1920", "place": "Maine" } } ] } ] }
+            """);
+
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
+                "value": { "date": "1900", "place": "Maine" },
+                "citation": { "source": "@S00001@", "page": "1900 ED 5", "dataText": "Harvey, 1900", "quay": 1 } } ] } ] }
+            """);
+
+        Assert.Equal(["1900", "1910", "1920"],
+            ReadDoc().ByXref["@I00002@"].ChildrenByTag("CENS").Select(c => c.FirstChild("DATE")!.Value).Order());
+    }
+
+    [Fact]
+    public void Vital_ModeAdd_OfTheSameDateAndPlace_CitesTheExistingInstance()
+    {
+        WriteBaseFile();
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
+                "value": { "date": "1900", "place": "Maine" },
+                "citation": { "source": "@S00001@", "page": "1900 ED 5", "dataText": "Harvey, 1900", "quay": 1 } } ] } ] }
+            """);
+
+        var second = RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
+                "value": { "date": "1900", "place": "Maine" },
+                "citation": { "source": "@S00001@", "page": "1900 ED 6", "dataText": "Harvey Test, 1900", "quay": 1 } } ] } ] }
+            """);
+
+        var census = Assert.Single(ReadDoc().ByXref["@I00002@"].ChildrenByTag("CENS"));
+        Assert.Equal(["1900 ED 5", "1900 ED 6"], census.ChildrenByTag("SOUR").Select(s => s.FirstChild("PAGE")!.Value));
+        Assert.Contains(second.Log, l => l.Contains("CENS on @I00002@: cited existing"));
+    }
+
     /// <summary>mode:"add" cannot be combined with a match selector — the two
     /// intents contradict, and the op is rejected at validation.</summary>
     [Fact]

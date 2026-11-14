@@ -35,24 +35,25 @@ static class ChangesetToolSupport
     /// Runs a changeset against the document. A <paramref name="policy"/> violation always fails the
     /// result; a mutating run is refused before anything is applied, while a dry run still reports
     /// the document's own errors beside the violations so the author sees every problem at once.
+    /// A dry run is made against the document as it stands after <paramref name="after"/>.
     /// </summary>
     public static CallToolResult Execute(
         string absoluteGedcomPath, string changesetPath, string items, bool dryRun,
         CancellationToken cancellationToken = default, ChangesetPolicy? policy = null,
-        IReadOnlyList<PointsCard>? cards = null, ReportRequest? report = null)
+        IReadOnlyList<PointsCard>? cards = null, ReportRequest? report = null, PriorChangesets? after = null)
     {
-        if (!ChangesetRequest.TryLoad(changesetPath, items, out var request, out var error))
+        if (!ChangesetRequest.TryLoad(changesetPath, items, out var loaded, out var error))
             return error!;
+        var request = loaded!;
 
-        var violations = policy?.Check(request!.Json, request.ItemNumbers.ToHashSet()) ?? [];
+        var violations = policy?.Check(request.Json, request.ItemNumbers.ToHashSet()) ?? [];
         if (violations.Count > 0 && !dryRun)
-            return Respond(new ChangesetResult(false, [], [.. violations], [], [], []), request!.ItemNumbers, report);
+            return Respond(new ChangesetResult(false, [], [.. violations], [], [], []), request.ItemNumbers, report);
 
         ApplyResult result;
         try
         {
-            result = ChangesetApplier.Run(absoluteGedcomPath, request!.Changeset, request.ItemNumbers, dryRun,
-                cancellationToken: cancellationToken);
+            result = Run(absoluteGedcomPath, request, dryRun, after ?? PriorChangesets.None, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -63,6 +64,12 @@ static class ChangesetToolSupport
         if (cards is not null) mapped = mapped with { PointsPreview = CardScorer.Preview(cards, result.Changes) };
         return Respond(mapped, request.ItemNumbers, report);
     }
+
+    // A dry run checks against the document as it will stand after the earlier changesets; an apply writes the document as it is.
+    static ApplyResult Run(string gedcomPath, ChangesetRequest request, bool dryRun, PriorChangesets after, CancellationToken cancellationToken) =>
+        dryRun
+            ? after.DryRun(gedcomPath, request, cancellationToken)
+            : ChangesetApplier.Run(gedcomPath, request.Changeset, request.ItemNumbers, dryRun: false, cancellationToken: cancellationToken);
 
     // The result is also written to the report file when one was asked for; a write that fails is noted in the log and
     // changes nothing else. A written report quiets the response to a digest of counts, unless verbose asks for both.

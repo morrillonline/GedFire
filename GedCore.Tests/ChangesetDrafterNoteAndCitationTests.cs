@@ -62,6 +62,17 @@ public class ChangesetDrafterNoteAndCitationTests
     // ---- notes ----
 
     [Fact]
+    public void ABiographyNoteWithNoCites_IsRefused_AndPassesOnceCited()
+    {
+        DraftFinding With(IReadOnlyList<DraftNoteCitation> cites) => Finding("F-1", Source("Register", "p. 2"), "Hiram, farmer.",
+            notes: [new DraftNote("@I1@", "Hiram farmed.") { Purpose = CreateOrUpdateNoteOp.BiographyPurpose, Cites = cites }]);
+
+        Assert.Equal("findings[0].notes[0] is a biography note with no cites; a biography note cites the findings that support it.",
+            Assert.Single(Draft(With([])).Errors));
+        AssertApplies(Draft(With([new DraftNoteCitation(null, 1, null)])));
+    }
+
+    [Fact]
     public void ANoteCitingTwoFindings_CarriesBothCitationsAtTheirOwnGrades()
     {
         var obituary = Finding("F-1", Source("Obituaries", "Star obituary"), "Hiram died 1873.", [Fact("BIRT", "1800", null, quay: 1)]);

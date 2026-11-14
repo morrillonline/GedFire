@@ -29,11 +29,18 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
     public static IReadOnlyList<string> CheckWithoutDocument(IReadOnlyList<DraftFinding> findings, bool complete = true) =>
         [.. DraftChecks.Check(findings, null, complete)];
 
+    /// <summary>The spouse relations between existing partners that compile onto the family they already share.</summary>
+    public IReadOnlyList<FamilySubstitution> FamilySubstitutions(IReadOnlyList<DraftFinding> findings) => SpouseFamilies.Find(findings, lookup);
+
     public DraftResult Draft(IReadOnlyList<DraftFinding> findings)
     {
         var decisions = new List<DraftDecision>();
         var errors = DraftChecks.Check(findings, lookup).ToList();
         if (errors.Count > 0) return new DraftResult(null, decisions, errors);
+
+        var substitutions = FamilySubstitutions(findings);
+        findings = SpouseFamilies.Apply(findings, substitutions);
+        decisions.AddRange(SpouseFamilies.Decisions(findings, substitutions));
 
         var sources = SourcePlan.Build(findings, lookup, decisions);
         var newPeople = findings.SelectMany(f => f.People).DistinctBy(p => p.Xref).ToDictionary(p => p.Xref);

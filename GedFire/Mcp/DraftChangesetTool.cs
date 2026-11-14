@@ -30,13 +30,18 @@ public sealed class DraftChangesetTool
         "(QUAY 1 without a policy file), naming every record the fact rests on and skipped when a note on the record already says so, and a refusal, naming the field, for a QUAY the source and information " +
         "class cannot support, a target name that differs from the person's recorded name, or prose the server's " +
         "policy bans. You supply the judgement: each fact's record, tag, date, place (or a text value such as a NAME " +
-        "change) and QUAY, and any note text. A repeatable tag (CENS, RESI, ...) is added beside the instances the " +
-        "record already holds, or updates the one with the same date. New people and families come from people " +
+        "change) and QUAY, and any note text. A repeatable tag (CENS, RESI, ...) is placed by date: a date no instance " +
+        "the record holds has is added (\"mode\":\"add\", even on a record with none), a date one instance has updates it " +
+        "by match (a bare year names a fuller date in that year), and a date several have is refused, naming them. " +
+        "A spouse relation between two people who already share a family compiles onto that family instead of a new " +
+        "one (a resolved decision says so); naming another existing family, or a couple who share several, is refused. " +
+        "New people and families come from people " +
         "(placeholder xrefs) and relations (spouse, child, parent), compiled to the dialect's relationship ops with " +
         "the finding's citation. NAME facts may correct the target or people bound by existingPeople or relations; " +
         "a fact's record alone is not a binding. Surname changes require allowSurnameChange=true. NAME corrections " +
         "preserve the previous name and move its citations to a plain-sentence note, never dropping them. Relations use " +
         "the finding's citation. A note may rewrite an existing note (match) and cite findings of its item (cites); " +
+        "a biography note must cite at least one; " +
         "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +
         "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
         "way to a finding's bound that excludes it only when uncited or graded lower; otherwise it is left open. Hard bounds " +

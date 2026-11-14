@@ -29,12 +29,19 @@ public interface IRecordHistory
     IReadOnlyList<string> NotesOn(string record);
 }
 
-/// <summary>Everything a draft needs to know about the document it will be applied to.</summary>
-public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory
+/// <summary>What the document says about families: who is a child of one, and which families a couple share.</summary>
+public interface IFamilyRecords
 {
     /// <summary>Whether the document lists the person as a child of the family; null when it cannot say (a record it does not hold, or a lookup that does not track families).</summary>
     bool? IsChildOf(string child, string family) => null;
 
+    /// <summary>The families in which both people are partners, in xref order; empty when there are none or the lookup does not track families.</summary>
+    IReadOnlyList<string> FamiliesOfCouple(string partner, string otherPartner) => [];
+}
+
+/// <summary>Everything a draft needs to know about the document it will be applied to.</summary>
+public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory, IFamilyRecords
+{
     /// <summary>Whether the document holds a record with this xref; null when the lookup cannot say.</summary>
     bool? HasRecord(string xref) => null;
 }

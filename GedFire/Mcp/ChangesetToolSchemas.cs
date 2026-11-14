@@ -112,10 +112,17 @@ static class ChangesetToolSchemas
             """);
     }
 
+    /// <summary>The input schema with the optional <c>after</c> argument check_plausibility adds.</summary>
+    public static readonly string InputSchemaWithAfterJson = SchemaComposer.Compose(InputSchemaJson, AddAfterProperty);
+
+    static void AddAfterProperty(JsonNode schema) =>
+        schema["properties"]!["after"] = JsonNode.Parse(PriorChangesets.SchemaJson);
+
     /// <summary>The input schema with the optional <c>cards</c> argument validate_changeset adds.</summary>
     public static readonly string InputSchemaWithCardsJson = SchemaComposer.Compose(InputSchemaJson, schema =>
     {
         AddReportProperties(schema);
+        AddAfterProperty(schema);
         schema["properties"]!["cardsPath"] = JsonNode.Parse("""
             {
               "type": "string",

@@ -156,10 +156,10 @@ public static class FindingSchemas
                   "record": { "type": "string", "pattern": "^@[^@]+@$" },
                   "text": { "type": "string" },
                   "match": { "type": "string", "description": "The exact text of an existing note on the record, to rewrite instead of adding a new note." },
-                  "purpose": { "type": "string", "enum": ["biography"], "description": "biography: the note is the person's cited biographical prose (service, occupation, migration, probate...), compiled to a createOrUpdateNote with purpose biography so a citation it adds earns biography credit. Biography notes are joined only with other biography notes." },
+                  "purpose": { "type": "string", "enum": ["biography"], "description": "biography: the note is the person's cited biographical prose (service, occupation, migration, probate...), compiled to a createOrUpdateNote with purpose biography so a citation it adds earns biography credit. A biography note needs at least one cite. Biography notes are joined only with other biography notes." },
                   "cites": {
                     "type": "array",
-                    "description": "Citations on the note. Each cites a finding of this draft aimed at the same target (the note's own finding when finding is omitted), graded on its own.",
+                    "description": "Citations on the note. Each cites a finding aimed at the same target (the note's own finding when finding is omitted), graded on its own. A cited finding is another finding drafted with this one; validate_finding also finds a single file's cited finding in the <id>.json beside it.",
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
@@ -172,7 +172,9 @@ public static class FindingSchemas
                     }
                   }
                 },
-                "required": ["record", "text"]
+                "required": ["record", "text"],
+                "if": { "properties": { "purpose": { "const": "biography" } }, "required": ["purpose"] },
+                "then": { "properties": { "cites": { "minItems": 1 } }, "required": ["cites"] }
               }
             }
           },
@@ -246,7 +248,7 @@ public static class FindingSchemas
         {
           "type": "object",
           "additionalProperties": false,
-          "description": "The record as match_record input: its persons, the relationships it states, and its own event.",
+          "description": "The record as match_record input: its persons, the relationships it states, and its own event. match_record answers each person with a verdict: single (a match the name and at least one of lifespan, place or kin support), weak (a lead on the name alone, or someone the tree does not hold as a bound person's relative of the stated kind), candidates, or none.",
           "properties": {},
           "required": ["persons"]
         }

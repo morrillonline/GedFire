@@ -1,0 +1,9 @@
+{
+  "draft": {
+    "id": "F-105",
+    "extract": "Larkspur, 1850: Ezra Quillfeather, 49, farmer.",
+    "source": { "name": "Fictional Census of Larkspur", "locator": "p. 3, line 12", "class": "original", "information": "secondary" },
+    "target": { "xref": "@I1@", "card": "enrich-life" },
+    "facts": [ { "record": "@I1@", "fact": "CENS", "date": "1850", "place": "Larkspur, Fictional County", "quay": 2 } ]
+  }
+}

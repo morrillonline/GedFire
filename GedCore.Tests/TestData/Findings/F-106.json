@@ -1,0 +1,13 @@
+{
+  "draft": {
+    "id": "F-106",
+    "extract": "Ezra Quillfeather, farmer, buried 2 Mar 1877 at Larkspur.",
+    "source": { "name": "Fictional County Register", "locator": "Burials, p. 12", "class": "original", "information": "primary" },
+    "target": { "xref": "@I1@", "card": "enrich-life" },
+    "notes": [ {
+      "record": "@I1@", "purpose": "biography",
+      "text": "Ezra Quillfeather farmed at Larkspur and was buried there in 1877.",
+      "cites": [ { "quay": 3 }, { "finding": "F-105", "quay": 2, "excerpt": "Ezra Quillfeather, 49, farmer" } ]
+    } ]
+  }
+}

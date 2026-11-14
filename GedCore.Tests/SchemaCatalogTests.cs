@@ -64,6 +64,15 @@ public class SchemaCatalogTests
     }
 
     [Fact]
+    public void ABiographyNoteWithNoCites_IsRefusedByTheSchema()
+    {
+        string json = FindingFixtures.Read("F-106.json")
+            .Replace("\"cites\": [ { \"quay\": 3 }, { \"finding\": \"F-105\", \"quay\": 2, \"excerpt\": \"Ezra Quillfeather, 49, farmer\" } ]", "\"cites\": []");
+
+        Assert.False(SchemaAccepts(json));
+    }
+
+    [Fact]
     public void EverySchemaIsAStandaloneVersionedDocument()
     {
         foreach (var schema in SchemaCatalog.All)
