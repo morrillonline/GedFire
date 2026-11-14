@@ -12,6 +12,28 @@ internal static class DraftChecks
     /// <param name="complete">False for a finding still open (draftGaps): a new person nothing links yet, or a finding with nothing to compile, is then not yet complete rather than wrong.</param>
     public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup, bool complete = true)
     {
+        // Each rule's refusals, in the order they are reported.
+        IEnumerable<string>[] rules =
+        [
+            FindingErrors(findings, lookup),
+            NewRecordErrors(findings, complete),
+            RemovalErrors(findings, lookup),
+            BiographyNoteErrors(findings),
+            NoteCitationErrors(findings),
+            complete ? EmptyFindingErrors(findings) : [],
+            NameErrors(findings, lookup),
+            MissingRecordErrors(findings, lookup),
+            ExcerptErrors(findings),
+            GradeErrors(findings),
+            RepeatableFacts.Errors(findings, lookup),
+            SpouseFamilies.Errors(findings, lookup),
+        ];
+        return rules.SelectMany(rule => rule);
+    }
+
+    // Per finding: the target's name, and each fact's QUAY against its ceiling.
+    static IEnumerable<string> FindingErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup)
+    {
         for (int f = 0; f < findings.Count; f++)
         {
             var finding = findings[f];
@@ -21,14 +43,16 @@ internal static class DraftChecks
                 if (QuayError(finding, finding.Facts[i].Quay, finding.Facts[i].Class, finding.Facts[i].Information, $"findings[{f}].facts[{i}].quay") is { } error)
                     yield return error;
         }
-
-        foreach (var error in NewRecordErrors(findings, complete).Concat(RemovalErrors(findings, lookup))
-                     .Concat(NoteCitationErrors(findings)).Concat(complete ? EmptyFindingErrors(findings) : [])
-                     .Concat(NameErrors(findings, lookup)).Concat(MissingRecordErrors(findings, lookup))
-                     .Concat(ExcerptErrors(findings)).Concat(GradeErrors(findings)))
-            yield return error;
     }
 
+    // A biography note is cited prose; without a citation it would publish as an uncited note.
+    static IEnumerable<string> BiographyNoteErrors(IReadOnlyList<DraftFinding> findings)
+    {
+        for (int f = 0; f < findings.Count; f++)
+            for (int n = 0; n < findings[f].Notes.Count; n++)
+                if (findings[f].Notes[n].Purpose == CreateOrUpdateNoteOp.BiographyPurpose && findings[f].Notes[n].Cites.Count == 0)
+                    yield return $"findings[{f}].notes[{n}] is a biography note with no cites; a biography note cites the findings that support it.";
+    }
     // existingPeople and NAME fact records are checked, in person terms, by NameErrors.
     static IEnumerable<string> MissingRecordErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup)
     {

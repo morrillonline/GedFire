@@ -41,6 +41,11 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
             ? fam.Children.Any(c => c.Xref == child)
             : null;
 
+    public IReadOnlyList<string> FamiliesOfCouple(string partner, string otherPartner) =>
+        model.Individuals.TryGetValue(partner, out var person)
+            ? [.. person.FamSpouse.Where(f => f.SpouseOf(person)?.Xref == otherPartner).Select(f => f.Xref).Distinct().Order(StringComparer.Ordinal)]
+            : [];
+
     IEnumerable<GedEvent> EventsOf(string record, string tag)
     {
         if (model.Families.TryGetValue(record, out var family))

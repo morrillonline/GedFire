@@ -202,19 +202,26 @@ Keep conflicting findings instead of flattening them into one conclusion.
 
 **Correlation identifies the person.** Use `find_person` for a hinted name
 lookup or `match_record` for a household, obituary, or other multi-person
-record. Inspect the candidates and exclusions. A deterministic match score is
+record. Inspect the candidates and exclusions. `match_record` returns `single`
+only when something besides the name (lifespan, place, or kin) supports the
+match; a lead on the name alone is `weak`. A deterministic match score is
 not a probability or a substitute for a proof argument.
 
 **A changeset specifies the edits.** `draft_changeset` compiles findings into
 typed operations. It reconciles compatible facts, preserves their citations,
-and leaves genuine disagreements as `open` decisions. Fix the findings and
+and leaves genuine disagreements as `open` decisions. A repeatable fact such as
+a census is placed by its date, so it still applies after another approved
+changeset adds instances of the same tag, and a spouse relation between people
+who are already partners lands on their existing family. Fix the findings and
 draft again when validation exposes a defect.
 
 Findings saved to disk follow GedFire's versioned finding-file schema
 (`gedfire schema finding-file`). It holds the draft entry, the identity argument,
 the record it was matched from, and a `meta` object that belongs to your own
 workflow. `validate_finding` checks those files before drafting, using the same
-error text `draft_changeset` gives.
+error text `draft_changeset` gives. A note may cite another finding of the
+same batch, or the `<id>.json` file beside a file checked alone. A biography
+note must cite at least one finding.
 
 NAME facts can correct the target or an existing relative bound by
 `existingPeople: ["@I10@"]` or a relation. Corrections preserve the previous
@@ -222,7 +229,9 @@ name and its citations in a note. An intentional surname change requires
 `allowSurnameChange: true` on the NAME fact.
 
 **A proposal presents the case for review.** After `validate_changeset` and
-`check_plausibility`, call `draft_package`. It writes a numbered proposal
+`check_plausibility`, call `draft_package`. Both checks accept `after`, the
+changesets approved ahead of this one, applied in memory in order, so a
+conflict between packages shows before apply. `draft_package` writes a numbered proposal
 from the finished changesets, including evidence, grades, and any identity
 arguments the author supplied.
 
@@ -260,8 +269,8 @@ different file or provider.
 | `validate_finding` | Check finding files for shape, readiness, and xref bindings without drafting. |
 | `draft_changeset` | Compile findings into cited changesets and report unresolved decisions. |
 | `draft_package` | Write a review proposal from finished changesets. |
-| `validate_changeset` | Preview selected edits, enforce policy, and optionally score gap closures. |
-| `check_plausibility` | Report chronological and biological issues the edits would introduce. |
+| `validate_changeset` | Preview selected edits, optionally after earlier changesets, enforce policy, and optionally score gap closures. |
+| `check_plausibility` | Report chronological and biological issues the edits would introduce, optionally after earlier changesets. |
 | `validate_document` | Check the whole document for GEDCOM 7 conformance. |
 | `apply_changeset` | Validate, apply, and verify selected items, then write the GEDCOM. |
 

@@ -801,13 +801,47 @@ public class ChangesetDrafterTests
     }
 
     [Fact]
-    public void ARepeatableFactNobodyHolds_IsAPlainUpsert()
+    public void ARepeatableFactNobodyHolds_IsAdded_SoItSurvivesAnotherChangesetAddingThatTag()
     {
         var result = new ChangesetDrafter(new FakeLookup()).Draft(
-            [Finding("F-1", Memorial(), "x", [Fact("CENS", "1900", "Salem", 2)])]);
+            [Finding("F-1", Memorial(), "x", [Fact("CENS", "1900", "Maine", 1)])]);
 
-        Assert.False(Ops(result)[0].TryGetProperty("mode", out _));
+        Assert.Equal("add", Ops(result)[0].GetProperty("mode").GetString());
         Assert.False(Ops(result)[0].TryGetProperty("match", out _));
+    }
+
+    [Fact]
+    public void ARepeatableFactGivenAsAYear_UpdatesTheOneHeldInstanceInThatYear_KeepingItsFullDate()
+    {
+        var lookup = new FakeLookup(facts: new() { ["@I1@|CENS"] = [Held("01 JUN 1900"), Held("1910")] });
+
+        var result = new ChangesetDrafter(lookup).Draft([Finding("F-1", Memorial(), "x", [Fact("CENS", "1900", "Maine", 1)])]);
+
+        var op = Ops(result)[0];
+        Assert.Equal("01 JUN 1900", op.GetProperty("match").GetProperty("date").GetString());
+        Assert.Equal("01 JUN 1900", op.GetProperty("value").GetProperty("date").GetString());
+        Assert.False(op.TryGetProperty("mode", out _));
+    }
+
+    [Fact]
+    public void ARepeatableFactWhoseDateSeveralHeldInstancesHave_IsRefusedNamingThem()
+    {
+        var lookup = new FakeLookup(facts: new() { ["@I1@|CENS"] = [Held("1900", "Salem"), Held("1900", "Lynn")] });
+
+        var result = new ChangesetDrafter(lookup).Draft([Finding("F-1", Memorial(), "x", [Fact("CENS", "1900", "Maine", 1)])]);
+
+        Assert.False(result.Success);
+        Assert.Contains("findings[0].facts[0] CENS on @I1@ dated 1900 matches 2 existing CENS facts (1900 at Salem; 1900 at Lynn)", Assert.Single(result.Errors));
+    }
+
+    [Fact]
+    public void ARepeatableYearMatchingTwoHeldDatesInThatYear_IsRefused()
+    {
+        var lookup = new FakeLookup(facts: new() { ["@I1@|CENS"] = [Held("01 JUN 1900"), Held("1900")] });
+
+        var result = new ChangesetDrafter(lookup).Draft([Finding("F-1", Memorial(), "x", [Fact("CENS", "1900", null, 1)])]);
+
+        Assert.Contains(result.Errors, e => e.Contains("matches 2 existing CENS facts (01 JUN 1900; 1900)"));
     }
 
     [Fact]

@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using GedCore.Drafting;
 using GedCore.Policy;
 using GedFire.Gen;
-using GedFire.Match;
 using GedFire.Schemas;
 
 namespace GedFire.Mcp;
@@ -32,39 +31,68 @@ public sealed record FindingValidation(
 /// <summary>Validates findings against <paramref name="model"/> when given, or without a document when null.</summary>
 public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, bool requireDraft)
 {
+    readonly FindingBinder _binder = new(model);
+
+    /// <inheritdoc cref="Validate(FindingFile, IReadOnlyList{DraftFinding})"/>
+    public FindingValidation Validate(FindingFile file) => Validate(file, []);
+
     /// <summary>
     /// A finding file, read by <see cref="FindingFileReader"/>. Its draft is checked even while draftGaps keep it from drafting;
     /// what only a complete finding needs (every new person linked, something to compile) then shows as not ready, not as an error.
     /// </summary>
-    public FindingValidation Validate(FindingFile file)
+    /// <param name="others">The findings a note of this one may cite: the rest of the batch, and the files beside a single file.</param>
+    public FindingValidation Validate(FindingFile file, IReadOnlyList<DraftFinding> others)
     {
         var errors = file.Errors.ToList();
         if (requireDraft && file.NotReadyReason is { } reason) errors.Insert(0, reason);
         bool compiles = errors.Count == 0 && file.NotReadyReason is null;
         if (file.Draft is { } draft)
-            errors.AddRange(FindingFileLoader.NameFiles(RuleErrors(DraftNoteJoiner.Join([draft]), compiles, complete: file.Gaps.Count == 0), [file.Name]));
-        var recordBindings = RecordBindings(file.Record);
+        {
+            var cited = new CitedFindings(draft, others);
+            var ruleErrors = RuleErrors(DraftNoteJoiner.Join(cited.Findings), compiles, complete: file.Gaps.Count == 0);
+            errors.AddRange(cited.OwnErrors(ruleErrors, $"{file.Name} (findings[0])"));
+        }
+        var recordBindings = _binder.Record(file.Record);
         errors.AddRange(recordBindings.Where(b => b.Exists == false).Select(b => $"{file.Name}: {b.At} {b.Ref} is not a person in the document."));
 
         return new FindingValidation(
             file.Name, file.Id, errors.Count == 0, errors, compiles && errors.Count == 0, file.Gaps,
-            [.. Bindings(file.Draft, "draft."), .. recordBindings], SchemaCatalog.FindingFile.Version);
+            [.. _binder.Draft(file.Draft, "draft."), .. recordBindings], SchemaCatalog.FindingFile.Version);
+    }
+
+    /// <summary>Every entry of a findings array, as draft_changeset's findings or inputPath take it; a note may cite another entry.</summary>
+    public IReadOnlyList<FindingValidation> ValidateEntries(JsonElement entries)
+    {
+        var list = entries.EnumerateArray().ToList();
+        var drafts = list.Select(ReadEntry).Select(r => r.Finding).OfType<DraftFinding>().ToList();
+        return [.. list.Select((entry, index) => Validate(entry, index, drafts))];
     }
 
     /// <summary>The <paramref name="index"/>-th entry of a findings array, as draft_changeset's findings or inputPath take it.</summary>
-    public FindingValidation Validate(JsonElement entry, int index)
+    public FindingValidation Validate(JsonElement entry, int index) => Validate(entry, index, []);
+
+    FindingValidation Validate(JsonElement entry, int index, IReadOnlyList<DraftFinding> others)
     {
         string path = $"findings[{index}]";
-        using var single = JsonDocument.Parse("[" + entry.GetRawText() + "]");
-        var (read, readErrors) = DraftFindingReader.Read(single.RootElement);
+        var (draft, readErrors) = ReadEntry(entry);
         var errors = readErrors.Select(e => e.Replace("findings[0]", path)).ToList();
-        var draft = errors.Count == 0 ? read[0] : null;
-        if (draft is not null) errors.AddRange(RuleErrors([draft], compiles: true, complete: true).Select(e => e.Replace("findings[0]", path)));
+        if (draft is not null)
+        {
+            var cited = new CitedFindings(draft, others);
+            errors.AddRange(cited.OwnErrors(RuleErrors(cited.Findings, compiles: true, complete: true), path));
+        }
 
         string? id = entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty("id", out var given)
                      && given.ValueKind == JsonValueKind.String ? given.GetString() : null;
         return new FindingValidation(
-            null, id, errors.Count == 0, errors, errors.Count == 0, [], Bindings(draft, path + "."), SchemaCatalog.Finding.Version);
+            null, id, errors.Count == 0, errors, errors.Count == 0, [], _binder.Draft(draft, path + "."), SchemaCatalog.Finding.Version);
+    }
+
+    static (DraftFinding? Finding, IReadOnlyList<string> Errors) ReadEntry(JsonElement entry)
+    {
+        using var single = JsonDocument.Parse("[" + entry.GetRawText() + "]");
+        var (read, errors) = DraftFindingReader.Read(single.RootElement);
+        return (errors.Count == 0 ? read[0] : null, errors);
     }
 
     // Without a document, the rules the finding alone decides; with one, the drafter's own refusals, compiling when the finding could be drafted.
@@ -74,41 +102,4 @@ public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, b
         var drafter = new ChangesetDrafter(new ModelDraftLookup(model), policy);
         return compiles ? drafter.Draft(findings).Errors : drafter.Check(findings, complete);
     }
-
-    IReadOnlyList<FindingBinding> Bindings(DraftFinding? draft, string prefix) =>
-        draft is null ? [] : [.. DraftReferences.Of(draft).Select(r => Bind(r, prefix + r.Path))];
-
-    FindingBinding Bind(DraftReference reference, string at)
-    {
-        var binding = new FindingBinding(reference.Xref, at);
-        if (reference.IsPlaceholder) return binding with { Declared = reference.Declared };
-        if (model is null) return binding;
-        if (model.Individuals.TryGetValue(reference.Xref, out var person)) return BindPerson(binding, person);
-        if (model.Sources.TryGetValue(reference.Xref, out var source))
-            return binding with { Exists = true, Name = source.Title };
-        return binding with { Exists = model.Families.ContainsKey(reference.Xref) };
-    }
-
-    // A record person can be bound only to a person.
-    IReadOnlyList<FindingBinding> RecordBindings(JsonElement? record)
-    {
-        if (record is not { } slot || !slot.TryGetProperty("persons", out var persons) || persons.ValueKind != JsonValueKind.Array) return [];
-        var bindings = new List<FindingBinding>();
-        int index = 0;
-        foreach (var person in persons.EnumerateArray())
-        {
-            if (person.TryGetProperty("xref", out var xref) && xref.GetString() is { } given)
-            {
-                var binding = new FindingBinding(given.Trim(), $"record.persons[{index}].xref");
-                bindings.Add(model is null ? binding
-                    : model.Individuals.TryGetValue(binding.Ref, out var individual) ? BindPerson(binding, individual)
-                    : binding with { Exists = false });
-            }
-            index++;
-        }
-        return bindings;
-    }
-
-    static FindingBinding BindPerson(FindingBinding binding, GedIndividual person) =>
-        binding with { Exists = true, Name = PersonDisplay.FullName(person), Lifespan = PersonDisplay.Lifespan(person) };
 }

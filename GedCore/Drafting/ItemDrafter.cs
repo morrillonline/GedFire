@@ -260,24 +260,31 @@ internal sealed class ItemDrafter(
     {
         foreach (var byTag in asserted.GroupBy(a => (a.Fact.Record, a.Fact.Tag)))
         {
-            bool repeatable = !CreateOrUpdateVitalOp.IsSingleValued(byTag.Key.Tag);
             var existing = history.FactsOn(byTag.Key.Record, byTag.Key.Tag);
-            if (!repeatable)
+            if (RepeatableFacts.IsRepeatable(byTag.Key.Tag))
             {
-                if (SingleValuedOp(byTag.Key.Record, byTag.Key.Tag, [.. byTag], existing, citations, decisions) is { } single) yield return single;
-                continue;
+                foreach (var op in RepeatableOps([.. byTag], existing, citations, decisions)) yield return op;
             }
+            else if (SingleValuedOp(byTag.Key.Record, byTag.Key.Tag, [.. byTag], existing, citations, decisions) is { } single)
+                yield return single;
+        }
+    }
 
-            var values = byTag.GroupBy(a => FactKeyOf(a.Fact)).ToList();
-            if (byTag.Any(a => a.Fact.ReplaceHeld is not null))
-                decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
-                    $"replaceHeld applies to single-valued facts; {byTag.Key.Tag} on {byTag.Key.Record} may occur more than once, so it was ignored",
-                    [.. byTag.Select(a => a.Finding.Id).Distinct()]));
-            foreach (var value in values)
-            {
-                var placement = Place(repeatable, values.Count, existing, value.Key);
-                yield return VitalOp(value.Key, [.. value], placement, citations, decisions);
-            }
+    // One op per distinct value, each placed by its date among the instances the record holds.
+    IEnumerable<JsonObject> RepeatableOps(
+        List<Asserted> facts, IReadOnlyList<ExistingFact> existing, Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
+    {
+        if (facts.Any(a => a.Fact.ReplaceHeld is not null))
+            decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
+                $"replaceHeld applies to single-valued facts; {facts[0].Fact.Tag} on {facts[0].Fact.Record} may occur more than once, so it was ignored",
+                [.. facts.Select(a => a.Finding.Id).Distinct()]));
+        foreach (var value in facts.GroupBy(a => FactKeyOf(a.Fact)))
+        {
+            var held = RepeatableFacts.InstanceOnDate(existing, value.Key.Date, value.Key.Substructures.Length > 0);
+            var placement = held is null ? new Placement(null, true, null) : new Placement(new JsonObject { ["date"] = held.Date }, false, held);
+            // A year that names a fuller held date leaves that date as it is.
+            var key = held?.Date is { } heldDate && !Specificity.SameDate(heldDate, value.Key.Date!) ? value.Key with { Date = heldDate } : value.Key;
+            yield return VitalOp(key, [.. value], placement, citations, decisions);
         }
     }
 
@@ -481,16 +488,6 @@ internal sealed class ItemDrafter(
         new(fact.Record, fact.Tag, fact.Date?.ToUpperInvariant(), fact.Place, fact.Value,
             string.Join('|', fact.Substructures.Select(s => $"{s.Tag}={s.Value}")),
             fact.Tag == "NAME" ? "moveToNote" : fact.ReplacedCitations);
-
-    // A repeatable tag never overwrites by accident: a date the record already holds is addressed by match, anything else is added.
-    // A fact with substructures is always added: the existing instance's substructures are not known, and an identical one is a no-op.
-    static Placement Place(bool repeatable, int valueCount, IReadOnlyList<ExistingFact> existing, FactKey key)
-    {
-        if (!repeatable) return new Placement(null, false, existing.FirstOrDefault());
-        var sameDate = key.Date is null || key.Substructures.Length > 0 ? null : existing.FirstOrDefault(e => string.Equals(e.Date, key.Date, StringComparison.OrdinalIgnoreCase));
-        if (sameDate is not null) return new Placement(new JsonObject { ["date"] = key.Date }, false, sameDate);
-        return new Placement(null, valueCount > 1 || existing.Count > 0, null);
-    }
 
     JsonObject VitalOp(FactKey key, List<Asserted> facts, Placement placement, Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
     {

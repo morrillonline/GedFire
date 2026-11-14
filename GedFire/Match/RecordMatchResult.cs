@@ -15,7 +15,7 @@ public sealed record RecordPersonMatch
     public string? Role { get; init; }
     public required string Name { get; init; }
 
-    /// <summary>"single", "candidates", or "none" — the same confidence floors as find_person.</summary>
+    /// <summary>"single", "weak", "candidates", or "none": find_person's confidence floors, with a single needing support beyond the name.</summary>
     public required string Verdict { get; init; }
 
     /// <summary>True when the record bound this person to a tree person by xref, which then is the confident match.</summary>
@@ -85,7 +85,7 @@ public sealed record RecordSurveyEntry
     /// <summary>"leading", "candidate", or "excluded".</summary>
     public required string Outcome { get; init; }
 
-    /// <summary>Why this person is not the leading candidate; null only for the leader.</summary>
+    /// <summary>Why this person is not the match; null for the leader unless it is not a known person's relative of the stated kind.</summary>
     public string? Reason { get; init; }
 }
 

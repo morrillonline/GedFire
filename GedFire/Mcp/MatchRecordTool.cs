@@ -29,8 +29,12 @@ public sealed class MatchRecordTool
         "composite score and name/lifespan/kinOverlap/place subscores, a closed sameNameSurvey naming every " +
         "same-name person considered with an exclusion reason for each non-leader (died before the event, " +
         "wrong spouse, wrong parents, impossible age, or simply outscored — nobody is silently dropped), and " +
-        "a verdict of single (a lone viable candidate, or a composite score of at least 90 with a lead of at least 10), " +
-        "candidates, or none. A record " +
+        "a verdict of single (a lone viable candidate, or a composite score of at least 90 with a lead of at least 10, " +
+        "supported by lifespan, place or kin overlap and not ruled out as a bound person's relative), weak (that lead " +
+        "rests on the name alone, or on someone the tree does not hold as the bound person's relative of the stated kind), " +
+        "candidates, or none (no candidate's name reaches the name floor of 70; a blank or Unknown given name scores the " +
+        "surname alone, capped at 60). A candidate who is not a bound or anchored person's tree relative of the kind the " +
+        "record states carries that reason in the survey, e.g. not the father of @I1@ (name) in the tree. A record " +
         "person matching no tree person comes back with potentialNewPerson true and any near-miss " +
         "possibleDuplicates, never force-matched to the nearest name. Deterministic: the same input always " +
         "returns the same result. maxCandidates (default 5) caps candidates per person and candidatesOmitted counts " +
@@ -86,7 +90,7 @@ public sealed class MatchRecordTool
                   "index": { "type": "integer", "description": "Index into the request's persons." },
                   "role": { "type": ["string", "null"] },
                   "name": { "type": "string" },
-                  "verdict": { "type": "string", "enum": ["single", "candidates", "none"], "description": "single means a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10, or a person the record binds by xref, or a bound person's only matching tree relative of the stated kind." },
+                  "verdict": { "type": "string", "enum": ["single", "weak", "candidates", "none"], "description": "single means a lone viable candidate, or a composite score of at least 90 leading the runner-up by at least 10, that a lifespan, place or kinOverlap subscore above 0 supports and that is not ruled out as a bound or anchored person's relative; or a person the record binds by xref; or a bound person's only matching tree relative of the stated kind. weak is such a lead without that support: confidentMatchXref is null and the candidates are listed. none means no viable candidate, or none whose name subscore reaches 70." },
                   "bound": { "type": "boolean", "description": "True when the record bound this person by xref; confidentMatchXref is then that xref." },
                   "anchoredBy": { "type": ["string", "null"], "description": "The xref of the bound record person whose only matching tree relative of the stated kind (given name agreeing, surname not compared) this person was resolved to; null otherwise." },
                   "confidentMatchXref": { "type": ["string", "null"] },
@@ -144,7 +148,7 @@ public sealed class MatchRecordTool
                         "born": { "type": ["string", "null"] },
                         "died": { "type": ["string", "null"] },
                         "outcome": { "type": "string", "enum": ["leading", "candidate", "excluded"] },
-                        "reason": { "type": ["string", "null"], "description": "Null only for the leading candidate." }
+                        "reason": { "type": ["string", "null"], "description": "Why this person is not the match. Null for the leading candidate unless the tree does not hold it as a bound or anchored person's relative of the stated kind." }
                       },
                       "required": ["xref", "name", "reason"]
                     }

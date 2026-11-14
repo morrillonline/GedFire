@@ -90,7 +90,7 @@ public static class ChangesetOpsCatalog
                 new("fact", "string", true, "The GEDCOM tag to assert, e.g. BIRT, DEAT, MARR, CENS, NAME. draft_changeset writes only these: " + string.Join(", ", CreateOrUpdateVitalOp.Facts) + "."),
                 new("value", "string | object", true, EventValueNote),
                 new("match", "string | object", false, FactMatchNote),
-                new("mode", "string", false, "\"upsert\" (default) or \"add\" (always creates a new instance; forbids \"match\")."),
+                new("mode", "string", false, "\"upsert\" (default) or \"add\" (creates a new instance unless one with the same value, date and place exists, which gains the citations instead, logged \"cited existing\"; forbids \"match\")."),
                 new("substructures", "array", false, "Extra GEDCOM substructures: [{\"tag\", \"value\"}]."),
                 new("citation / citations", "object | array", false, CitationNote),
                 new("replacedCitations", "string", false, "\"keep\" (default), \"drop\", or \"moveToNote\" — disposition of citations already on a fact whose value this op replaces; the log names each one as kept, dropped, or moved to note."),

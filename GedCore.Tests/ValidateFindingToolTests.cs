@@ -102,6 +102,43 @@ public class ValidateFindingToolTests : IDisposable
     }
 
     [Fact]
+    public async Task ABatchWhoseNoteCitesAnotherFileOfIt_IsValid_AsDraftChangesetCompilesIt()
+    {
+        var session = _sessions.Open(Ged);
+        string[] paths = [WriteFixture("F-105.json"), WriteFixture("F-106.json")];
+
+        var validated = Structured(await new ValidateFindingTool(session, new ToolGate()).HandleAsync(Paths(true, paths), CancellationToken.None));
+        var drafted = Structured(await new DraftChangesetTool(session, new ToolGate()).HandleAsync(
+            new DraftChangesetArguments(default, default, Arg(JsonSerializer.Serialize(paths)), default, default), CancellationToken.None));
+
+        Assert.True(drafted.GetProperty("success").GetBoolean());
+        Assert.True(validated.GetProperty("success").GetBoolean(), validated.ToString());
+        Assert.All(validated.GetProperty("findings").EnumerateArray(), f => Assert.True(f.GetProperty("readyToDraft").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task ASingleFileWhoseNoteCitesTheFileBesideIt_IsValid()
+    {
+        WriteFixture("F-105.json");
+
+        var result = Structured(await new ValidateFindingTool(null, new ToolGate()).HandleAsync(Paths(true, WriteFixture("F-106.json")), CancellationToken.None));
+
+        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+    }
+
+    [Fact]
+    public async Task FindingsEntriesMayCiteEachOther()
+    {
+        string entries = "[" + string.Join(",", new[] { "F-105.json", "F-106.json" }.Select(name =>
+            JsonDocument.Parse(FindingFixtures.Read(name)).RootElement.GetProperty("draft").GetRawText())) + "]";
+
+        var result = Structured(await new ValidateFindingTool(_sessions.Open(Ged), new ToolGate()).HandleAsync(
+            new ValidateFindingArguments(default, Arg(entries), default, default), CancellationToken.None));
+
+        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+    }
+
+    [Fact]
     public async Task FindingPathsWithFindings_IsRefused()
     {
         var result = await new ValidateFindingTool(null, new ToolGate()).HandleAsync(

@@ -30,9 +30,11 @@ public sealed class CheckPlausibilityTool
         "file holds -- a warning only, never a block). Structured " +
         "{code, severity, message, xref} records, for a caller that wants to route on severity directly " +
         "rather than parsing validate_changeset's log lines. Writes nothing. Always requires a changeset -- " +
-        "there is no whole-document plausibility sweep.";
+        "there is no whole-document plausibility sweep. Pass after, a list of {changesetPath, items}, to check this " +
+        "changeset against the document as it will stand once those earlier changesets are applied, in order, in memory; " +
+        "nothing is written, and an earlier changeset that does not apply fails the run with its own errors.";
 
-    public const string InputSchemaJson = ChangesetToolSchemas.InputSchemaJson;
+    public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithAfterJson;
 
     public const string OutputSchemaJson = """
         {
@@ -89,8 +91,8 @@ public sealed class CheckPlausibilityTool
             .CreateTool(InvokeAsync);
 
     // The delegate McpServerTool.Create binds arguments to and invokes.
-    Task<CallToolResult> InvokeAsync(string changesetPath, string items, CancellationToken cancellationToken = default)
-        => HandleAsync(changesetPath, items, cancellationToken);
+    Task<CallToolResult> InvokeAsync(string changesetPath, string items, JsonElement? after = null, CancellationToken cancellationToken = default)
+        => HandleAsync(changesetPath, items, after ?? default, cancellationToken);
 
     /// <summary>
     /// The tool's actual behavior, reachable directly without any MCP
@@ -99,21 +101,26 @@ public sealed class CheckPlausibilityTool
     /// same last-chance-handler pattern as the other document tools.
     /// </summary>
     public Task<CallToolResult> HandleAsync(string changesetPath, string items, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, 
-                ct => Task.FromResult(Execute(_absoluteGedcomPath, changesetPath, items, ct)),
+        HandleAsync(changesetPath, items, default, cancellationToken);
+
+    /// <param name="after">Changesets, as {changesetPath, items} entries, applied in memory first; default for none.</param>
+    public Task<CallToolResult> HandleAsync(string changesetPath, string items, JsonElement after, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate,
+                ct => Task.FromResult(Execute(_absoluteGedcomPath, changesetPath, items, after, ct)),
                 cancellationToken);
 
     static CallToolResult Execute(
-        string absoluteGedcomPath, string changesetPath, string items, CancellationToken cancellationToken)
+        string absoluteGedcomPath, string changesetPath, string items, JsonElement after, CancellationToken cancellationToken)
     {
         if (!ChangesetRequest.TryLoad(changesetPath, items, out var request, out var error))
             return error!;
+        if (!PriorChangesets.TryRead(after, out var prior, out string? afterError))
+            return CallToolResults.Error(afterError!);
 
         ApplyResult result;
         try
         {
-            result = ChangesetApplier.Run(absoluteGedcomPath, request!.Changeset, request.ItemNumbers, dryRun: true,
-                cancellationToken: cancellationToken);
+            result = prior.DryRun(absoluteGedcomPath, request!, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

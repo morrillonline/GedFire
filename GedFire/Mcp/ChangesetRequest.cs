@@ -13,18 +13,25 @@ sealed record ChangesetRequest(string Json, Changeset Changeset, int[] ItemNumbe
 {
     public static bool TryLoad(string changesetPath, string items, out ChangesetRequest? request, out CallToolResult? error)
     {
+        bool loaded = TryRead(changesetPath, items, out request, out string? message);
+        error = loaded ? null : CallToolResults.Error(message!);
+        return loaded;
+    }
+
+    public static bool TryRead(string changesetPath, string items, out ChangesetRequest? request, out string? error)
+    {
         request = null;
         string trimmedPath = (changesetPath ?? "").Trim();
         if (trimmedPath.Length == 0)
         {
-            error = CallToolResults.Error("changesetPath must not be blank.");
+            error = "changesetPath must not be blank.";
             return false;
         }
 
         string resolvedPath = Path.GetFullPath(trimmedPath);
         if (!File.Exists(resolvedPath))
         {
-            error = CallToolResults.Error($"Changeset file not found: {changesetPath}");
+            error = $"Changeset file not found: {changesetPath}";
             return false;
         }
 
@@ -32,7 +39,7 @@ sealed record ChangesetRequest(string Json, Changeset Changeset, int[] ItemNumbe
         var changeset = Changeset.Parse(json);
         if (!ItemSelector.TryParse(items ?? "", changeset, out int[] itemNumbers, out string? itemsError))
         {
-            error = CallToolResults.Error(itemsError!);
+            error = itemsError!;
             return false;
         }
 

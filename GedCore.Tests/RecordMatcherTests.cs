@@ -227,4 +227,108 @@ public class RecordMatcherTests
 
         Assert.Equal(first, second);
     }
+
+    // ---- a name alone never makes a single ----
+
+    [Fact]
+    public void ALoneSurvivorSupportedByTheNameAlone_IsWeak()
+    {
+        var person = Matcher().Match(Index(), new RecordDescription { Persons = [Person("Samuel Ashworth")] }).Persons.Single();
+
+        Assert.Equal("weak", person.Verdict);
+        Assert.Null(person.ConfidentMatchXref);
+        Assert.False(person.PotentialNewPerson);
+        Assert.Equal("@I5@", Assert.Single(person.Candidates).Xref);
+    }
+
+    // A death record names Hetty's father, Bill Dunmore; each case builds the tree it needs around her.
+    static string Hetty(string? childOf = null) => $"""
+        0 @I30@ INDI
+        1 NAME Hetty /Dunmore/
+        1 SEX F
+        1 BIRT
+        2 DATE 1880
+        {(childOf is null ? "" : $"1 FAMC {childOf}")}
+
+        """;
+
+    // A blank given name once let the surname alone carry this man to single.
+    const string BlankNamesake = """
+        0 @I40@ INDI
+        1 NAME ____ /Dunmoreton/
+        1 SEX M
+
+        """;
+
+    const string FatherInTree = """
+        0 @I31@ INDI
+        1 NAME William /Dunmore/
+        1 SEX M
+        1 FAMS @F31@
+        0 @F31@ FAM
+        1 HUSB @I31@
+        1 CHIL @I30@
+
+        """;
+
+    // A Bill Dunmore of the right age who is not Hetty's father in the tree.
+    const string NamesakeInTree = """
+        0 @I41@ INDI
+        1 NAME Bill /Dunmore/
+        1 SEX M
+        1 BIRT
+        2 DATE 1850
+
+        """;
+
+    static RecordPersonMatch Father(string ged, bool bindDaughter = true, int? fatherBorn = null) =>
+        Matcher().Match(new MatchIndex(MatchTestModels.Build(ged)), new RecordDescription
+        {
+            Persons =
+            [
+                new RecordPersonDescription { Name = "Hetty Dunmore", Role = "deceased", IsMale = false, Xref = bindDaughter ? "@I30@" : null },
+                Person("Bill Dunmore", role: "father", isMale: true, birthYear: fatherBorn),
+            ],
+            Relationships = [new RecordRelationship(RecordRelationshipKind.ChildOf, 0, 1)],
+        }).Persons[1];
+
+    [Fact]
+    public void AFatherAbsentFromTheTree_IsNotBoundToASurnameOnlyNamesake()
+    {
+        var father = Father(Hetty() + BlankNamesake);
+
+        Assert.NotEqual("single", father.Verdict);
+        Assert.Null(father.ConfidentMatchXref);
+        Assert.Equal("not the father of @I30@ (Hetty Dunmore) in the tree", father.SameNameSurvey.Single(e => e.Xref == "@I40@").Reason);
+    }
+
+    [Fact]
+    public void AFatherInTheTree_IsStillSingleThroughTheBoundDaughter()
+    {
+        var father = Father(Hetty(childOf: "@F31@") + BlankNamesake + FatherInTree);
+
+        Assert.Equal("single", father.Verdict);
+        Assert.Equal("@I31@", father.ConfidentMatchXref);
+        Assert.Equal("@I30@", father.AnchoredBy);
+    }
+
+    [Fact]
+    public void ACandidateMatchingOnlyTheSurname_IsNeverSingle()
+    {
+        var father = Father(Hetty() + BlankNamesake, bindDaughter: false);
+
+        Assert.Equal("none", father.Verdict);
+        Assert.True(father.PotentialNewPerson);
+        Assert.True(Assert.Single(father.Candidates).Subscores.Name < RecordCandidateScorer.NameFloor);
+    }
+
+    [Fact]
+    public void ACandidateWhoIsNotTheBoundPersonsRelative_IsNeverSingle()
+    {
+        var father = Father(Hetty() + NamesakeInTree, fatherBorn: 1850);
+
+        Assert.Equal("weak", father.Verdict);
+        Assert.Equal(100.0, Assert.Single(father.Candidates).Subscores.Lifespan);
+        Assert.Equal("not the father of @I30@ (Hetty Dunmore) in the tree", father.SameNameSurvey[0].Reason);
+    }
 }
