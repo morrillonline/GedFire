@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using GedCore.Drafting;
 
 namespace GedCore.Policy;
 
@@ -47,11 +48,21 @@ public sealed class ChangesetPolicy
     }
 
     /// <summary>Every violation of the policy in the selected items of a changeset's JSON (all items when none are given); empty when it complies.</summary>
-    public IReadOnlyList<string> Check(string changesetJson, IReadOnlySet<int>? selectedItems = null)
+    /// <param name="document">What the document already holds, so a verification note or a stronger citation already there counts; nothing when omitted.</param>
+    public IReadOnlyList<string> Check(
+        string changesetJson, IReadOnlySet<int>? selectedItems = null, IRecordHistory? document = null)
     {
-        using var document = JsonDocument.Parse(changesetJson);
-        var items = PolicyItem.Read(document.RootElement, selectedItems);
-        return [.. _rules.SelectMany(rule => rule.Check(items)).Select(v => $"policy: {v}")];
+        using var json = JsonDocument.Parse(changesetJson);
+        var items = PolicyItem.Read(json.RootElement, selectedItems);
+        document ??= EmptyHistory.Instance;
+        return [.. _rules.SelectMany(rule => rule.Check(items, document)).Select(v => $"policy: {v}")];
+    }
+
+    sealed class EmptyHistory : IRecordHistory
+    {
+        public static readonly EmptyHistory Instance = new();
+        public IReadOnlyList<ExistingFact> FactsOn(string record, string tag) => [];
+        public IReadOnlyList<string> NotesOn(string record) => [];
     }
 
     List<IPolicyRule> BuildRules()

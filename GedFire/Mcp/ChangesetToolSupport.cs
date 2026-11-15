@@ -1,3 +1,4 @@
+using GedCore;
 using GedCore.Apply;
 using GedCore.Points;
 using GedCore.Policy;
@@ -52,14 +53,16 @@ static class ChangesetToolSupport
             return CallToolResults.Error(itemsError!);
         var request = loaded!;
 
-        var violations = policy?.Check(request.Json, request.ItemNumbers.ToHashSet()) ?? [];
+        after ??= PriorChangesets.None;
+        var violations = policy?.Check(request.Json, request.ItemNumbers.ToHashSet(),
+            PolicyDocument(() => (dryRun ? after : PriorChangesets.None).DocumentAfter(absoluteGedcomPath, cancellationToken))) ?? [];
         if (violations.Count > 0 && !dryRun)
             return Respond(new ChangesetResult(false, [], [.. violations], [], [], []) { Warnings = [.. request.Warnings] }, request.ItemNumbers, report);
 
         ApplyResult result;
         try
         {
-            result = Run(absoluteGedcomPath, request, dryRun, after ?? PriorChangesets.None, cancellationToken);
+            result = Run(absoluteGedcomPath, request, dryRun, after, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -70,6 +73,14 @@ static class ChangesetToolSupport
         if (cards is not null) mapped = mapped with { PointsPreview = CardScorer.Preview(cards, result.Changes) };
         return Respond(mapped, request.ItemNumbers, report);
     }
+
+    // The document as the policy reads it, read only when a rule asks: most changesets carry their own verification notes.
+    // A document that cannot be read holds nothing here; the run that follows reports why.
+    internal static DocumentHistory PolicyDocument(Func<GedDocument?> read) => new(() =>
+    {
+        try { return read(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
+    });
 
     // A dry run checks against the document as it will stand after the earlier changesets; an apply writes the document as it is.
     static ApplyResult Run(string gedcomPath, ChangesetRequest request, bool dryRun, PriorChangesets after, CancellationToken cancellationToken) =>

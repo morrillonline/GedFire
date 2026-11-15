@@ -137,6 +137,81 @@ public class DraftChangesetToolTests : IDisposable
         Assert.Equal("keep me", File.ReadAllText(path));
     }
 
+    const string SoleSourceNote =
+        "Needs independent verification: the birth of Zelda May Quint rests on Fictional State Death Index (secondary information) alone and has not yet been confirmed by a second source.";
+
+    static string SoleSourceGed(string note) => $"""
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        1 NAME Zelda May /Quint/
+        1 SEX F
+        1 BIRT
+        2 DATE 29 JAN 1899
+        2 PLAC Nevada
+        2 SOUR @S1@
+        3 PAGE Entry 12
+        3 QUAY 1
+        1 NOTE {note}
+        0 @S1@ SOUR
+        1 TITL Fictional State Death Index
+        0 TRLR
+        """;
+
+    static ChangesetPolicy VerificationPolicy() => ChangesetPolicy.Load(new MemoryStream(Encoding.UTF8.GetBytes(
+        """{ "verificationNote": { "maxQuay": 1, "notePrefix": "needs independent verification:" } }""")));
+
+    [Fact]
+    public async Task ABirthWithASoleSourceVerificationNote_DraftsValidatesAndAppliesWithTheNoteNamingBothSources()
+    {
+        const string census = """
+            [ { "id": "F-1", "extract": "Zelda M Quint, daughter, born Jan 1899, Nevada",
+                "source": { "name": "Fictional 1900 Census", "locator": "Sheet 3, line 7", "class": "derivative", "information": "secondary" },
+                "target": { "xref": "@I1@" },
+                "facts": [ { "record": "@I1@", "fact": "BIRT", "date": "JAN 1899", "place": "Nevada", "quay": 1 } ] } ]
+            """;
+        string path = Path.Combine(_dir, "sole-source.ged");
+        File.WriteAllText(path, SoleSourceGed(SoleSourceNote));
+
+        var draft = Structured(await new DraftChangesetTool(DocumentSession.Open(path), new ToolGate(), VerificationPolicy())
+            .HandleAsync(Arg(census), default, default, CancellationToken.None));
+        Assert.True(draft.GetProperty("success").GetBoolean(), draft.ToString());
+        string changesetPath = Path.Combine(_dir, "sole-source.json");
+        File.WriteAllText(changesetPath, draft.GetProperty("changeset").GetRawText());
+
+        var validated = Structured(await new ValidateChangesetTool(path, new ToolGate(), VerificationPolicy())
+            .HandleAsync(changesetPath, "all", CancellationToken.None));
+        Assert.True(validated.GetProperty("success").GetBoolean(), validated.ToString());
+        var applied = Structured(await new ApplyChangesetTool(path, new ToolGate(), readOnly: false, VerificationPolicy())
+            .HandleAsync(changesetPath, "all", CancellationToken.None));
+        Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+        Assert.Contains(
+            "1 NOTE Needs independent verification: the birth of Zelda May Quint rests on Fictional 1900 Census and Fictional State Death Index (secondary information) and has not yet been confirmed by a stronger source.",
+            File.ReadAllText(path));
+    }
+
+    [Theory]
+    [InlineData(SoleSourceNote, true)]
+    [InlineData("Needs independent verification: the death of Zelda May Quint rests on one index.", false)]
+    public async Task ValidateChangeset_CountsAVerificationNoteTheDocumentHolds_OnlyWhenItNamesTheFact(string note, bool passes)
+    {
+        string path = Path.Combine(_dir, "held-note.ged");
+        File.WriteAllText(path, SoleSourceGed(note));
+        string changesetPath = Path.Combine(_dir, "cite-again.json");
+        File.WriteAllText(changesetPath, """
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateCitation", "record": "@I1@", "fact": "BIRT",
+                "citations": [ { "source": "@S1@", "page": "Entry 13", "quay": 1 } ] } ] } ] }
+            """);
+
+        var validated = Structured(await new ValidateChangesetTool(path, new ToolGate(), VerificationPolicy())
+            .HandleAsync(changesetPath, "all", CancellationToken.None));
+
+        Assert.Equal(passes, validated.GetProperty("success").GetBoolean());
+        Assert.Equal(passes, !validated.GetProperty("errors").EnumerateArray().Any(e => e.GetString()!.StartsWith("policy:")));
+    }
+
     const string MarriedOnPersonGed = """
         0 HEAD
         1 GEDC

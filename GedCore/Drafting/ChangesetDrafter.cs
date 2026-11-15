@@ -64,7 +64,7 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         changeset["findings"] = evidence;
 
         errors.AddRange(QuayDisagreements(items));
-        if (policy is not null) errors.AddRange(policy.Check(changeset.ToJsonString()));
+        if (policy is not null) errors.AddRange(policy.Check(changeset.ToJsonString(), document: lookup));
         return new DraftResult(changeset, decisions, errors);
     }
 

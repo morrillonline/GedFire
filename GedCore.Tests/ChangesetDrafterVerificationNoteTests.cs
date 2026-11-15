@@ -236,6 +236,76 @@ public class ChangesetDrafterVerificationNoteTests
 
     // ---- accepted downstream ----
 
+    static readonly ChangesetPolicy VerificationPolicy = ChangesetPolicy.Load(new MemoryStream(Encoding.UTF8.GetBytes(
+        """{ "verificationNote": { "maxQuay": 1, "notePrefix": "needs independent verification:" } }""")));
+
+    static List<JsonElement> Ops(DraftResult result) =>
+        [.. JsonDocument.Parse(result.Changeset!.ToJsonString()).RootElement.GetProperty("items")[0].GetProperty("ops").EnumerateArray()];
+
+    [Fact]
+    public void AFactTheTreeAlreadyCitesAboveTheCeiling_GetsNoNote_AndThePolicyAgrees()
+    {
+        var lookup = new FakeLookup(new() { ["@I1@|DEAT"] = [Held("1900", 2)] });
+
+        var result = new ChangesetDrafter(lookup, VerificationPolicy).Draft([
+            Finding("F-1", Index("Find a Grave Index", "Memorial #1"), Fact("DEAT", "1900", 1))]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Empty(Notes(result));
+    }
+
+    [Fact]
+    public void ALowFactWithNoNote_GetsOneThePolicyAccepts()
+    {
+        var result = new ChangesetDrafter(new FakeLookup(), VerificationPolicy).Draft([
+            Finding("F-1", Index("Census Index", "Line 4"), Fact("BIRT", "1899", 1))]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Contains("the birth of Gladys Giedd", Assert.Single(Notes(result)));
+    }
+
+    [Fact]
+    public void ASoleSourceNoteOnAFactNowCitedTwice_IsRewrittenToNameBoth_AndThePolicyAccepts()
+    {
+        string held = $"{Prefix} the birth of Gladys Giedd rests on State Death Index (secondary information) alone and has not yet been confirmed by a second source.";
+        var lookup = new FakeLookup(new() { ["@I1@|BIRT"] = [Held("29 JAN 1899", 1, "State Death Index")] }, [held]);
+
+        var result = new ChangesetDrafter(lookup, VerificationPolicy).Draft([
+            Finding("F-1", Index("1900 Census", "Sheet 3"), Fact("BIRT", "JAN 1899", 1))]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var note = Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
+        Assert.Equal(held, note.GetProperty("match").GetString());
+        Assert.Equal(
+            $"{Prefix} the birth of Gladys Giedd rests on 1900 Census and State Death Index (secondary information) and has not yet been confirmed by a stronger source.",
+            note.GetProperty("text").GetString());
+        Assert.Contains(result.Decisions, d => d.Kind == "verification-note" && d.Detail.Contains("no longer says it rests on one alone"));
+    }
+
+    [Fact]
+    public void AnAuthorsVerificationNoteNamingTheFact_SatisfiesThePolicyWithoutANewNote()
+    {
+        var lookup = new FakeLookup(notes: [$"{Prefix} her birth year is from a single index."]);
+
+        var result = new ChangesetDrafter(lookup, VerificationPolicy).Draft([
+            Finding("F-1", Index("Census Index", "Line 4"), Fact("BIRT", "1899", 1))]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Empty(Notes(result));
+    }
+
+    [Fact]
+    public void AVerificationNoteNamingTheDeath_DoesNotCountForTheBirth()
+    {
+        var lookup = new FakeLookup(notes: [$"{Prefix} the death of Gladys Giedd rests on Ohio Death Index (secondary information) alone and has not yet been confirmed by a second source."]);
+
+        var result = new ChangesetDrafter(lookup, VerificationPolicy).Draft([
+            Finding("F-1", Index("Census Index", "Line 4"), Fact("BIRT", "1899", 1))]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Contains("the birth of Gladys Giedd", Assert.Single(Notes(result)));
+    }
+
     [Fact]
     public void AFactLiftedByTheItem_PassesTheVerificationPolicy()
     {

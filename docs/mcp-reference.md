@@ -686,7 +686,7 @@ unknown keys stop startup. See the [complete example](policy.example.json).
 |---|---|
 | `bannedPhrases` | Reject case-insensitive phrases in note text or citation pages. |
 | `bannedPatterns` | Reject regular-expression matches in note text or citation pages. |
-| `verificationNote` | Require a note with `notePrefix` for records receiving facts whose strongest citation is at or below `maxQuay`. |
+| `verificationNote` | Require a note with `notePrefix` that names the fact (by its label, such as "birth", or a word for it, such as "born") on each record receiving a fact whose strongest citation is at or below `maxQuay`. A citation the document already holds on the fact counts toward its strongest citation (for a repeatable fact such as CENS, only the instance on the same date). The note may be in the same item or already on the record, unless the item rewrites or deletes it. With `after`, the document is read as the earlier changesets leave it. |
 | `deathPlaceEvidence` | Require a death-place citation whose page or `dataText` matches this regular expression. |
 
 For example, `{"maxQuay": 1, "notePrefix": "needs independent verification:"}`
