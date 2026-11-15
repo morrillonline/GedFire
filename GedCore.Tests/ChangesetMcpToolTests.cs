@@ -212,6 +212,31 @@ public class ChangesetMcpToolTests : IDisposable
         Assert.Equal(before, File.ReadAllBytes(gedPath));
     }
 
+    const string MarriageOnPersonChangeset = """
+        { "items": [ { "item": 1, "ops": [
+          { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "MARR", "date": "4 MAY 1901" } ] } ] }
+        """;
+
+    [Fact]
+    public async Task ValidateAndApply_RefuseAFamilyEventOnAPerson_WithoutWritingTheFile()
+    {
+        string gedPath = WriteGed();
+        byte[] before = File.ReadAllBytes(gedPath);
+        string changesetPath = WriteChangeset(MarriageOnPersonChangeset);
+
+        var validated = StructuredContent(await new ValidateChangesetTool(gedPath, new ToolGate()).HandleAsync(changesetPath, "all", CancellationToken.None));
+        var applied = StructuredContent(await new ApplyChangesetTool(gedPath, new ToolGate(), readOnly: false).HandleAsync(changesetPath, "all", CancellationToken.None));
+
+        foreach (var result in new[] { validated, applied })
+        {
+            Assert.False(result.GetProperty("success").GetBoolean());
+            Assert.Contains(result.GetProperty("errors").EnumerateArray(), e =>
+                e.GetString() == "createOrUpdateVital MARR on @I00001@: MARR is a family event and @I00001@ is a person; " +
+                                 "record it on the couple's family (FAM) instead");
+        }
+        Assert.Equal(before, File.ReadAllBytes(gedPath));
+    }
+
     [Fact]
     public void Constructors_RejectEmptyGedcomPath()
     {

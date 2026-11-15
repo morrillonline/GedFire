@@ -111,8 +111,8 @@ public sealed class GedIndividual
     public GedEvent? Will    { get; set; }
     public GedEvent? Probate { get; set; }
     public List<GedEvent>     Census     { get; } = [];
-    // Dated events outside the fields above (burial, baptism, ...), in document
-    // order; GedEvent.Tag says which.
+    // Dated events outside the fields above (burial, baptism, ..., and any family
+    // event misplaced on the person), in document order; GedEvent.Tag says which.
     public List<GedEvent>     OtherEvents { get; } = [];
     public List<GedSourceRef> NameSources { get; } = [];
 

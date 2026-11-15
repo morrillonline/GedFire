@@ -90,6 +90,7 @@ public sealed class CreateOrUpdateCitationOp : ChangeOp
     {
         if (OpChecks.RejectVoid(Context, Record, errors)) return;
         if (!ctx.Known(Record)) { errors.Add($"{Context}: target not in file"); return; }
+        OpChecks.RejectFamilyEventOnPerson(ctx, Context, Record, Fact, errors);
         OpChecks.CitationsRequired(Context, Citations, errors);
         OpChecks.CitationsValid(ctx, Context, Citations, errors);
         Address.ValidateShape(ctx, Context, errors);

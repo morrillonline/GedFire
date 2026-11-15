@@ -76,7 +76,7 @@ public static class FindingSchemas
                 "additionalProperties": false,
                 "properties": {
                   "record": { "type": "string", "pattern": "^@[^@]+@$", "description": "The person or family the fact belongs to." },
-                  "fact": { "type": "string", "description": "The GEDCOM tag, e.g. BIRT, DEAT, BURI, MARR; describe_changeset_ops lists every tag createOrUpdateVital takes from a draft." },
+                  "fact": { "type": "string", "description": "The GEDCOM tag, e.g. BIRT, DEAT, BURI, MARR; describe_changeset_ops lists every tag createOrUpdateVital takes from a draft. A family event (MARR, DIV, ENGA, …) goes on the couple's family, never a person; on a person it may only be withdrawn." },
                   "date": { "type": "string", "description": "A GEDCOM 7 date, e.g. \"1 JUN 1840\", \"ABT 1840\", \"BET 1840 AND 1845\" or \"FROM 1840 TO 1845\"; case is ignored." },
                   "place": { "type": "string" },
                   "value": { "type": "string", "description": "A text fact's payload, e.g. a NAME change (\"Ralph /Morrill/\"); not combined with date or place." },

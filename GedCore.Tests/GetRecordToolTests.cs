@@ -270,6 +270,34 @@ public class GetRecordToolTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_Person_AFamilyEventOnThePerson_IsShownAmongItsOtherEvents()
+    {
+        var tool = ToolOver("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @S1@ SOUR
+            1 TITL Marriage register
+            0 @I1@ INDI
+            1 NAME Ada /Example/
+            1 MARR
+            2 DATE 4 MAY 1901
+            2 PLAC Elmford
+            2 SOUR @S1@
+            """);
+
+        var marriage = Assert.Single(StructuredContent(await tool.HandleAsync("@I1@", CancellationToken.None))
+            .GetProperty("otherEvents").EnumerateArray());
+        Assert.Equal("MARR", marriage.GetProperty("tag").GetString());
+        Assert.Equal("4 MAY 1901", marriage.GetProperty("date").GetString());
+        Assert.Equal("@S1@", Assert.Single(marriage.GetProperty("citations").EnumerateArray()).GetProperty("source").GetString());
+
+        var source = StructuredContent(await tool.HandleAsync("@S1@", CancellationToken.None));
+        Assert.Contains(source.GetProperty("citedBy").EnumerateArray(), c =>
+            c.GetProperty("xref").GetString() == "@I1@" && c.GetProperty("field").GetString() == "otherEvent");
+    }
+
+    [Fact]
     public async Task HandleAsync_Person_BurialWithNoDeath_IsOfferedAsTheApproximateDeath()
     {
         var tool = ToolOver("""

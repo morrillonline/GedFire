@@ -58,7 +58,7 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
             errors.Add($"{Kind} on {Record}: mime must be text/plain or text/html");
         if (Purpose is not null && !IsBiography)
             errors.Add($"{Kind} on {Record}: purpose must be \"{BiographyPurpose}\"");
-        else if (IsBiography && !IsPerson(ctx))
+        else if (IsBiography && !ctx.IsPerson(Record))
             errors.Add($"{Kind} on {Record}: a biography note belongs on a person");
         // Citations are optional on a note, but any given must name a known source.
         OpChecks.CitationsValid(ctx, $"{Kind} on {Record}", Citations, errors);
@@ -71,11 +71,6 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
         if (!found)
             errors.Add($"{Kind} on {Record}: no note matches \"match\" (and none already has the new text)");
     }
-
-    bool IsPerson(ResolutionContext ctx) =>
-        ctx.Existing(Record) is { } existing
-            ? existing.Tag == "INDI"
-            : ctx.Placeholders.TryGetKind(Record, out var kind) && kind == PlaceholderKind.Person;
 
     internal override void Apply(ApplyState state, List<string> log)
     {

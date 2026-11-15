@@ -27,6 +27,7 @@ internal static class DraftChecks
             GradeErrors(findings),
             RepeatableFacts.Errors(findings, lookup),
             SpouseFamilies.Errors(findings, lookup),
+            FamilyEventPlacement.Errors(findings, lookup),
         ];
         return rules.SelectMany(rule => rule);
     }

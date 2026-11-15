@@ -306,6 +306,15 @@ internal static class OpChecks
         return true;
     }
 
+    /// <summary>A family event may not be written or cited on a person; deleting one stays allowed.</summary>
+    public static void RejectFamilyEventOnPerson(ResolutionContext ctx, string context, string record, string? fact,
+                                                 List<string> errors)
+    {
+        if (FamilyEvents.Contains(fact) && ctx.IsPerson(record))
+            errors.Add($"{context}: {fact} is a family event and {record} is a person; " +
+                       "record it on the couple's family (FAM) instead");
+    }
+
     public static void CitationsRequired(string context, IReadOnlyList<Citation> citations,
                                          List<string> errors)
     {

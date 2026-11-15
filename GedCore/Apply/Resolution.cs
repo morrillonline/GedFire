@@ -36,6 +36,12 @@ internal sealed class ResolutionContext(GedDocument doc)
     public GedRecord? Existing(string xref) =>
         doc.ByXref.TryGetValue(xref, out var rec) ? rec : null;
 
+    /// <summary>Whether the xref is an INDI in the document or a placeholder an earlier op created as a person.</summary>
+    public bool IsPerson(string xref) =>
+        Existing(xref) is { } existing
+            ? existing.Tag == "INDI"
+            : Placeholders.TryGetKind(xref, out var kind) && kind == PlaceholderKind.Person;
+
     public IEnumerable<GedRecord> RecordsOfType(string tag) =>
         doc.Records.Where(r => r.Tag == tag);
 }
@@ -113,7 +119,7 @@ internal static class Resolve
         if (match is null) return true;
         if (match.Text is not null && fact.Value != match.Text) return false;
         if (match.Date is not null &&
-            !fact.ChildrenByTag("DATE").Any(d => d.Value == NodeBuilder.PadDay(match.Date)))
+            !fact.ChildrenByTag("DATE").Any(d => NodeBuilder.PadDay(d.Value) == NodeBuilder.PadDay(match.Date)))
             return false;
         if (match.Place is not null &&
             !fact.ChildrenByTag("PLAC").Any(p => p.Value == match.Place))

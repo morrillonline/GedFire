@@ -137,6 +137,73 @@ public class DraftChangesetToolTests : IDisposable
         Assert.Equal("keep me", File.ReadAllText(path));
     }
 
+    const string MarriedOnPersonGed = """
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        1 NAME Gladys /Giedd/
+        1 SEX F
+        1 MARR
+        2 DATE 4 MAY 1901
+        2 PLAC Elmford
+        0 @S1@ SOUR
+        1 TITL Find a Grave
+        0 TRLR
+        """;
+
+    static string MarriageFinding(string date, string? withdraw = null) => $$"""
+        [ { "id": "F-1", "extract": "Married 4 May 1901 at Elmford",
+            "source": { "name": "Find a Grave", "locator": "Memorial #1", "class": "derivative", "information": "primary" },
+            "target": { "xref": "@I1@" },
+            "facts": [ { "record": "@I1@", "fact": "MARR", "date": "{{date}}", "place": "Elmford", "quay": 2
+                         {{(withdraw is null ? "" : $", \"withdraw\": \"{withdraw}\"")}} } ] } ]
+        """;
+
+    [Fact]
+    public async Task AFamilyEventOnAPerson_IsRefused_NamingThePath()
+    {
+        var result = Structured(await Tool().HandleAsync(Arg(MarriageFinding("4 May 1901")), Arg(null), default, CancellationToken.None));
+
+        Assert.False(result.GetProperty("success").GetBoolean());
+        string error = Assert.Single(result.GetProperty("errors").EnumerateArray()).GetString()!;
+        Assert.StartsWith("findings[0].facts[0].record @I1@ is a person, but MARR is a family event", error);
+        Assert.Contains("couple's family", error);
+    }
+
+    [Fact]
+    public async Task WithdrawingAFamilyEventHeldOnAPerson_DraftsADeleteThatValidates()
+    {
+        string path = Path.Combine(_dir, "married-on-person.ged");
+        File.WriteAllText(path, MarriedOnPersonGed);
+
+        var draft = Structured(await new DraftChangesetTool(DocumentSession.Open(path), new ToolGate()).HandleAsync(
+            Arg(MarriageFinding("4 May 1901", "a marriage belongs on the family")), default, default, CancellationToken.None));
+
+        Assert.True(draft.GetProperty("success").GetBoolean(), draft.ToString());
+        var op = Assert.Single(draft.GetProperty("changeset").GetProperty("items")[0].GetProperty("ops").EnumerateArray());
+        Assert.Equal("deleteVital", op.GetProperty("op").GetString());
+        Assert.Equal("MARR", op.GetProperty("fact").GetString());
+        Assert.Equal("4 MAY 1901", op.GetProperty("match").GetProperty("date").GetString());
+        string changesetPath = Path.Combine(_dir, "withdraw-marr.json");
+        File.WriteAllText(changesetPath, draft.GetProperty("changeset").GetRawText());
+        var validation = Structured(await new ValidateChangesetTool(path, new ToolGate()).HandleAsync(changesetPath, "all", CancellationToken.None));
+        Assert.True(validation.GetProperty("success").GetBoolean(), validation.ToString());
+        Assert.Contains(validation.GetProperty("log").EnumerateArray(), l => l.GetString()!.Contains("deleteVital MARR on @I1@: deleted"));
+    }
+
+    [Fact]
+    public async Task WithdrawingAFamilyEventOnADateThePersonDoesNotHold_StaysOpen()
+    {
+        var result = Structured(await new DraftChangesetTool(_sessions.Open(MarriedOnPersonGed), new ToolGate()).HandleAsync(
+            Arg(MarriageFinding("9 Jun 1902", "a marriage belongs on the family")), Arg(null), default, CancellationToken.None));
+
+        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+        Assert.Empty(result.GetProperty("changeset").GetProperty("items")[0].GetProperty("ops").EnumerateArray());
+        Assert.Contains(result.GetProperty("decisions").EnumerateArray(), d =>
+            d.GetProperty("kind").GetString() == "open" && d.GetProperty("detail").GetString()!.Contains("holds no MARR (9 JUN 1902"));
+    }
+
     [Fact]
     public async Task ADraftWithErrors_IsNotWritten()
     {
