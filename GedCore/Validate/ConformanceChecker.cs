@@ -16,7 +16,7 @@ public sealed record GedDiagnostic(
 /// <summary>
 /// GEDCOM 7.0.18 conformance checks the codebase otherwise performs nowhere.
 /// Each rule is implemented by its own private <c>Check&lt;RuleName&gt;</c>
-/// method so the GED001-GED014 rules stay independently testable.
+/// method so the GED001-GED015 rules stay independently testable.
 /// </summary>
 public static class ConformanceChecker
 {
@@ -74,6 +74,8 @@ public static class ConformanceChecker
         CheckObjeFileForm(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
         CheckSourceObjeCycle(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
+        CheckFamilyEventsOnPersons(doc, diags);
 
         return [.. diags.OrderBy(d => d.Severity).ThenBy(d => d.Code, StringComparer.Ordinal)];
     }
@@ -406,6 +408,27 @@ public static class ConformanceChecker
                 }
             }
         }
+    }
+
+    // -------------------------------------------------------------------
+    // GED015 — family event on an INDI record
+    // -------------------------------------------------------------------
+
+    private static void CheckFamilyEventsOnPersons(GedDocument doc, List<GedDiagnostic> diags)
+    {
+        foreach (var indi in doc.Records.Where(r => r.Tag == "INDI"))
+            foreach (var ev in indi.Children.Where(c => FamilyEvents.Contains(c.Tag)))
+                diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Error, "GED015",
+                    $"{ev.Tag}{Describe(ev)} is a family event on person {indi.Xref}; it belongs on the couple's FAM record " +
+                    "(withdraw it from the person)",
+                    indi.Xref, ev.Tag));
+    }
+
+    private static string Describe(GedRecord ev)
+    {
+        var details = new[] { ev.FirstChild("DATE")?.Value, ev.FirstChild("PLAC")?.Value }
+            .Where(v => !string.IsNullOrEmpty(v)).ToList();
+        return details.Count == 0 ? "" : $" ({string.Join(", ", details)})";
     }
 
     // -------------------------------------------------------------------

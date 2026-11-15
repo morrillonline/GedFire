@@ -4,7 +4,7 @@ using GedCore.Validate;
 namespace GedCore.Tests;
 
 /// <summary>
-/// One test per GED001-GED014 rule, each built from a minimal in-memory
+/// One test per GED001-GED015 rule, each built from a minimal in-memory
 /// document exhibiting exactly that
 /// violation, plus two "clean document" tests proving the checker doesn't
 /// false-positive on real, valid GEDCOM 7 content.
@@ -447,6 +447,33 @@ public class ConformanceCheckerTests
         var diag = Single(doc, "GED014");
         Assert.Equal(GedDiagnosticSeverity.Error, diag.Severity);
         Assert.Equal("@O1@", diag.Xref);
+    }
+
+    [Fact]
+    public void GED015_FamilyEventOnPerson_IsFlaggedWithItsXref()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 MARR
+            2 DATE 4 MAY 1901
+            2 PLAC Elmford
+            1 DIV
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 MARR
+            2 DATE 4 MAY 1901
+            0 TRLR
+            """);
+
+        var diags = ConformanceChecker.Check(doc).Where(d => d.Code == "GED015").ToList();
+
+        Assert.Equal(["MARR", "DIV"], diags.Select(d => d.Tag));
+        Assert.All(diags, d => Assert.Equal("@I1@", d.Xref));
+        Assert.All(diags, d => Assert.Equal(GedDiagnosticSeverity.Error, d.Severity));
+        Assert.Contains("4 MAY 1901, Elmford", diags[0].Message);
     }
 
     // -------------------------------------------------------------------

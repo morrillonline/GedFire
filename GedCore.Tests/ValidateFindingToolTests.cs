@@ -139,6 +139,24 @@ public class ValidateFindingToolTests : IDisposable
     }
 
     [Fact]
+    public async Task AFamilyEventOnAPerson_IsRefused_NamingThePath()
+    {
+        const string entries = """
+            [ { "id": "F-1", "extract": "Married 4 May 1901 at Elmford",
+                "source": { "name": "Fictional County Register", "locator": "p. 9", "class": "original", "information": "primary" },
+                "target": { "xref": "@I1@" },
+                "facts": [ { "record": "@I1@", "fact": "MARR", "date": "4 May 1901", "quay": 3 } ] } ]
+            """;
+
+        var result = Structured(await new ValidateFindingTool(_sessions.Open(Ged), new ToolGate()).HandleAsync(
+            new ValidateFindingArguments(default, Arg(entries), default, default), CancellationToken.None));
+
+        Assert.False(result.GetProperty("success").GetBoolean());
+        Assert.Contains(result.GetProperty("findings")[0].GetProperty("errors").EnumerateArray(), e =>
+            e.GetString()!.StartsWith("findings[0].facts[0].record @I1@ is a person, but MARR is a family event"));
+    }
+
+    [Fact]
     public async Task FindingPathsWithFindings_IsRefused()
     {
         var result = await new ValidateFindingTool(null, new ToolGate()).HandleAsync(

@@ -29,11 +29,13 @@ public static class ModelBuilder
 
     private sealed class BuildContext
     {
-        // GEDCOM 7 individual events not held in a dedicated GedIndividual field.
+        // GEDCOM 7 individual events not held in a dedicated GedIndividual field, and family events
+        // misplaced on a person, kept so they can be seen and withdrawn.
         static readonly HashSet<string> OtherEventTags =
         [
             "ADOP", "BAPM", "BARM", "BASM", "BLES", "BURI", "CHR", "CHRA", "CONF",
             "CREM", "EMIG", "EVEN", "FCOM", "GRAD", "IMMI", "NATU", "ORDN", "RETI",
+            .. FamilyEvents.Tags,
         ];
 
         // Source-ref resolution: maps each GedSourceRef to its GEDCOM xref

@@ -87,6 +87,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         ProseXrefGuard.Check(Context, "value", Value.Text, errors);
         if (OpChecks.RejectVoid(Context, Record, errors)) return;
         if (!ctx.Known(Record)) { errors.Add($"{Context}: target not in file"); return; }
+        OpChecks.RejectFamilyEventOnPerson(ctx, Context, Record, Fact, errors);
         OpChecks.CitationsValid(ctx, Context, Citations, errors);
         if (ReplacedCitations is not ("keep" or "drop" or "moveToNote"))
             errors.Add($"{Context}: replacedCitations must be keep, drop, or moveToNote");

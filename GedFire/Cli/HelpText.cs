@@ -39,7 +39,7 @@ public static class HelpText
                         pointer resolution, record-count deltas) passes.
 
           validate  <file> [--warnings-as-errors]
-                        Run GEDCOM 7 conformance checks (GED001-GED014) and
+                        Run GEDCOM 7 conformance checks (GED001-GED015) and
                         print one diagnostic per line, sorted by severity then
                         code. Exits 1 if any Error is present (or any Warning
                         too, with --warnings-as-errors); 0 otherwise.

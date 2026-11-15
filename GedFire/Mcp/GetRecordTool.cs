@@ -194,7 +194,7 @@ public sealed class GetRecordTool
                 "census": { "type": "array", "items": { "$ref": "#/$defs/EventDetail" } },
                 "otherEvents": {
                   "type": "array",
-                  "description": "Other individual events (BURI, BAPM, CHR, CREM, ...), each named by its GEDCOM tag.",
+                  "description": "Other individual events (BURI, BAPM, CHR, CREM, ...), each named by its GEDCOM tag. A family event (MARR, DIV, ...) misplaced on the person also appears here; withdraw it rather than cite it.",
                   "items": {
                     "type": "object",
                     "additionalProperties": false,
