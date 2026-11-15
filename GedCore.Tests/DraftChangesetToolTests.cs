@@ -65,6 +65,53 @@ public class DraftChangesetToolTests : IDisposable
     }
 
     [Fact]
+    public async Task ANewSpouseThePersonAlreadyHas_IsRefusedByTheDrafterAndReportedByCheckPlausibility()
+    {
+        const string document = """
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Gladys /Giedd/
+            1 SEX F
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Hiram /Giedd/
+            1 SEX M
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I2@
+            1 WIFE @I1@
+            0 TRLR
+            """;
+        const string findings = """
+            [{
+              "id": "F-1", "extract": "wife of Hiram J. Giedd",
+              "source": {"name": "Fictional register", "locator": "p. 1", "class": "original", "information": "primary"},
+              "target": {"xref": "@I1@", "card": "new-spouse"},
+              "people": [{"xref": "@NewI1@", "name": "Hiram J /Giedd/", "sex": "M"}],
+              "relations": [{"kind": "spouse", "person": "@I1@", "spouse": "@NewI1@", "family": "@NewF1@", "quay": 2}]
+            }]
+            """;
+        const string expected = "Hiram J Giedd (@NewI1@): Gladys Giedd (@I1@) already has the spouse Hiram Giedd (@I2@), the same name";
+        string path = Path.Combine(_dir, "spouse.ged");
+        File.WriteAllText(path, document);
+        string changesetPath = Path.Combine(_dir, "spouse.json");
+        File.WriteAllText(changesetPath, """
+            { "schemaVersion": "1.0", "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Hiram J /Giedd/", "sex": "M" } ],
+              "ops": [ { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": "@NewI1@", "family": "@NewF1@" } ] } ] }
+            """);
+
+        var draft = Structured(await new DraftChangesetTool(DocumentSession.Open(path), new ToolGate()).HandleAsync(Arg(findings), default, default, CancellationToken.None));
+        var plausibility = Structured(await new CheckPlausibilityTool(path, new ToolGate()).HandleAsync(changesetPath, "all", CancellationToken.None));
+
+        Assert.False(draft.GetProperty("success").GetBoolean());
+        Assert.Contains(draft.GetProperty("errors").EnumerateArray(), e => e.GetString()!.StartsWith(expected));
+        Assert.False(plausibility.GetProperty("success").GetBoolean());
+        Assert.Contains(plausibility.GetProperty("errors").EnumerateArray(), e => e.GetString()!.StartsWith(expected));
+    }
+
+    [Fact]
     public async Task ABoundPersonRename_IsReportedByBothReviewToolsBeforeApplying()
     {
         const string document = """

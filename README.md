@@ -242,7 +242,9 @@ name and its citations in a note. An intentional surname change requires
 changesets approved ahead of this one, applied in memory in order, so a
 conflict between packages shows before apply. `draft_package` writes a numbered proposal
 from the finished changesets, including evidence, grades, and any identity
-arguments the author supplied.
+arguments the author supplied. It also checks the changesets together, and
+refuses a package that grades one extract twice, names one new person two ways,
+or carries a verification note that understates the package's evidence.
 
 **Apply only what your review process accepts.** Select the approved items
 with `apply_changeset`. It validates and verifies them again before writing.
@@ -294,6 +296,9 @@ The error names the offending fields and lists the accepted ones.
   the verified write to prevent competing GedFire writers from racing.
 - Before creating a person, validation rejects high-confidence duplicates
   among existing and planned people. Ambiguous candidates do not block creation.
+- A new parent, spouse, or child is refused when the person it attaches to
+  already has a parent in that role, or a spouse or child of an agreeing name,
+  unless the relation lists that relative in `notDuplicateOf`.
 - Before writing, GedFire checks a byte-stable reparse/format round trip,
   pointer resolution, and expected record-count changes.
 - `--read-only` refuses apply calls even if the client approves them.

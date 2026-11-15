@@ -298,6 +298,9 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
     public string? Family { get; init; }
     public IReadOnlyList<Citation> FamilyCitations { get; init; } = [];
 
+    /// <summary>Existing person xref(s) confirmed not to be the new <see cref="Parent"/>, including a parent it is meant to replace.</summary>
+    public IReadOnlyList<string> NotDuplicateOf { get; init; } = [];
+
     internal override IEnumerable<string> CitedSources =>
         FamilyCitations.Concat(Parent.Facts.SelectMany(f => f.Citations)).Select(c => c.Source);
 
@@ -309,6 +312,7 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
                  ?? throw new JsonException("createOrUpdateParent: required field 'parent' missing"),
         Family = JsonRead.Str(el, "family"),
         FamilyCitations = Citation.ReadFamily(el),
+        NotDuplicateOf = JsonRead.StrArray(el, "notDuplicateOf"),
     };
 
     private string Context => $"{Kind} {Role} {Parent.Xref} of {Person}";
@@ -322,6 +326,8 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
 
         var parent = Resolve.Person(ctx, Parent);
         if (parent.Error is not null) { errors.Add($"{Context}: {parent.Error}"); return; }
+
+        OpChecks.NotDuplicateOfValid(ctx, Context, NotDuplicateOf, errors);
 
         var personRec = ctx.Existing(Person);
         if (personRec is null)

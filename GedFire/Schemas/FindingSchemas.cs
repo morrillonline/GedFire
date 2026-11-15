@@ -139,7 +139,7 @@ public static class FindingSchemas
                   "from": { "type": "string", "description": "child: an existing family the child is moved out of, so the child ends up in family only. The child must be listed in it." },
                   "husb": { "type": "string", "description": "child: father, used only when this relation creates the family." },
                   "wife": { "type": "string", "description": "child: mother, used only when this relation creates the family." },
-                  "notDuplicateOf": { "type": "array", "items": { "type": "string" }, "description": "spouse and child: existing people already confirmed not to be the new person." },
+                  "notDuplicateOf": { "type": "array", "items": { "type": "string" }, "description": "spouse, child and parent: existing people already confirmed not to be the new person. A draft is refused when the person it attaches to already has a parent in the same role, or a spouse or child whose name agrees (the same surname and a given name in common, after abbreviations such as Wm are expanded); listing that relative here lets it through, for example to replace a parent knowingly." },
                   "excerpt": { "type": "string", "description": "A narrower extract than the finding's for this relation's citation, quoted word for word from extract." },
                   "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "Required except for unlink-child and unlink-parent." }
                 },

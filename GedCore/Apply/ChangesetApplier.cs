@@ -162,6 +162,7 @@ public static class ChangesetApplier
         // selected op is available to gather evidence from — a per-op check
         // couldn't see operations after the creating PersonRef.
         PersonDuplicateDetector.Check(doc, ctx, selectedOps, result.Errors, result.Log);
+        result.Errors.AddRange(RelativeDuplicateCheck.Check(selectedOps, new DocumentRelatives(doc)));
         if (result.Errors.Count > 0) return result;
 
         result.Log.Add($"validation OK ({selectedOps.Count} ops, items {string.Join(",", itemNumbers.OrderBy(n => n))})");

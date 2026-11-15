@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using GedCore;
 using GedCore.Drafting;
+using GedCore.Packages;
 using GedCore.Policy;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -32,7 +34,10 @@ public sealed class DraftPackageTool
         "and information classes, and quality grades, then, for each item, why him, why not others, conflicts " +
         "and cautions, and difficulty from the identity arguments those findings carry. It compiles nothing: a changeset that does not validate " +
         "against this server's document, or that carries no findings, fails the call with its errors named, and " +
-        "nothing is written; fix the findings and draft the changeset again. The result reports the proposal's " +
+        "nothing is written; fix the findings and draft the changeset again. The changesets are also checked together, " +
+        "and the call fails naming both items when two items grade one source, page and extract at different QUAYs, " +
+        "when two new people share a first given name and surname (declare a truly distinct pair in sameNamePeople), or " +
+        "when a verification note says a fact rests on one record while the package cites it from several. The result reports the proposal's " +
         "path and each changeset it presents, with the sha256 of the exact bytes presented. An existing proposal " +
         "file is replaced only when overwrite is true. Reads the document, writes nothing to it.";
 
@@ -62,6 +67,16 @@ public sealed class DraftPackageTool
             "overwrite": {
               "type": "boolean",
               "description": "Replace the proposal file if it already exists. Default false."
+            },
+            "sameNamePeople": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^@[^@]+@$" },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "description": "Pairs of new people, by placeholder xref, the package creates under names that share the first given name and surname but who are truly different people, such as a father and son both named John: [[\"@NewI_a@\", \"@NewI_b@\"]]. Any other such pair is refused."
             }
           },
           "required": ["changesetPaths", "folder", "proposal"]
@@ -92,7 +107,7 @@ public sealed class DraftPackageTool
                 "required": ["number", "path", "sha256", "success", "errors"]
               }
             },
-            "errors": { "type": "array", "items": { "type": "string" }, "description": "Problems not tied to one changeset's validation, such as a changeset that carries no findings, or the proposal file that could not be written." }
+            "errors": { "type": "array", "items": { "type": "string" }, "description": "Problems not tied to one changeset's validation: a rule that spans the package's items (one QUAY per source, page and extract; one name per new person; a verification note that says a fact rests on one record when the package cites it from several), each naming both items and the cure; a changeset that carries no findings; or the proposal file that could not be written." }
           },
           "required": ["success", "proposalPath", "proposalSha256", "changesets", "errors"]
         }
@@ -100,12 +115,16 @@ public sealed class DraftPackageTool
 
     readonly ChangesetValidator _validator;
     readonly ToolGate _gate;
+    readonly string _documentPath;
+    readonly string _notePrefix;
 
     public DraftPackageTool(string absoluteGedcomPath, ToolGate gate, ChangesetPolicy? policy = null)
     {
         if (string.IsNullOrEmpty(absoluteGedcomPath)) throw new ArgumentException("Path must not be empty.", nameof(absoluteGedcomPath));
         _validator = new ChangesetValidator(absoluteGedcomPath, policy);
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
+        _documentPath = absoluteGedcomPath;
+        _notePrefix = (policy?.VerificationNote ?? VerificationNoteRule.Default).NotePrefix;
     }
 
     public McpServerTool ToMcpServerTool() =>
@@ -115,9 +134,12 @@ public sealed class DraftPackageTool
     // Arguments arrive as raw JsonElements so a wrong shape is reported by field name rather than failing inside the SDK binder.
     Task<CallToolResult> InvokeAsync(
         JsonElement? changesetPaths = null, JsonElement? folder = null, JsonElement? proposal = null,
-        JsonElement? overwrite = null, CancellationToken cancellationToken = default)
+        JsonElement? overwrite = null, JsonElement? sameNamePeople = null, CancellationToken cancellationToken = default)
         => HandleAsync(
-            new DraftPackageArguments(changesetPaths ?? default, folder ?? default, proposal ?? default, overwrite ?? default),
+            new DraftPackageArguments(changesetPaths ?? default, folder ?? default, proposal ?? default, overwrite ?? default)
+            {
+                SameNamePeople = sameNamePeople ?? default,
+            },
             cancellationToken);
 
     public Task<CallToolResult> HandleAsync(DraftPackageArguments arguments, CancellationToken cancellationToken) =>
@@ -129,17 +151,19 @@ public sealed class DraftPackageTool
             return CallToolResults.Error(error!);
 
         var ready = new List<ProposalChangeset>();
+        var read = new List<PackageChangeset>();
         var changesets = new List<PackageChangesetResult>();
         foreach (var (path, index) in request!.ChangesetPaths.Select((p, i) => (p, i + 1)))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            changesets.Add(Check(index, path, ready, cancellationToken));
+            changesets.Add(Check(index, path, ready, read, cancellationToken));
         }
 
-        var errors = new List<string>();
+        var errors = new List<string>(PackageChecks.Check(
+            read, new DocumentSources(() => GedReader.ReadFile(_documentPath)), new PackageOptions(request.SameNamePeople, _notePrefix)));
         string? proposalPath = null;
         string? proposalSha = null;
-        if (changesets.All(c => c.Success))
+        if (changesets.All(c => c.Success) && errors.Count == 0)
         {
             var document = ProposalWriter.Write(request.Proposal, ready);
             errors.AddRange(document.Errors);
@@ -151,7 +175,8 @@ public sealed class DraftPackageTool
             CallToolResults.JsonOptions);
     }
 
-    PackageChangesetResult Check(int number, string path, List<ProposalChangeset> ready, CancellationToken cancellationToken)
+    PackageChangesetResult Check(
+        int number, string path, List<ProposalChangeset> ready, List<PackageChangeset> read, CancellationToken cancellationToken)
     {
         byte[] bytes;
         try
@@ -167,7 +192,11 @@ public sealed class DraftPackageTool
         using var reader = new StreamReader(new MemoryStream(bytes));
         string json = reader.ReadToEnd();
         var errors = _validator.Check(path, json, cancellationToken);
-        if (errors.Count == 0) ready.Add(new ProposalChangeset(path, sha, json));
+        if (errors.Count == 0)
+        {
+            ready.Add(new ProposalChangeset(path, sha, json));
+            read.Add(new PackageChangeset(number, json));
+        }
         return new PackageChangesetResult(number, path, sha, errors.Count == 0, errors);
     }
 
@@ -185,7 +214,8 @@ public sealed class DraftPackageTool
 
     static string Sha256Hex(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
-    sealed record Request(IReadOnlyList<string> ChangesetPaths, string Folder, string Proposal, bool Overwrite);
+    sealed record Request(
+        IReadOnlyList<string> ChangesetPaths, string Folder, string Proposal, bool Overwrite, IReadOnlyList<SameNamePair> SameNamePeople);
 
     static bool TryReadRequest(DraftPackageArguments arguments, out Request? request, out string? error)
     {
@@ -225,8 +255,38 @@ public sealed class DraftPackageTool
         }
 
         if (!ToolArguments.TryReadOptionalBool(arguments.Overwrite, "overwrite", out bool overwrite, out error)) return false;
+        if (!TryReadSameNamePeople(arguments.SameNamePeople, out var sameNamePeople, out error)) return false;
 
-        request = new Request(paths, fullFolder, proposal, overwrite);
+        request = new Request(paths, fullFolder, proposal, overwrite, sameNamePeople);
+        return true;
+    }
+
+    static bool TryReadSameNamePeople(JsonElement element, out IReadOnlyList<SameNamePair> pairs, out string? error)
+    {
+        pairs = [];
+        error = null;
+        if (element.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return true;
+        const string shape = "sameNamePeople must be an array of pairs of placeholder xrefs, such as [[\"@NewI_a@\", \"@NewI_b@\"]]";
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            error = $"{shape}.";
+            return false;
+        }
+
+        var read = new List<SameNamePair>();
+        int index = 0;
+        foreach (var pair in element.EnumerateArray())
+        {
+            var xrefs = pair.ValueKind == JsonValueKind.Array ? pair.EnumerateArray().ToList() : [];
+            if (xrefs.Count != 2 || xrefs.Any(x => x.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(x.GetString())))
+            {
+                error = $"{shape}; sameNamePeople[{index}] is not a pair of xrefs.";
+                return false;
+            }
+            read.Add(new SameNamePair(xrefs[0].GetString()!.Trim(), xrefs[1].GetString()!.Trim()));
+            index++;
+        }
+        pairs = read;
         return true;
     }
 
@@ -245,7 +305,10 @@ public sealed class DraftPackageTool
     }
 }
 
-public sealed record DraftPackageArguments(JsonElement ChangesetPaths, JsonElement Folder, JsonElement Proposal, JsonElement Overwrite);
+public sealed record DraftPackageArguments(JsonElement ChangesetPaths, JsonElement Folder, JsonElement Proposal, JsonElement Overwrite)
+{
+    public JsonElement SameNamePeople { get; init; }
+}
 
 /// <summary>One changeset the proposal presents, or fails to: its number, path, the hash of its bytes, and why it cannot be presented.</summary>
 public sealed record PackageChangesetResult(int Number, string Path, string? Sha256, bool Success, IReadOnlyList<string> Errors);

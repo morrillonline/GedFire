@@ -1,3 +1,4 @@
+using GedCore.Apply;
 using GedFire.Gen;
 using GedFire.Mcp;
 
@@ -114,5 +115,28 @@ public class ModelDraftLookupTests
         model.Families["@F1@"] = family;
 
         Assert.Equal(["A family note."], new ModelDraftLookup(model).NotesOn("@F1@"));
+    }
+
+    [Fact]
+    public void Relatives_AreReadFromTheModelsFamilies()
+    {
+        var model = new GedModel();
+        var father = new GedIndividual { Xref = "@I1@", FirstName = "Nathaniel", LastNameRaw = "Morrill" };
+        var mother = new GedIndividual { Xref = "@I2@", FirstName = "Eula", MiddleName = "Marie", LastNameRaw = "Hicks" };
+        var child = new GedIndividual { Xref = "@I3@", FirstName = "Abel", LastNameRaw = "Morrill" };
+        var family = new GedFamily { Xref = "@F1@", Husband = father, Wife = mother };
+        family.Children.Add(child);
+        father.FamSpouse.Add(family);
+        mother.FamSpouse.Add(family);
+        child.FamChild = family;
+        foreach (var person in new[] { father, mother, child }) model.Individuals[person.Xref] = person;
+        model.Families["@F1@"] = family;
+        var lookup = new ModelDraftLookup(model);
+
+        Assert.Equal(new Relative("@I2@", "Eula Marie /Hicks/"), lookup.Partner("@F1@", "WIFE"));
+        Assert.Equal(["@F1@"], lookup.FamiliesAsChild("@I3@"));
+        Assert.Equal(["@F1@"], lookup.FamiliesAsPartner("@I1@"));
+        Assert.Equal([new Relative("@I3@", "Abel /Morrill/")], lookup.Children("@F1@"));
+        Assert.Null(lookup.Person("@I9@"));
     }
 }

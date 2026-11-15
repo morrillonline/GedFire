@@ -330,6 +330,7 @@ public class ApplyRelationshipTests : ApplyTestBase
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateParent", "person": "@I00001@", "role": "father",
                 "parent": { "xref": "@NewI1@", "name": "Newman /Test/", "sex": "M" },
+                "notDuplicateOf": ["@I00002@"],
                 "citation": { "source": "@S00001@", "page": "p. 7",
                               "dataText": "son of Newman Test", "quay": 2 } } ] } ] }
             """);
@@ -342,6 +343,21 @@ public class ApplyRelationshipTests : ApplyTestBase
         Assert.Empty(doc.ByXref["@I00002@"].ChildrenByTag("FAMS"));            // replaced father
         Assert.Contains("@F00001@", doc.ByXref["@I00005@"].ChildrenByTag("FAMS").Select(c => c.Value));
         Assert.Contains(result.Log, l => l.Contains("@I00002@ → @I00005@"));
+    }
+
+    [Fact]
+    public void Parent_NewFatherForAPersonWhoHasOne_IsRefusedUnlessAcknowledged()
+    {
+        WriteBaseFile();
+
+        var result = Run("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateParent", "person": "@I00001@", "role": "father",
+                "parent": { "xref": "@NewI1@", "name": "Newman /Test/", "sex": "M" } } ] } ] }
+            """);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("already has the father Harvey Test (@I00002@)"));
     }
 
     [Fact]

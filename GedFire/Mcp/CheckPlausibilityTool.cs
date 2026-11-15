@@ -30,7 +30,9 @@ public sealed class CheckPlausibilityTool
         "file holds -- a warning only, never a block). Structured " +
         "{code, severity, message, xref} records, for a caller that wants to route on severity directly " +
         "rather than parsing validate_changeset's log lines. Writes nothing. Always requires a changeset -- " +
-        "there is no whole-document plausibility sweep. Pass after, a list of {changesetPath, items}, to check this " +
+        "there is no whole-document plausibility sweep. A new parent, spouse or child the person it attaches to already " +
+        "has (a parent in that role, or a spouse or child of an agreeing name) fails the run with an error naming that " +
+        "relative, unless the op lists it in notDuplicateOf. Pass after, a list of {changesetPath, items}, to check this " +
         "changeset against the document as it will stand once those earlier changesets are applied, in order, in memory; " +
         "nothing is written, and an earlier changeset that does not apply fails the run with its own errors.";
 

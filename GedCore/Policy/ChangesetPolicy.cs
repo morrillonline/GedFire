@@ -5,7 +5,11 @@ using GedCore.Drafting;
 namespace GedCore.Policy;
 
 /// <summary>The verification-note rule: a fact graded <see cref="MaxQuay"/> or lower must be named by a note containing <see cref="NotePrefix"/>.</summary>
-public sealed record VerificationNoteRule(int MaxQuay, string NotePrefix);
+public sealed record VerificationNoteRule(int MaxQuay, string NotePrefix)
+{
+    /// <summary>The rule the drafter writes notes by when no policy file gives one.</summary>
+    public static readonly VerificationNoteRule Default = new(1, "needs independent verification:");
+}
 
 /// <summary>
 /// The editorial rules a server enforces on every changeset it validates or applies.

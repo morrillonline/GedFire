@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using GedCore.Apply;
 using GedCore.Contract;
 using GedCore.Policy;
 
@@ -16,8 +17,6 @@ public sealed record DraftResult(JsonObject? Changeset, IReadOnlyList<DraftDecis
 /// </summary>
 public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? policy = null)
 {
-    const string DefaultNotePrefix = "needs independent verification:";
-
     /// <summary>The refusals the findings earn before compiling against the document, without compiling them.</summary>
     /// <param name="complete">False for findings still open: a new person nothing links yet, or a finding with nothing to compile, is then not refused.</param>
     public IReadOnlyList<string> Check(IReadOnlyList<DraftFinding> findings, bool complete = true) => [.. DraftChecks.Check(findings, lookup, complete)];
@@ -46,7 +45,7 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         var sources = SourcePlan.Build(findings, lookup, decisions);
         var newPeople = findings.SelectMany(f => f.People).DistinctBy(p => p.Xref).ToDictionary(p => p.Xref);
         decisions.AddRange(MintedPeople(findings));
-        var verificationNotes = new VerificationNotePlanner(lookup, lookup, policy?.VerificationNote ?? new VerificationNoteRule(1, DefaultNotePrefix), newPeople);
+        var verificationNotes = new VerificationNotePlanner(lookup, lookup, policy?.VerificationNote ?? VerificationNoteRule.Default, newPeople);
         var itemDrafter = new ItemDrafter(sources, lookup, verificationNotes, newPeople);
 
         var items = new JsonArray();
@@ -64,9 +63,16 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         changeset["findings"] = evidence;
 
         errors.AddRange(QuayDisagreements(items));
+        errors.AddRange(RelativeDuplicates(changeset));
         if (policy is not null) errors.AddRange(policy.Check(changeset.ToJsonString(), document: lookup));
         return new DraftResult(changeset, decisions, errors);
     }
+
+    // The same refusal validation gives, so a draft that would be refused is never written.
+    IReadOnlyList<string> RelativeDuplicates(JsonObject changeset) =>
+        Changeset.Read(changeset.ToJsonString()).Changeset is { } parsed
+            ? RelativeDuplicateCheck.Check(parsed.Items.SelectMany(i => i.Ops), lookup)
+            : [];
 
     static IEnumerable<DraftDecision> MintedPeople(IReadOnlyList<DraftFinding> findings) =>
         findings.SelectMany(f => f.People.Select(p => (Finding: f, Person: p)))

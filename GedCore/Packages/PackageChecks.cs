@@ -1,0 +1,20 @@
+namespace GedCore.Packages;
+
+/// <summary>
+/// The rules that span a package's items, which no single changeset can be checked for on its own: one QUAY per source,
+/// page and extract; one name per new person; and no verification note that says a fact rests on one record when the
+/// package cites it from several.
+/// </summary>
+public static class PackageChecks
+{
+    public static IReadOnlyList<string> Check(IReadOnlyList<PackageChangeset> changesets, ISourceRecords sources, PackageOptions options)
+    {
+        var package = PackageContents.Read(changesets, sources);
+        return
+        [
+            .. OneGradePerExtractRule.Check(package),
+            .. OneNamePerPersonRule.Check(package, options.SameNamePeople),
+            .. VerificationNoteBasisRule.Check(package, options.NotePrefix),
+        ];
+    }
+}
