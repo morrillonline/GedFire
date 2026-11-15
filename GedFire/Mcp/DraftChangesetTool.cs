@@ -47,7 +47,10 @@ public sealed class DraftChangesetTool
         "way to a finding's bound that excludes it only when uncited or graded lower; otherwise it is left open. Hard bounds " +
         "(BEF, AFT, BET) narrow one another into one range. " +
         "Findings aimed at the same target become one item. Returns the changeset, a " +
-        "decisions list (what was reused, minted, merged, or left open for you), and errors; the changeset also carries a " +
+        "decisions list (what was reused, minted, merged, or left open for you), and errors; the changeset follows the " +
+        "changeset contract (describe_schemas, changeset): it names its schemaVersion, gives every citation in a " +
+        "citations array (familyCitations on a relationship op), and declares each new person once in its item's people. " +
+        "It also carries a " +
         "findings table (each finding's extract, source, classes, grades and identity argument, carried unchanged) and each op names the findings it rests on, " +
         "which is what draft_package presents; with outPath it also " +
         "writes the changeset to a new file, replacing an existing one only when overwrite is true. Findings may be " +

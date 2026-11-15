@@ -972,4 +972,57 @@ public class ApplyOpTests : ApplyTestBase
         Assert.Contains(result.Log, l => l ==
             "createOrUpdateVital MARR on @F00001@ (via createOrUpdateSpouse): created; cited @S00001@ (a); cited @S00002@ (b)");
     }
+
+    [Fact]
+    public void AnEventsDate_IsWrittenAsItsDate()
+    {
+        WriteBaseFile();
+
+        RunExpectSuccess("""
+            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "EVEN", "mode": "add", "date": "1 JAN 1900",
+                "substructures": [ { "tag": "TYPE", "value": "Pension" } ] } ] } ] }
+            """);
+
+        var even = ReadDoc().ByXref["@I00002@"].FirstChild("EVEN")!;
+        Assert.Equal("", even.Value);
+        Assert.Equal("01 JAN 1900", even.FirstChild("DATE")!.Value);
+    }
+
+    [Fact]
+    public void AnAttribute_TakesItsValueDateAndPlaceTogether()
+    {
+        WriteBaseFile();
+
+        RunExpectSuccess("""
+            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "OCCU", "mode": "add",
+                "value": "Farmer", "date": "1850", "place": "Maine" } ] } ] }
+            """);
+
+        var occupation = ReadDoc().ByXref["@I00002@"].FirstChild("OCCU")!;
+        Assert.Equal("Farmer", occupation.Value);
+        Assert.Equal("1850", occupation.FirstChild("DATE")!.Value);
+        Assert.Equal("Maine", occupation.FirstChild("PLAC")!.Value);
+    }
+
+    [Fact]
+    public void AValueMatch_SelectsTheInstanceWithThatPayload()
+    {
+        WriteBaseFile();
+        RunExpectSuccess("""
+            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "OCCU", "mode": "add", "value": "Farmer" },
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "OCCU", "mode": "add", "value": "Miller" } ] } ] }
+            """);
+
+        RunExpectSuccess("""
+            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "OCCU", "match": { "value": "Miller" }, "date": "1860" } ] } ] }
+            """);
+
+        var occupations = ReadDoc().ByXref["@I00002@"].ChildrenByTag("OCCU").ToList();
+        Assert.Null(occupations[0].FirstChild("DATE"));
+        Assert.Equal("1860", occupations[1].FirstChild("DATE")!.Value);
+    }
 }

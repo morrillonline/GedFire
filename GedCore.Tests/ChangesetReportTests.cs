@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using GedCore.Ged70;
 using GedCore.Policy;
 using GedFire.Mcp;
+using GedFire.Schemas;
 using ModelContextProtocol.Protocol;
 
 namespace GedCore.Tests;
@@ -419,5 +420,70 @@ public class ChangesetReportTests : IDisposable
         Assert.DoesNotContain("\"reportPath\"", CheckPlausibilityTool.InputSchemaJson);
         foreach (string output in new[] { ApplyChangesetTool.OutputSchemaJson, ValidateChangesetTool.OutputSchemaJson, DraftChangesetTool.OutputSchemaJson })
             Assert.Contains("\"reportWrittenTo\"", output);
+    }
+
+    static bool SchemaAccepts(PublishedSchema schema, string path)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        return SchemaCatalogTests.Compile(schema).Evaluate(document.RootElement).IsValid;
+    }
+
+    [Fact]
+    public async Task EverySavedReport_ValidatesAgainstItsPublishedSchema()
+    {
+        string ged = WriteGed();
+        var cards = Json(new[] { new { xref = "@I00001@", @class = "enrich-person", gap = "enrich-death", points = 7 } });
+        string validated = Report("validated.json"), refused = Report("refused.json"), applied = Report("applied.json");
+        string drafted = Report("drafted.json"), changeset = Report("drafted-changeset.json");
+
+        await new ValidateChangesetTool(ged, new ToolGate()).HandleAsync(
+            new ValidateChangesetArguments(WriteChangeset(), "all", Cards: cards, ReportPath: Json(validated)), CancellationToken.None);
+        await new ValidateChangesetTool(ged, new ToolGate()).HandleAsync(
+            new ValidateChangesetArguments(WriteChangeset("""{ "schemaVersion": "2.0", "items": [] }"""), "all", ReportPath: Json(refused)), CancellationToken.None);
+        await new ApplyChangesetTool(ged, new ToolGate(), readOnly: false).HandleAsync(
+            WriteChangeset(), "all", Json(applied), default, CancellationToken.None);
+        await Draft().HandleAsync(
+            new DraftChangesetArguments(Findings_(), default, default, Json(changeset), default, Json(drafted)), CancellationToken.None);
+
+        Assert.True(SchemaAccepts(SchemaCatalog.ChangesetReport, validated));
+        Assert.True(SchemaAccepts(SchemaCatalog.ChangesetReport, refused));
+        Assert.True(SchemaAccepts(SchemaCatalog.ChangesetReport, applied));
+        Assert.True(SchemaAccepts(SchemaCatalog.DraftReport, drafted));
+        Assert.True(SchemaAccepts(SchemaCatalog.Changeset, changeset));
+    }
+
+    [Fact]
+    public async Task ALegacyChangeset_IsAppliedWithItsWarnings_CountedInTheDigest()
+    {
+        string report = Report();
+
+        var result = await new ValidateChangesetTool(WriteGed(), new ToolGate()).HandleAsync(
+            new ValidateChangesetArguments(WriteChangeset(), "all", ReportPath: Json(report)), CancellationToken.None);
+
+        var warnings = ReadReport(report)["warnings"]!.AsArray().Select(w => (string)w!).ToList();
+        Assert.True(Structured(result).GetProperty("success").GetBoolean());
+        Assert.Equal(warnings.Count, Structured(result).GetProperty("warningCount").GetInt32());
+        Assert.Contains("items[0].ops[0].citation: use citations, an array, for every citation", warnings);
+        Assert.Contains(warnings, w => w.StartsWith("schemaVersion: missing"));
+    }
+
+    [Fact]
+    public async Task AChangesetTheContractRefuses_IsRefusedIdenticallyByValidateAndApply()
+    {
+        string ged = WriteGed();
+        byte[] before = File.ReadAllBytes(ged);
+        string path = WriteChangeset("""
+            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateNote", "record": "@I00001@", "text": "A note.",
+              "citation": { "source": "@S1@" }, "citations": [ { "source": "@S1@" } ] } ] } ] }
+            """);
+
+        var validated = await new ValidateChangesetTool(ged, new ToolGate()).HandleAsync(path, "all", CancellationToken.None);
+        var applied = await new ApplyChangesetTool(ged, new ToolGate(), readOnly: false).HandleAsync(path, "all", CancellationToken.None);
+
+        Assert.False(Structured(validated).GetProperty("success").GetBoolean());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Structured(validated).GetRawText()), JsonNode.Parse(Structured(applied).GetRawText())));
+        Assert.Contains("items[0].ops[0]: carries both citation and citations; give every citation in citations",
+            Structured(applied).GetProperty("errors").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(before, File.ReadAllBytes(ged));
     }
 }

@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using GedCore.Contract;
 using GedCore.Policy;
 
 namespace GedCore.Drafting;
@@ -57,7 +58,7 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
             foreach (var finding in group) evidence.Add(FindingEvidence.Describe(finding, number, sources.RefFor(finding)));
         }
 
-        var changeset = new JsonObject();
+        var changeset = new JsonObject { ["schemaVersion"] = ChangesetDialect.SchemaVersion };
         if (sources.NewSources.Count > 0) changeset["newSources"] = sources.NewSources;
         changeset["items"] = items;
         changeset["findings"] = evidence;
@@ -78,7 +79,7 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
     static IEnumerable<string> QuayDisagreements(JsonArray items) =>
         items.SelectMany(item => item!["ops"]!.AsArray())
             .Select(op => op!)
-            .SelectMany(op => op["citations"]?.AsArray().Select(c => c!) ?? (op["citation"] is { } one ? [one] : []))
+            .SelectMany(op => new[] { "citations", "familyCitations" }.SelectMany(key => op[key]?.AsArray().Select(c => c!) ?? []))
             .GroupBy(c => ((string?)c["source"], (string?)c["page"], (string?)c["dataText"]))
             .Where(g => g.Select(c => (int?)c["quay"]).Distinct().Count() > 1)
             .Select(g => $"the citation of {g.Key.Item1} at \"{g.Key.Item2}\" is graded differently in different items; one source, page and extract carries one QUAY, so give the differently graded fact its own excerpt.");

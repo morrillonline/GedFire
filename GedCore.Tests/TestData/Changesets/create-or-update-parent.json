@@ -1,15 +1,23 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-create-or-update-parent",
   "items": [
     {
       "item": 1,
       "target": "@I00004@",
+      "people": [
+        {
+          "xref": "@New1@",
+          "name": "Grandma /Test/",
+          "sex": "F"
+        }
+      ],
       "ops": [
         {
           "op": "createOrUpdateParent",
           "person": "@I00004@",
           "role": "mother",
-          "parent": { "xref": "@New1@", "name": "Grandma /Test/", "sex": "F" },
+          "parent": "@New1@",
           "family": "@New2@"
         }
       ]

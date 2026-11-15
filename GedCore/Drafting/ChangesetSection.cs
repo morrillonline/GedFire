@@ -48,6 +48,7 @@ internal static class ChangesetSection
         markdown.AppendLine("#### Operations").AppendLine();
 
         var cited = new List<JsonElement>();
+        var people = item.TryGetProperty("people", out var declared) ? declared : default;
         int index = 0;
         foreach (var op in TryArray(item, "ops", out var ops) ? ops.EnumerateArray() : [])
         {
@@ -56,7 +57,7 @@ internal static class ChangesetSection
             foreach (string id in ids.Where(id => findings.All(f => Text(f, "id") != id)))
                 errors.Add($"{name}: item {number}, operation {index} cites finding {id}, which the changeset does not carry.");
             cited.AddRange(ids.SelectMany(id => findings.Where(f => Text(f, "id") == id)));
-            markdown.AppendLine($"{index}. {OpLine(op, ids)}");
+            markdown.AppendLine($"{index}. {OpLine(op, ids, people)}");
         }
         markdown.AppendLine();
 
@@ -70,9 +71,9 @@ internal static class ChangesetSection
         foreach (var finding in shown) WriteFinding(finding, markdown);
     }
 
-    static string OpLine(JsonElement op, IReadOnlyList<string> findingIds)
+    static string OpLine(JsonElement op, IReadOnlyList<string> findingIds, JsonElement people)
     {
-        var line = new StringBuilder($"`{Text(op, "op")}`: {OpSummary.Describe(op)}");
+        var line = new StringBuilder($"`{Text(op, "op")}`: {OpSummary.Describe(op, people)}");
         var quays = OpSummary.Quays(op);
         if (quays.Count > 0) line.Append($" (QUAY {string.Join(", ", quays)})");
         if (findingIds.Count > 0) line.Append($", evidence {string.Join(", ", findingIds)}");

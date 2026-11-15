@@ -50,8 +50,8 @@ public class ChangesetDrafterReconcileTests
             Finding("F-4", "1877", null));
 
         var vital = Assert.Single(Vitals(result));
-        Assert.Equal("14 APR 1877", vital.GetProperty("value").GetProperty("date").GetString());
-        Assert.Equal("Oakland, Kennebec, Maine", vital.GetProperty("value").GetProperty("place").GetString());
+        Assert.Equal("14 APR 1877", vital.GetProperty("date").GetString());
+        Assert.Equal("Oakland, Kennebec, Maine", vital.GetProperty("place").GetString());
         Assert.Equal(4, Citations(vital));
         Assert.DoesNotContain(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("different values"));
         var resolved = Single(result, "resolved");
@@ -69,8 +69,8 @@ public class ChangesetDrafterReconcileTests
             Finding("F-2", "1877", "Oakland, Maine"));
 
         var vital = Assert.Single(Vitals(result));
-        Assert.Equal("14 APR 1877", vital.GetProperty("value").GetProperty("date").GetString());
-        Assert.Equal("Oakland, Maine", vital.GetProperty("value").GetProperty("place").GetString());
+        Assert.Equal("14 APR 1877", vital.GetProperty("date").GetString());
+        Assert.Equal("Oakland, Maine", vital.GetProperty("place").GetString());
         Assert.Equal(2, Citations(vital));
         var detail = Single(result, "resolved").Detail;
         Assert.Contains("F-1 for the date (QUAY 2)", detail);
@@ -88,7 +88,7 @@ public class ChangesetDrafterReconcileTests
         var result = Draft(Finding("F-1", approximate, null), Finding("F-2", specific, null));
 
         var vital = Assert.Single(Vitals(result));
-        Assert.Equal(specific, vital.GetProperty("value").GetProperty("date").GetString());
+        Assert.Equal(specific, vital.GetProperty("date").GetString());
         Assert.Equal(2, Citations(vital));
     }
 
@@ -98,7 +98,7 @@ public class ChangesetDrafterReconcileTests
         var result = Draft(Finding("F-1", "ABT 1860", null), Finding("F-2", "1 DEC 1855", null));
 
         var vital = Assert.Single(Vitals(result));
-        Assert.Equal("1 DEC 1855", vital.GetProperty("value").GetProperty("date").GetString());
+        Assert.Equal("1 DEC 1855", vital.GetProperty("date").GetString());
         Assert.Equal(1, Citations(vital));
         var open = Single(result, "open");
         Assert.Contains("F-1's ABT 1860", open.Detail);
@@ -234,8 +234,8 @@ public class ChangesetDrafterReconcileTests
         var result = new ChangesetDrafter(Holding("1877", "Maine")).Draft([Finding("F-1", "14 APR 1877", "Oakland, Maine")]);
 
         var vital = Assert.Single(Vitals(result));
-        Assert.Equal("14 APR 1877", vital.GetProperty("value").GetProperty("date").GetString());
-        Assert.Equal("Oakland, Maine", vital.GetProperty("value").GetProperty("place").GetString());
+        Assert.Equal("14 APR 1877", vital.GetProperty("date").GetString());
+        Assert.Equal("Oakland, Maine", vital.GetProperty("place").GetString());
         Assert.DoesNotContain(result.Decisions, d => d.Kind == "resolved");
     }
 
@@ -245,8 +245,8 @@ public class ChangesetDrafterReconcileTests
         var result = new ChangesetDrafter(Holding("14 APR 1877", "Maine")).Draft([Finding("F-1", "1877", "Oakland, Maine")]);
 
         var vital = Assert.Single(Vitals(result));
-        Assert.False(vital.GetProperty("value").TryGetProperty("date", out _));
-        Assert.Equal("Oakland, Maine", vital.GetProperty("value").GetProperty("place").GetString());
+        Assert.False(vital.TryGetProperty("date", out _));
+        Assert.Equal("Oakland, Maine", vital.GetProperty("place").GetString());
         Assert.Contains("a more specific date", Single(result, "resolved").Detail);
     }
 
@@ -255,7 +255,7 @@ public class ChangesetDrafterReconcileTests
     {
         var result = new ChangesetDrafter(Holding("15 APR 1877", "Maine")).Draft([Finding("F-1", "14 APR 1877", "Maine")]);
 
-        Assert.Equal("14 APR 1877", Assert.Single(Vitals(result)).GetProperty("value").GetProperty("date").GetString());
+        Assert.Equal("14 APR 1877", Assert.Single(Vitals(result)).GetProperty("date").GetString());
     }
 
     [Fact]
@@ -272,7 +272,7 @@ public class ChangesetDrafterReconcileTests
     {
         var result = new ChangesetDrafter(Holding("ABT 1877", "Maine")).Draft([Finding("F-1", "1877", null)]);
 
-        Assert.Equal("1877", Assert.Single(Vitals(result)).GetProperty("value").GetProperty("date").GetString());
+        Assert.Equal("1877", Assert.Single(Vitals(result)).GetProperty("date").GetString());
     }
 
     [Fact]

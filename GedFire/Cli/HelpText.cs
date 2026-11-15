@@ -88,14 +88,15 @@ public static class HelpText
                         Exit 1 on errors or failed checks; 0 on success.
                         Also accepts --policy <json>, --read-only and
                         --enforce-privacy with the same meaning as mcp.
-                        date_calc, describe_changeset_ops and describe_schemas
-                        need no --input; validate_finding without --input
-                        checks every rule that needs no
+                        date_calc, describe_changeset_ops, describe_schemas
+                        and migrate_changeset need no --input; validate_finding
+                        without --input checks every rule that needs no
                         document.
 
-          schema    <finding|finding-file|record|argument> [--out <json>]
-                        Print the versioned JSON Schema (draft 2020-12) of the
-                        finding-file contract, or write it to a new file.
+          schema    <finding|finding-file|record|argument|changeset|cards|changeset-report|draft-report> [--out <json>]
+                        Print a versioned JSON Schema (draft 2020-12) of the
+                        finding-file or changeset contract, the cards file or a
+                        saved report, or write it to a new file.
 
           date-calc --op normalize|add|sub|diff
                         Genealogical date arithmetic using GedCore's GEDCOM

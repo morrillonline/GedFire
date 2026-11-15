@@ -16,7 +16,7 @@ public sealed record MergeFactResolution(string Fact, string Keep, EventValue? V
     internal static MergeFactResolution Read(JsonElement el) => new(
         JsonRead.Req(el, "fact", "mergePerson.facts"),
         JsonRead.Str(el, "keep") ?? "value",
-        EventValue.Read(el, "value"),
+        EventValue.ReadFact(el),
         Citation.ReadAll(el));
 }
 

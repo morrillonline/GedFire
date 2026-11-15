@@ -53,6 +53,11 @@ static class ChangesetToolSchemas
               "items": { "type": "string" },
               "description": "Validation or verification failures. Non-empty only when success is false. Absent from the digest; the report file holds it."
             },
+            "warnings": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Each legacy shape the changeset was read from, by path: a singular citation, a relationship op's citations, an object value, a string match, an inline person, an undeclared new person, a field the dialect does not define, a missing schemaVersion. They do not fail the run; the contract will refuse them once it is enforced, and migrate_changeset rewrites most of them. Absent from the digest; the report file holds it."
+            },
             "deltas": {
               "type": "object",
               "additionalProperties": { "type": "integer" },
@@ -74,6 +79,7 @@ static class ChangesetToolSchemas
               "description": "Digest only: the changeset item numbers the run selected."
             },
             "errorCount": { "type": "integer", "description": "Digest only: how many errors the report file holds." },
+            "warningCount": { "type": "integer", "description": "Digest only: how many warnings the report file holds." },
             "logCount": { "type": "integer", "description": "Digest only: how many log lines the report file holds." },
             "mintedXrefCount": { "type": "integer", "description": "Digest only: how many records the run minted; the report file names them." },
             "reportWrittenTo": {
@@ -118,6 +124,23 @@ static class ChangesetToolSchemas
     static void AddAfterProperty(JsonNode schema) =>
         schema["properties"]!["after"] = JsonNode.Parse(PriorChangesets.SchemaJson);
 
+    /// <summary>One research card, in validate_changeset's cards and in a cards file.</summary>
+    public const string CardJson = """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "xref": { "type": "string", "pattern": "^@[^@]+@$", "description": "The card subject's xref." },
+            "class": { "type": "string", "description": "enrich-person, new-parent, new-spouse, new-child or biography (select_targets' card type, case and spacing ignored)." },
+            "gap": { "type": "string", "description": "For enrich-person, the fact the card names: enrich-birth, enrich-death or enrich-marriage, optionally ending -date or -place. Omit it, or use enrich-fact, for a card that names no single fact: it closes on any improved fact written on the subject." },
+            "name": { "type": "string", "description": "For enrich-person, the subject's name: a changeset that renames the subject to something else leaves the card open. For new-parent, new-spouse and new-child, the name of the person to mint: a person the changeset creates must carry exactly this name, or the card stays open." },
+            "points": { "type": "integer", "minimum": 0, "description": "The card's points. For a card with no single named fact (no gap, or enrich-fact) this is the points for each improved date, place or citation, and closed.points is this times the improvements plus bonus." },
+            "bonus": { "type": "integer", "minimum": 0, "description": "The card's difficulty bonus, added once to a card that names no single fact; ignored for other cards, whose points already include it." }
+          },
+          "required": ["xref", "class", "points"]
+        }
+        """;
+
     /// <summary>The input schema with the optional <c>cards</c> argument validate_changeset adds.</summary>
     public static readonly string InputSchemaWithCardsJson = SchemaComposer.Compose(InputSchemaJson, schema =>
     {
@@ -128,28 +151,16 @@ static class ChangesetToolSchemas
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "Path to a JSON file holding {\"cards\": [...]}, the same array as cards, so a saved list need not be passed back inline. Give cards or cardsPath, not both."
+              "description": "Path to a JSON file holding {\"cards\": [...]}, the same array as cards, so a saved list need not be passed back inline (gedfire schema cards). Give cards or cardsPath, not both."
             }
             """);
         schema["properties"]!["cards"] = JsonNode.Parse("""
             {
               "type": "array",
-              "description": "Research cards the author is working. When given, the result carries pointsPreview: which cards this changeset closes by what it actually writes to the tree, which it leaves open and why, and any card whose subject the changeset renamed. An enrich card closes only when the fact it names is written on its subject; a citation alone writes no fact. A biography card closes when a createOrUpdateNote with purpose biography adds to the subject's biography notes a citation (same source and page) none of them carried before; one biography card per person closes per changeset.",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "xref": { "type": "string", "pattern": "^@[^@]+@$", "description": "The card subject's xref." },
-                  "class": { "type": "string", "description": "enrich-person, new-parent, new-spouse, new-child or biography (select_targets' card type, case and spacing ignored)." },
-                  "gap": { "type": "string", "description": "For enrich-person, the fact the card names: enrich-birth, enrich-death or enrich-marriage, optionally ending -date or -place. Omit it, or use enrich-fact, for a card that names no single fact: it closes on any improved fact written on the subject." },
-                  "name": { "type": "string", "description": "For enrich-person, the subject's name: a changeset that renames the subject to something else leaves the card open. For new-parent, new-spouse and new-child, the name of the person to mint: a person the changeset creates must carry exactly this name, or the card stays open." },
-                  "points": { "type": "integer", "minimum": 0, "description": "The card's points. For a card with no single named fact (no gap, or enrich-fact) this is the points for each improved date, place or citation, and closed.points is this times the improvements plus bonus." },
-                  "bonus": { "type": "integer", "minimum": 0, "description": "The card's difficulty bonus, added once to a card that names no single fact; ignored for other cards, whose points already include it." }
-                },
-                "required": ["xref", "class", "points"]
-              }
+              "description": "Research cards the author is working. When given, the result carries pointsPreview: which cards this changeset closes by what it actually writes to the tree, which it leaves open and why, and any card whose subject the changeset renamed. An enrich card closes only when the fact it names is written on its subject; a citation alone writes no fact. A biography card closes when a createOrUpdateNote with purpose biography adds to the subject's biography notes a citation (same source and page) none of them carried before; one biography card per person closes per changeset."
             }
             """);
+        schema["properties"]!["cards"]!["items"] = JsonNode.Parse(CardJson);
     });
 
     /// <summary>The <c>pointsPreview</c> schema, shared by every tool that prices a changeset against cards.</summary>

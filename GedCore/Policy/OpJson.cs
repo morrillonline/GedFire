@@ -12,7 +12,7 @@ internal static class OpJson
     public static JsonElement? Property(JsonElement node, string name) =>
         node.ValueKind == JsonValueKind.Object && node.TryGetProperty(name, out var v) ? v : null;
 
-    /// <summary>The citation or citations directly under <paramref name="node"/>.</summary>
+    /// <summary>The citation or citations directly under <paramref name="node"/>; a legacy node may give one singular citation.</summary>
     public static IEnumerable<JsonElement> CitationsOf(JsonElement node)
     {
         if (Property(node, "citation") is { ValueKind: JsonValueKind.Object } single) yield return single;

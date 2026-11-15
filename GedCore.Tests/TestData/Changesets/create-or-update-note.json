@@ -1,11 +1,16 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-create-or-update-note",
   "items": [
     {
       "item": 1,
       "target": "@I00001@",
       "ops": [
-        { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Research analysis records a resolved name variance." }
+        {
+          "op": "createOrUpdateNote",
+          "record": "@I00001@",
+          "text": "Research analysis records a resolved name variance."
+        }
       ]
     }
   ]

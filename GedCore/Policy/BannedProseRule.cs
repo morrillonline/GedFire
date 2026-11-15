@@ -23,7 +23,7 @@ internal sealed class BannedProseRule(IReadOnlyList<string> phrases, IReadOnlyLi
 
     static IEnumerable<(string Kind, string Text)> ProseFields(PolicyItem item)
     {
-        foreach (var node in item.Ops.SelectMany(OpJson.Objects))
+        foreach (var node in item.Ops.Concat(item.People).SelectMany(OpJson.Objects))
         {
             if (OpJson.String(node, "op") == "createOrUpdateNote" && OpJson.String(node, "text") is { } text)
                 yield return ("note text", text);

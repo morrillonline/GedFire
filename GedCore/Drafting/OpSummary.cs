@@ -5,16 +5,17 @@ namespace GedCore.Drafting;
 /// <summary>Describes one changeset op in a line of prose, from the op's JSON as the drafter writes it.</summary>
 internal static class OpSummary
 {
-    public static string Describe(JsonElement op)
+    /// <param name="people">The op's item's "people" declarations, which name the new people its ops create.</param>
+    public static string Describe(JsonElement op, JsonElement people = default)
     {
         string kind = Text(op, "op") ?? "unknown op";
         return kind switch
         {
             "createOrUpdateVital" => $"{(Text(op, "mode") == "add" ? "Add" : "Set")} {Text(op, "fact")} on {Text(op, "record")}: {ValueOf(op)}",
             "createOrUpdateCitation" => $"Cite {Text(op, "fact")} on {Text(op, "record")}{MatchOf(op)}",
-            "createOrUpdateSpouse" => $"Link {Text(op, "person")} to spouse {PersonRef(op, "spouse")}{FamilyOf(op)}",
-            "createOrUpdateChild" => $"Add child {PersonRef(op, "child")} to {Text(op, "family")}",
-            "createOrUpdateParent" => $"Add {Text(op, "role")} {PersonRef(op, "parent")} to {Text(op, "person")}",
+            "createOrUpdateSpouse" => $"Link {Text(op, "person")} to spouse {PersonRef(op, "spouse", people)}{FamilyOf(op)}",
+            "createOrUpdateChild" => $"Add child {PersonRef(op, "child", people)} to {Text(op, "family")}",
+            "createOrUpdateParent" => $"Add {Text(op, "role")} {PersonRef(op, "parent", people)} to {Text(op, "person")}",
             "createOrUpdateNote" => $"{(Has(op, "match") ? "Rewrite" : "Add")} a {(Has(op, "purpose") ? "biography " : "")}note on {Text(op, "record")}: \"{OneLine(Text(op, "text"))}\"",
             "deleteChild" => $"Remove child {Text(op, "child")} from {Text(op, "family")}",
             "deleteParent" => $"Remove the {Text(op, "role")} of {Text(op, "person")}",
@@ -29,20 +30,23 @@ internal static class OpSummary
         [.. Citations(op).Select(c => c.TryGetProperty("quay", out var q) && q.TryGetInt32(out int grade) ? grade : (int?)null)
             .OfType<int>().Distinct().Order()];
 
+    // The citations of the fact or note the op writes, and of the family a relationship op links; a legacy op may give one citation.
     static IEnumerable<JsonElement> Citations(JsonElement op)
     {
         if (op.TryGetProperty("citation", out var one) && one.ValueKind == JsonValueKind.Object) yield return one;
-        if (op.TryGetProperty("citations", out var many) && many.ValueKind == JsonValueKind.Array)
-            foreach (var citation in many.EnumerateArray()) yield return citation;
+        foreach (string key in new[] { "citations", "familyCitations" })
+            if (op.TryGetProperty(key, out var many) && many.ValueKind == JsonValueKind.Array)
+                foreach (var citation in many.EnumerateArray()) yield return citation;
     }
 
     static string ValueOf(JsonElement op)
     {
-        if (!op.TryGetProperty("value", out var value)) return "no value";
+        var value = op.TryGetProperty("value", out var given) ? given : default;
         if (value.ValueKind == JsonValueKind.String) return value.GetString() ?? "";
 
-        string? date = Text(value, "date");
-        string? place = Text(value, "place");
+        var dated = value.ValueKind == JsonValueKind.Object ? value : op;
+        string? date = Text(dated, "date");
+        string? place = Text(dated, "place");
         return date is not null && place is not null ? $"{date} at {place}" : date ?? place ?? "no value";
     }
 
@@ -55,11 +59,18 @@ internal static class OpSummary
 
     static string FamilyOf(JsonElement op) => Text(op, "family") is { } family ? $" in {family}" : "";
 
-    // A person the changeset creates is described inline; one it only points at is a bare xref.
-    static string PersonRef(JsonElement op, string field)
+    // A new person is named by xref and declared in the item's people; a legacy op describes it inline.
+    static string PersonRef(JsonElement op, string field, JsonElement people)
     {
         if (!op.TryGetProperty(field, out var person)) return "unknown";
-        if (person.ValueKind == JsonValueKind.String) return person.GetString() ?? "unknown";
+        if (person.ValueKind == JsonValueKind.String)
+        {
+            string xref = person.GetString() ?? "unknown";
+            var declared = people.ValueKind == JsonValueKind.Array
+                ? people.EnumerateArray().FirstOrDefault(p => Text(p, "xref") == xref)
+                : default;
+            return Text(declared, "name") is { } declaredName ? $"{declaredName} ({xref})" : xref;
+        }
         return Text(person, "name") is { } name ? $"{name} ({Text(person, "xref")})" : Text(person, "xref") ?? "unknown";
     }
 

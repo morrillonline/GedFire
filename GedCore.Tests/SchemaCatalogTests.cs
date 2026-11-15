@@ -10,7 +10,7 @@ public class SchemaCatalogTests
 {
     static readonly JsonSchema FindingFile = Compile(SchemaCatalog.FindingFile);
 
-    static JsonSchema Compile(PublishedSchema schema) =>
+    internal static JsonSchema Compile(PublishedSchema schema) =>
         JsonSchema.FromText(schema.Document().ToJsonString(), new BuildOptions { SchemaRegistry = new SchemaRegistry() });
 
     static bool SchemaAccepts(string json)
@@ -92,5 +92,60 @@ public class SchemaCatalogTests
         using var file = JsonDocument.Parse(FindingFixtures.Read("F-101.json"));
 
         Assert.True(record.Evaluate(file.RootElement.GetProperty("record")).IsValid);
+    }
+
+    static readonly JsonSchema Changeset = Compile(SchemaCatalog.Changeset);
+
+    public static IEnumerable<object[]> ChangesetFixtureNames() =>
+        typeof(ChangesetFixtures).Assembly.GetManifestResourceNames()
+            .Where(n => n.StartsWith("GedCore.Tests.TestData.Changesets.", StringComparison.Ordinal))
+            .Select(n => new object[] { n["GedCore.Tests.TestData.Changesets.".Length..^".json".Length] });
+
+    [Theory]
+    [MemberData(nameof(ChangesetFixtureNames))]
+    public void EveryChangesetFixture_IsCanonical_AndTheChangesetSchemaAcceptsIt(string name)
+    {
+        string json = ChangesetFixtures.Read(name);
+        using var document = JsonDocument.Parse(json);
+
+        Assert.Empty(GedCore.Apply.Changeset.Read(json).Warnings);
+        Assert.True(Changeset.Evaluate(document.RootElement).IsValid);
+    }
+
+    [Theory]
+    [InlineData("\"citation\": { \"source\": \"@S1@\" }")]
+    [InlineData("\"citations\": { \"source\": \"@S1@\" }")]
+    [InlineData("\"citatons\": []")]
+    [InlineData("\"value\": { \"date\": \"1900\" }")]
+    [InlineData("\"value\": \"1 JAN 1900\"")]
+    public void TheChangesetSchemaRefusesWhatTheContractReports(string member)
+    {
+        string json = $$"""
+            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900", {{member}} } ] } ] }
+            """;
+        using var document = JsonDocument.Parse(json);
+
+        var reading = GedCore.Apply.Changeset.Read(json);
+        Assert.NotEmpty(reading.Errors.Concat(reading.Warnings));
+        Assert.False(Changeset.Evaluate(document.RootElement).IsValid);
+    }
+
+    [Theory]
+    [InlineData("\"schemaVersion\": \"2.0\",")]
+    [InlineData("")]
+    public void TheChangesetSchemaRequiresTheSupportedMajorVersion(string version)
+    {
+        using var document = JsonDocument.Parse($$"""{ {{version}} "items": [] }""");
+
+        Assert.False(Changeset.Evaluate(document.RootElement).IsValid);
+    }
+
+    [Fact]
+    public void TheCardsSchemaAcceptsACardsFile()
+    {
+        using var document = JsonDocument.Parse("""{ "cards": [ { "xref": "@I1@", "class": "enrich-person", "gap": "enrich-death", "points": 7 } ] }""");
+
+        Assert.True(Compile(SchemaCatalog.Cards).Evaluate(document.RootElement).IsValid);
     }
 }

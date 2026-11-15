@@ -169,6 +169,21 @@ public class ChangesetPolicyTests
     }
 
     [Fact]
+    public void LowQuayFactOfAPersonDeclaredInPeople_IsNamedByANoteMentioningTheGivenName()
+    {
+        static string Item(string note) => $$"""
+            { "schemaVersion": "1.0", "items": [ { "item": 1,
+              "people": [ { "xref": "@NewI1@", "name": "Ruth /Test/", "facts": [
+                { "fact": "BIRT", "date": "1900", "citations": [ { "source": "@S1@", "quay": 0 } ] } ] } ],
+              "ops": [ { "op": "createOrUpdateChild", "family": "@F1@", "child": "@NewI1@" }{{note}} ] } ] }
+            """;
+        string note = """, { "op": "createOrUpdateNote", "record": "@F1@", "text": "Needs independent verification: Ruth's birth is from one index." }""";
+
+        Assert.Contains("BIRT of Ruth /Test/", Assert.Single(Load(Verification).Check(Item(""))));
+        Assert.Empty(Load(Verification).Check(Item(note)));
+    }
+
+    [Fact]
     public void LowQuayMarriage_IsNamedByANoteMentioningMarriage()
     {
         string op = """
@@ -194,6 +209,14 @@ public class ChangesetPolicyTests
 
         Assert.Contains("DEAT place \"Salem\"", Assert.Single(violations));
     }
+
+    [Fact]
+    public void DeathPlace_GivenBesideTheDate_IsReportedToo() =>
+        Assert.Single(Load(DeathEvidence).Check(Changeset(
+            """
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900", "place": "Salem",
+                 "citations": [ { "source": "@S1@", "dataText": "Interred at Salem Cemetery", "quay": 2 } ] }
+            """)));
 
     [Fact]
     public void DeathPlace_WithADeathExtract_Passes() =>

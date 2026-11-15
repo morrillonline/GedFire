@@ -15,15 +15,9 @@ sealed class ChangesetValidator(string documentPath, ChangesetPolicy? policy)
 {
     public IReadOnlyList<string> Check(string name, string json, CancellationToken cancellationToken)
     {
-        Changeset changeset;
-        try
-        {
-            changeset = Changeset.Parse(json);
-        }
-        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
-        {
-            return [$"{name} is not a readable changeset: {ex.Message}"];
-        }
+        var reading = Changeset.Read(json);
+        if (reading.Changeset is not { } changeset)
+            return [$"{name} is not a readable changeset: {string.Join("; ", reading.Errors)}"];
 
         var errors = (policy?.Check(json) ?? []).ToList();
         try

@@ -33,7 +33,10 @@ public sealed class ValidateChangesetTool
         "JSON to a file a script can read; the response is then only a digest of its counts, unless verbose is true. " +
         "Pass after, a list of {changesetPath, items}, to check this changeset against the document as it will stand once " +
         "those earlier changesets are applied, in order, in memory; nothing is written, and an earlier changeset that does " +
-        "not apply fails the run with its own errors.";
+        "not apply fails the run with its own errors. The changeset is first held to the changeset contract (describe_schemas, " +
+        "changeset): a shape it cannot read, or an unsupported schemaVersion, fails the run with errors naming each path, " +
+        "exactly as apply_changeset refuses it; each legacy shape it still reads is listed in warnings (migrate_changeset " +
+        "rewrites them).";
 
     public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithCardsJson;
     public static readonly string OutputSchemaJson = ChangesetToolSchemas.OutputSchemaWithPreviewJson;

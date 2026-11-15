@@ -1,26 +1,73 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "test-extend-ancestry",
   "newSources": [
-    { "xref": "@New4@", "ops": [
-      { "op": "createOrUpdateSource", "xref": "@New4@", "auth": "Test Family Search",
-        "title": "United States Census, 1900 (Harvey Test household)",
-        "url": "https://example.org/ark/1", "accessed": "2026-07-11" } ] }
+    {
+      "xref": "@New4@",
+      "ops": [
+        {
+          "op": "createOrUpdateSource",
+          "xref": "@New4@",
+          "auth": "Test Family Search",
+          "title": "United States Census, 1900 (Harvey Test household)",
+          "url": "https://example.org/ark/1",
+          "accessed": "2026-07-11"
+        }
+      ]
+    }
   ],
   "items": [
-    { "item": 1, "target": "@I00002@ Harvey -> add parents from 1900 census",
+    {
+      "item": 1,
+      "target": "@I00002@ Harvey -> add parents from 1900 census",
+      "people": [
+        {
+          "xref": "@New1@",
+          "name": "George /Test/",
+          "sex": "M"
+        },
+        {
+          "xref": "@New3@",
+          "name": "Martha /Test/",
+          "sex": "F"
+        }
+      ],
       "ops": [
-        { "op": "createOrUpdateParent", "person": "@I00002@", "role": "father",
-          "parent": { "xref": "@New1@", "name": "George /Test/", "sex": "M" },
+        {
+          "op": "createOrUpdateParent",
+          "person": "@I00002@",
+          "role": "father",
+          "parent": "@New1@",
           "family": "@New2@",
-          "citations": [ { "source": "@New4@", "page": "household 12",
-                           "dataText": "Harvey Test's Parents and Siblings: George Test (Father, M); Martha Test (Mother, F)", "quay": 2 } ] },
-        { "op": "createOrUpdateSpouse", "person": "@New1@",
-          "spouse": { "xref": "@New3@", "name": "Martha /Test/", "sex": "F" },
+          "familyCitations": [
+            {
+              "source": "@New4@",
+              "page": "household 12",
+              "dataText": "Harvey Test's Parents and Siblings: George Test (Father, M); Martha Test (Mother, F)",
+              "quay": 2
+            }
+          ]
+        },
+        {
+          "op": "createOrUpdateSpouse",
+          "person": "@New1@",
+          "spouse": "@New3@",
           "family": "@New2@",
-          "citations": [ { "source": "@New4@", "page": "household 12",
-                           "dataText": "Harvey Test's Parents and Siblings: George Test (Father, M); Martha Test (Mother, F)", "quay": 2 } ] },
-        { "op": "createOrUpdateNote", "record": "@I00002@",
-          "text": "1900 census (S00020) names both of Harvey's parents, extending this line one generation." }
-      ] }
+          "familyCitations": [
+            {
+              "source": "@New4@",
+              "page": "household 12",
+              "dataText": "Harvey Test's Parents and Siblings: George Test (Father, M); Martha Test (Mother, F)",
+              "quay": 2
+            }
+          ]
+        },
+        {
+          "op": "createOrUpdateNote",
+          "record": "@I00002@",
+          "text": "1900 census (S00020) names both of Harvey's parents, extending this line one generation."
+        }
+      ]
+    }
   ]
 }

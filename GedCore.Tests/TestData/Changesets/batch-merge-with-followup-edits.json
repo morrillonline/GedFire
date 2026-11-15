@@ -1,26 +1,77 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "test-merge-with-followups",
   "items": [
-    { "item": 1, "target": "@I00005@ / @I00006@ -> merge duplicate; correct death date; fix mother's name",
+    {
+      "item": 1,
+      "target": "@I00005@ / @I00006@ -> merge duplicate; correct death date; fix mother's name",
       "ops": [
-        { "op": "mergePerson", "survivor": "@I00005@", "duplicate": "@I00006@",
+        {
+          "op": "mergePerson",
+          "survivor": "@I00005@",
+          "duplicate": "@I00006@",
           "facts": [
-            { "fact": "NAME", "keep": "value", "value": "John Lorenzo Dow /Test/",
-              "citation": { "source": "@S00001@", "page": "p. 1",
-                            "dataText": "Name: John Lorenzo Dow Test", "quay": 2 } },
-            { "fact": "BIRT", "keep": "survivor",
-              "citation": { "source": "@S00001@", "page": "p. 1",
-                            "dataText": "birth confirmed", "quay": 2 } }
+            {
+              "fact": "NAME",
+              "keep": "value",
+              "value": "John Lorenzo Dow /Test/",
+              "citations": [
+                {
+                  "source": "@S00001@",
+                  "page": "p. 1",
+                  "dataText": "Name: John Lorenzo Dow Test",
+                  "quay": 2
+                }
+              ]
+            },
+            {
+              "fact": "BIRT",
+              "keep": "survivor",
+              "citations": [
+                {
+                  "source": "@S00001@",
+                  "page": "p. 1",
+                  "dataText": "birth confirmed",
+                  "quay": 2
+                }
+              ]
+            }
           ],
-          "note": "Merged the duplicate entry: a death record bridges the two entered names and confirms this is the same man." },
-        { "op": "createOrUpdateVital", "record": "@I00005@", "fact": "DEAT",
-          "value": { "date": "8 NOV 1998", "place": "Deering, New Hampshire" },
-          "citation": { "source": "@S00001@", "page": "p. 1",
-                        "dataText": "died 8 Nov 1998", "quay": 2 } },
-        { "op": "createOrUpdateVital", "record": "@I00003@", "fact": "NAME",
-          "value": "Nellie /Corrected/", "match": "Nellie /Test/",
-          "citation": { "source": "@S00001@", "page": "p. 1",
-                        "dataText": "mother's correct surname", "quay": 2 } }
-      ] }
+          "note": "Merged the duplicate entry: a death record bridges the two entered names and confirms this is the same man."
+        },
+        {
+          "op": "createOrUpdateVital",
+          "record": "@I00005@",
+          "fact": "DEAT",
+          "date": "8 NOV 1998",
+          "place": "Deering, New Hampshire",
+          "citations": [
+            {
+              "source": "@S00001@",
+              "page": "p. 1",
+              "dataText": "died 8 Nov 1998",
+              "quay": 2
+            }
+          ]
+        },
+        {
+          "op": "createOrUpdateVital",
+          "record": "@I00003@",
+          "fact": "NAME",
+          "value": "Nellie /Corrected/",
+          "match": {
+            "value": "Nellie /Test/"
+          },
+          "citations": [
+            {
+              "source": "@S00001@",
+              "page": "p. 1",
+              "dataText": "mother's correct surname",
+              "quay": 2
+            }
+          ]
+        }
+      ]
+    }
   ]
 }

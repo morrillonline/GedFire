@@ -1,10 +1,17 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-delete-vital",
   "items": [
     {
       "item": 1,
       "target": "@I00001@",
-      "ops": [ { "op": "deleteVital", "record": "@I00001@", "fact": "BIRT" } ]
+      "ops": [
+        {
+          "op": "deleteVital",
+          "record": "@I00001@",
+          "fact": "BIRT"
+        }
+      ]
     }
   ]
 }

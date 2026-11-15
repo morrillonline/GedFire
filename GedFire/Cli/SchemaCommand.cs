@@ -5,8 +5,8 @@ using GedFire.Schemas;
 namespace GedFire.Cli;
 
 // ---------------------------------------------------------------------------
-// Prints one published JSON Schema of the finding-file contract, or writes it
-// to a new file, so a caller can validate its files with any validator.
+// Prints one published JSON Schema, or writes it to a new file, so a caller
+// can validate its files with any validator.
 // ---------------------------------------------------------------------------
 
 public sealed class SchemaCommand : ICliCommand

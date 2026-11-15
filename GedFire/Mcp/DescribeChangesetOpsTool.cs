@@ -5,8 +5,8 @@ using ModelContextProtocol.Server;
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
-// The describe_changeset_ops MCP tool: returns the changeset envelope shape
-// and the full v2 op dialect catalog (see ChangesetOpsCatalog) so an agent
+// The describe_changeset_ops MCP tool: returns the changeset envelope shape,
+// its structures and the full op dialect catalog (see ChangesetOpsCatalog) so an agent
 // can compose a valid changeset for validate_changeset/apply_changeset
 // without external documentation or trial-and-error against error messages.
 // Pure static reference data -- no DocumentSession, no bound-file argument,
@@ -18,11 +18,13 @@ public sealed class DescribeChangesetOpsTool
     public const string ToolName = "describe_changeset_ops";
 
     public const string Description =
-        "Return the changeset file format that validate_changeset and apply_changeset both consume: the " +
-        "envelope shape (proposal/newSources/items) and every op in the v2 dialect (createOrUpdate/delete x " +
-        "Vital|Spouse|Child|Parent|Source|Citation|Note|Media, plus mergePerson), each with its required and " +
-        "optional fields and one worked example. Call this before composing a changeset from scratch, or " +
-        "whenever unsure which fields an op takes -- it is cheaper and more reliable than guessing and reading " +
+        "Return the changeset contract that validate_changeset and apply_changeset both consume and draft_changeset " +
+        "writes: the envelope (schemaVersion/proposal/newSources/items/findings), every structure an op or the " +
+        "envelope holds (citation, people entry, marriage, fact match…), and every op in the dialect (createOrUpdate/" +
+        "delete x Vital|Spouse|Child|Parent|Source|Citation|Note|Media, plus mergePerson), each with its required and " +
+        "optional fields and one worked example. Generated from the same table as the published changeset schema " +
+        "(describe_schemas, changeset), so the two cannot drift. Call this before composing a changeset from scratch, " +
+        "or whenever unsure which fields an op takes -- it is cheaper and more reliable than guessing and reading " +
         "validate_changeset's error text. Takes no arguments and never reads the bound document; the dialect " +
         "is the same for every gedfire mcp server.";
 
@@ -46,10 +48,25 @@ public sealed class DescribeChangesetOpsTool
               "additionalProperties": false,
               "description": "The changeset file's own wrapper, independent of any op.",
               "properties": {
+                "schemaVersion": { "type": "string", "description": "The contract version a changeset written today names in its schemaVersion." },
                 "description": { "type": "string" },
                 "example": { "description": "One complete, valid changeset file." }
               },
-              "required": ["description", "example"]
+              "required": ["schemaVersion", "description", "example"]
+            },
+            "structures": {
+              "type": "array",
+              "description": "Every object the envelope and the ops hold, by the name an op's field type gives.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "fields": { "$ref": "#/$defs/fields" }
+                },
+                "required": ["name", "description", "fields"]
+              }
             },
             "ops": {
               "type": "array",
@@ -62,27 +79,30 @@ public sealed class DescribeChangesetOpsTool
                   "verb": { "type": "string", "enum": ["createOrUpdate", "delete", "merge"] },
                   "noun": { "type": "string" },
                   "summary": { "type": "string", "description": "What this op does and its idempotency/no-op rule." },
-                  "fields": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "name": { "type": "string" },
-                        "type": { "type": "string" },
-                        "required": { "type": "boolean" },
-                        "description": { "type": "string" }
-                      },
-                      "required": ["name", "type", "required", "description"]
-                    }
-                  },
+                  "fields": { "$ref": "#/$defs/fields" },
                   "example": { "description": "One complete, valid op object for this \"op\" value." }
                 },
                 "required": ["op", "verb", "noun", "summary", "fields", "example"]
               }
             }
           },
-          "required": ["envelope", "ops"]
+          "required": ["envelope", "structures", "ops"],
+          "$defs": {
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string", "description": "string, integer, boolean, array of string, object (<structure>), array of <structure>, or array of op; an enumerated string lists its values." },
+                  "required": { "type": "boolean" },
+                  "description": { "type": "string" }
+                },
+                "required": ["name", "type", "required", "description"]
+              }
+            }
+          }
         }
         """;
 
@@ -104,7 +124,7 @@ public sealed class DescribeChangesetOpsTool
 
     static CallToolResult Execute()
     {
-        var result = new DescribeChangesetOpsResult(ChangesetOpsCatalog.Envelope, ChangesetOpsCatalog.Ops);
+        var result = new DescribeChangesetOpsResult(ChangesetOpsCatalog.Envelope, ChangesetOpsCatalog.Structures, ChangesetOpsCatalog.Ops);
         return CallToolResults.Success(result, CallToolResults.JsonOptions);
     }
 }

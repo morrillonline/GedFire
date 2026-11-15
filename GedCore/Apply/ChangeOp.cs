@@ -35,16 +35,17 @@ public abstract class ChangeOp
     /// </summary>
     internal virtual IEnumerable<string> CitedSources => [];
 
-    internal static ChangeOp ReadOp(JsonElement el)
+    /// <param name="people">The new people the op's item declares, by placeholder xref.</param>
+    internal static ChangeOp ReadOp(JsonElement el, IReadOnlyDictionary<string, PersonRef> people)
     {
         string kind = el.GetProperty("op").GetString()
                       ?? throw new JsonException("op kind missing");
         return kind switch
         {
             "createOrUpdateVital"    => CreateOrUpdateVitalOp.Read(el),
-            "createOrUpdateSpouse"   => CreateOrUpdateSpouseOp.Read(el),
-            "createOrUpdateChild"    => CreateOrUpdateChildOp.Read(el),
-            "createOrUpdateParent"   => CreateOrUpdateParentOp.Read(el),
+            "createOrUpdateSpouse"   => CreateOrUpdateSpouseOp.Read(el, people),
+            "createOrUpdateChild"    => CreateOrUpdateChildOp.Read(el, people),
+            "createOrUpdateParent"   => CreateOrUpdateParentOp.Read(el, people),
             "createOrUpdateSource"   => CreateOrUpdateSourceOp.Read(el),
             "createOrUpdateCitation" => CreateOrUpdateCitationOp.Read(el),
             "createOrUpdateNote"     => CreateOrUpdateNoteOp.Read(el),

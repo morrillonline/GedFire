@@ -11,6 +11,8 @@ namespace GedFire.Mcp;
 // copiedSources names the source used in place of each shared source an item
 // updated (a fresh copy, or an existing source that is exactly the updated one).
 // pointsPreview is set only by validate_changeset when the caller supplied cards.
+// warnings names each legacy shape the changeset was read from; the contract
+// will refuse them once it is enforced.
 // ---------------------------------------------------------------------------
 
 public sealed record ChangesetResult(
@@ -22,6 +24,8 @@ public sealed record ChangesetResult(
     Dictionary<string, string> CopiedSources,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PointsPreview? PointsPreview = null)
 {
+    public List<string> Warnings { get; init; } = [];
+
     /// <summary>The path the result was also written to when reportPath was given.</summary>
     public string? ReportWrittenTo { get; init; }
 }
@@ -35,6 +39,7 @@ public sealed record ChangesetRunDigest(
     bool Success,
     IReadOnlyList<int> Items,
     int ErrorCount,
+    int WarningCount,
     int LogCount,
     Dictionary<string, int> Deltas,
     int MintedXrefCount,
@@ -43,6 +48,6 @@ public sealed record ChangesetRunDigest(
 {
     /// <summary>The digest of <paramref name="result"/> after it was written to its report file.</summary>
     public static ChangesetRunDigest Of(ChangesetResult result, IReadOnlyList<int> items) =>
-        new(result.Success, items, result.Errors.Count, result.Log.Count, result.Deltas,
+        new(result.Success, items, result.Errors.Count, result.Warnings.Count, result.Log.Count, result.Deltas,
             result.MintedXrefs.Count, result.PointsPreview?.Total, result.ReportWrittenTo!);
 }

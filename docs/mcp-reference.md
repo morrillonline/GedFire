@@ -35,7 +35,8 @@ one tool's metadata. Neither opens a GEDCOM file.
 
 `call` accepts the tool's unchanged MCP arguments object from `--args <file>`
 or stdin with `--args -`; omitting `--args` supplies `{}`. All tools require
-`--input` except `date_calc`, `describe_changeset_ops`, `describe_schemas` and
+`--input` except `date_calc`, `describe_changeset_ops`, `describe_schemas`,
+`migrate_changeset` and
 `validate_finding`, which without `--input` checks every rule that needs no document. Tool names and JSON
 field names are case-sensitive. Relative paths, including paths inside the
 arguments object, resolve against the process's working directory.
@@ -395,10 +396,14 @@ with no draft or with `draftGaps` is not ready; it is an error only with
 
 `gedfire schema <name> [--out <file>]` prints a standalone JSON Schema (draft
 2020-12), and `describe_schemas` returns the same documents over MCP. The
-names are `finding`, `finding-file`, `record` and `argument`. Each schema
+names are `finding`, `finding-file`, `record`, `argument`, `changeset` (see
+[the changeset contract](#the-changeset-contract)), `cards` (the file
+`validate_changeset`'s `cardsPath` reads), `changeset-report` (the `reportPath`
+file of `validate_changeset` and `apply_changeset`) and `draft-report` (the
+`reportPath` file of `draft_changeset`). Each schema
 carries `$id` (`https://github.com/morrillonline/GedFire/schema/<name>/<major>`)
-and `"x-schemaVersion": "<major>.<minor>"`. The tool input schemas that accept
-these shapes are built from the same definitions.
+and `"x-schemaVersion": "<major>.<minor>"`. The tool input and output schemas
+that hold these shapes are built from the same definitions.
 
 - A new optional field or a new enum value bumps the minor version.
 - A removal, a rename, a new required field, or a tighter constraint bumps
@@ -409,7 +414,8 @@ Current versions: `finding` 3.0 (a biography note needs `cites`; 2.0
 tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.0 (embeds
 `finding` 3.0; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
-`persons[].xref`), and `argument` 1.0. A schema
+`persons[].xref`), `argument` 1.0, `changeset` 1.0, `cards` 1.0,
+`changeset-report` 1.0 and `draft-report` 1.0. A schema
 document states structure only. `validate_finding` is the full check. In its default
 strict mode, ajv rejects the `x-schemaVersion` annotation. Register it with
 `ajv.addKeyword("x-schemaVersion")`, or pass `--strict=false` to `ajv-cli`.
@@ -745,6 +751,59 @@ citations moved off a replaced fact in the same changeset.
 
 Points measure changes, not evidentiary reliability.
 
+## The changeset contract
+
+A changeset has one strict, versioned shape: the `changeset` schema
+(`gedfire schema changeset`). `describe_changeset_ops` is its readable guide;
+both are generated from the table the validator reads, so they cannot drift.
+`draft_changeset` writes only this form.
+
+- `schemaVersion` names the contract version the file is written to, now
+  `"1.0"`. `validate_changeset` and `apply_changeset` refuse a major version
+  they do not read.
+- Every object takes only the fields the contract defines: the envelope,
+  items, ops, and every nested object (`marriage`, `people` entries, facts,
+  citations, `newSources`, the findings table).
+- `citations` is always an array, wherever a citation can appear: an op, a
+  `marriage`, a new person's facts, and `mergePerson` resolutions. It cites the
+  fact or note the op writes. `createOrUpdateSpouse`, `createOrUpdateChild` and
+  `createOrUpdateParent` cite the family record in `familyCitations`; a
+  marriage's own citations sit in `marriage.citations`.
+- The fact's tag fixes its payload. NAME and SEX take `value`, a string. An
+  event (BIRT, DEAT, MARR, CENS, BURI, …) takes `date` and `place`. An
+  attribute whose payload is text (OCCU, RESI, EVEN, TITL, …) takes `value`,
+  `date` and `place`. A fact selector follows the same rule:
+  `"match": {"value"}` or `{"date", "place"}`.
+- A spouse, child or parent field holds only an xref: an existing person, or a
+  `@New…@` placeholder declared once in the item's `people`
+  (`{xref, name, sex?, facts?}`). An item that names a new person declares it,
+  even when another item creates it first.
+
+Changesets written before the contract still validate and apply exactly as
+before. Each legacy shape is reported in `warnings`, by path, for example
+`items[0].ops[0].citation: use citations, an array, for every citation`:
+a singular `citation`, a relationship op's `citation`/`citations`, an object
+`value`, a string `match`, an inline person object, a placeholder its item does
+not declare, a field the contract does not define, a `null` optional field, a
+value on an event or a date on a text fact, a date given as an attribute's value,
+and a missing `schemaVersion`. A shape that cannot be read is an error, and both tools refuse
+it identically: a field of the wrong type, a missing required field, an unknown
+op, `citation` beside `citations`, an object `value` beside `date` or `place`,
+an unsupported `schemaVersion`, and, in the new syntax, a `people` entry no op
+names, a `people` entry with a real xref, or one person declared twice. A later
+release raises the `changeset` major version and refuses every warning.
+
+`migrate_changeset {changesetPath, outPath, overwrite?}` rewrites a legacy
+changeset into the canonical form without changing what any op does: it adds
+`schemaVersion`, turns `citation` into `citations`, renames a relationship op's
+citations `familyCitations`, moves an object value's date and place beside it,
+turns a string match into `{"value": ...}`, moves each inline person into
+its item's `people`, and removes `null` optional fields. It refuses a file that gives both `citation` and
+`citations`, or describes one new person two ways (a later description may
+repeat the first, or omit its sex or facts, but not add to them), rather than choosing, and
+writes nothing then. `remaining` lists what no rule can fix, such as a
+misspelled field. It never reads or writes the GEDCOM document.
+
 ## Changeset application
 
 `validate_changeset(changesetPath, items)` previews the selected operations.
@@ -806,10 +865,11 @@ Calling apply does not prove that anyone approved the selected items; see
 `reportPath`. It saves the full result as UTF-8 indented JSON, including
 `reportWrittenTo`, and quiets the tool response to a digest: a draft reports
 each item's number, target, and op count plus its errors and decisions counted
-by kind; a validation or apply reports the selected items, pass/fail, error and
-log counts, deltas, the minted-xref count, and — with cards — the points
+by kind; a validation or apply reports the selected items, pass/fail, error,
+warning and log counts, deltas, the minted-xref count, and — with cards — the points
 preview total. Scripts read the file for the full result; `verbose: true`
-returns it inline as well.
+returns it inline as well. The saved files follow the `changeset-report` and
+`draft-report` schemas.
 
 The parent folder must exist. Existing files require `overwrite: true`.
 A draft's `outPath` and `reportPath` must differ. GedFire checks these paths

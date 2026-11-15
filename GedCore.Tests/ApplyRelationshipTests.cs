@@ -564,4 +564,43 @@ public class ApplyRelationshipTests : ApplyTestBase
         Assert.Empty(doc.ByXref["@I00003@"].ChildrenByTag("FAMS"));
         Assert.True(doc.ByXref.ContainsKey("@F00001@"));   // father + child remain
     }
+
+    [Fact]
+    public void Spouse_FamilyCitationsCiteTheFamily_AndMarriageCitationsCiteTheMarriage()
+    {
+        WriteBaseFile();
+
+        var result = RunExpectSuccess("""
+            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateSpouse", "person": "@I00002@", "spouse": "@I00003@", "family": "@F00001@",
+                "marriage": { "date": "1922", "citations": [ { "source": "@S00001@", "page": "marriage", "quay": 2 } ] },
+                "familyCitations": [ { "source": "@S00001@", "page": "household", "quay": 2 } ] } ] } ] }
+            """);
+
+        var family = ReadDoc().ByXref["@F00001@"];
+        Assert.Equal(["household"], family.ChildrenByTag("SOUR").Select(s => s.FirstChild("PAGE")!.Value));
+        Assert.Equal(["marriage"], family.FirstChild("MARR")!.ChildrenByTag("SOUR").Select(s => s.FirstChild("PAGE")!.Value));
+    }
+
+    [Fact]
+    public void ANewPersonDeclaredInPeople_IsCreatedOnceAndLinkedWhereverAnOpNamesThem()
+    {
+        WriteBaseFile();
+
+        var result = RunExpectSuccess("""
+            { "schemaVersion": "1.0", "items": [ { "item": 1,
+              "people": [ { "xref": "@NewI1@", "name": "Ada /Quill/", "sex": "F",
+                            "facts": [ { "fact": "BIRT", "date": "1930", "citations": [ { "source": "@S00001@", "page": "p. 3", "quay": 2 } ] } ] } ],
+              "ops": [
+                { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@NewI1@", "family": "@NewF1@" },
+                { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother", "parent": "@NewI1@", "family": "@NewF2@" } ] } ] }
+            """);
+
+        var doc = ReadDoc();
+        var ada = doc.ByXref[result.MintedXrefs["@NewI1@"]];
+        Assert.Equal("Ada /Quill/", ada.FirstChild("NAME")!.Value);
+        Assert.Equal("1930", ada.FirstChild("BIRT")!.FirstChild("DATE")!.Value);
+        Assert.Equal(2, ada.ChildrenByTag("FAMS").Count());
+        Assert.Single(doc.Records, r => r.FirstChild("NAME")?.Value == "Ada /Quill/");
+    }
 }

@@ -15,7 +15,7 @@ internal sealed class LowQuayNoteRule(int maxQuay, string notePrefix) : IPolicyR
 
     IEnumerable<string> ItemViolations(PolicyItem item)
     {
-        var owners = item.Ops.SelectMany(Owners).ToList();
+        var owners = item.Ops.SelectMany(Owners).Concat(item.People.SelectMany(PersonFacts)).ToList();
         if (owners.Count == 0) yield break;
 
         var notes = item.Ops
@@ -57,10 +57,13 @@ internal sealed class LowQuayNoteRule(int maxQuay, string notePrefix) : IPolicyR
         }
     }
 
-    IEnumerable<Owner> InlineFacts(JsonElement op, string key)
+    // A new person's facts: declared in the item's people, or described inline by a legacy op.
+    IEnumerable<Owner> InlineFacts(JsonElement op, string key) =>
+        OpJson.Property(op, key) is { ValueKind: JsonValueKind.Object } person ? PersonFacts(person) : [];
+
+    IEnumerable<Owner> PersonFacts(JsonElement person)
     {
-        if (OpJson.Property(op, key) is not { ValueKind: JsonValueKind.Object } person
-            || OpJson.Property(person, "facts") is not { ValueKind: JsonValueKind.Array } facts) yield break;
+        if (OpJson.Property(person, "facts") is not { ValueKind: JsonValueKind.Array } facts) yield break;
 
         string name = OpJson.String(person, "name") ?? "";
         string given = name.Replace("/", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";

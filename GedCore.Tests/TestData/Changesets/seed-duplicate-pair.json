@@ -1,12 +1,63 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "fixture-seed-duplicate-pair",
   "items": [
     {
       "item": 1,
       "target": "@New2@ and @New4@",
+      "people": [
+        {
+          "xref": "@New2@",
+          "name": "Duplicate /Person/",
+          "sex": "M",
+          "facts": [
+            {
+              "fact": "BIRT",
+              "date": "1846",
+              "citations": [
+                {
+                  "source": "@S00001@",
+                  "page": "a",
+                  "dataText": "born 1846",
+                  "quay": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "xref": "@New4@",
+          "name": "Duplicate /Twin/",
+          "sex": "M",
+          "facts": [
+            {
+              "fact": "BIRT",
+              "date": "1849",
+              "citations": [
+                {
+                  "source": "@S00001@",
+                  "page": "b",
+                  "dataText": "born abt 1849",
+                  "quay": 1
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "ops": [
-        { "op": "createOrUpdateChild", "family": "@New1@", "husb": "@I00002@", "child": { "xref": "@New2@", "name": "Duplicate /Person/", "sex": "M", "facts": [ { "fact": "BIRT", "value": { "date": "1846" }, "citation": { "source": "@S00001@", "page": "a", "dataText": "born 1846", "quay": 1 } } ] } },
-        { "op": "createOrUpdateChild", "family": "@New3@", "husb": "@I00002@", "child": { "xref": "@New4@", "name": "Duplicate /Twin/", "sex": "M", "facts": [ { "fact": "BIRT", "value": { "date": "1849" }, "citation": { "source": "@S00001@", "page": "b", "dataText": "born abt 1849", "quay": 1 } } ] } }
+        {
+          "op": "createOrUpdateChild",
+          "family": "@New1@",
+          "husb": "@I00002@",
+          "child": "@New2@"
+        },
+        {
+          "op": "createOrUpdateChild",
+          "family": "@New3@",
+          "husb": "@I00002@",
+          "child": "@New4@"
+        }
       ]
     }
   ]

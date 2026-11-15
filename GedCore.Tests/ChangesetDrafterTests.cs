@@ -52,7 +52,7 @@ public class ChangesetDrafterTests
         Assert.Equal(1, groups.GetArrayLength());
         Assert.Equal("@NewSource1@", groups[0].GetProperty("xref").GetString());
         Assert.All(Ops(result).Where(o => o.GetProperty("op").GetString() == "createOrUpdateVital"),
-            o => Assert.Equal("@NewSource1@", o.GetProperty("citation").GetProperty("source").GetString()));
+            o => Assert.Equal("@NewSource1@", o.GetProperty("citations")[0].GetProperty("source").GetString()));
         Assert.Single(result.Decisions, d => d.Kind == "minted-source");
     }
 
@@ -65,7 +65,7 @@ public class ChangesetDrafterTests
             [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)])]);
 
         Assert.False(Json(result).TryGetProperty("newSources", out _));
-        Assert.Equal("@S00007@", Ops(result)[0].GetProperty("citation").GetProperty("source").GetString());
+        Assert.Equal("@S00007@", Ops(result)[0].GetProperty("citations")[0].GetProperty("source").GetString());
         Assert.Single(result.Decisions, d => d.Kind == "reused-source" && d.Detail.Contains("@S00007@"));
     }
 
@@ -81,7 +81,7 @@ public class ChangesetDrafterTests
             [Finding("F-1", Collection("Find a Grave - Harry Morrill"), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)])]);
 
         Assert.False(Json(result).TryGetProperty("newSources", out _));
-        Assert.Equal("@S00007@", Ops(result)[0].GetProperty("citation").GetProperty("source").GetString());
+        Assert.Equal("@S00007@", Ops(result)[0].GetProperty("citations")[0].GetProperty("source").GetString());
         Assert.Equal("title \"Find a Grave - Harry Morrill\" → reusing @S00007@", Assert.Single(result.Decisions, d => d.Kind == "reused-source").Detail);
     }
 
@@ -93,7 +93,7 @@ public class ChangesetDrafterTests
         var result = new ChangesetDrafter(lookup).Draft(
             [Finding("F-1", Collection("Ancestry - Family Trees"), "x", [Fact("DEAT", "1 JAN 1900", "Salem", 2)])]);
 
-        Assert.Equal("@S1@", Ops(result)[0].GetProperty("citation").GetProperty("source").GetString());
+        Assert.Equal("@S1@", Ops(result)[0].GetProperty("citations")[0].GetProperty("source").GetString());
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class ChangesetDrafterTests
         var groups = Json(result).GetProperty("newSources");
         Assert.Equal(1, groups.GetArrayLength());
         Assert.Equal("Find a Grave Index", groups[0].GetProperty("ops")[0].GetProperty("title").GetString());
-        Assert.All(Ops(result), o => Assert.Equal("@NewSource1@", o.GetProperty("citation").GetProperty("source").GetString()));
+        Assert.All(Ops(result), o => Assert.Equal("@NewSource1@", o.GetProperty("citations")[0].GetProperty("source").GetString()));
         Assert.Equal(2, result.Decisions.Count(d => d.Kind == "minted-source" && d.Detail.Contains("→ minting new source @NewSource1@")));
     }
 
@@ -210,7 +210,7 @@ public class ChangesetDrafterTests
         var result = new ChangesetDrafter(new FakeLookup()).Draft(
             [Finding("F-1", Memorial(locator), "x", [Fact("DEAT", "26 MAR 2013", null, 2)])]);
 
-        Assert.Equal(locator, Ops(result)[0].GetProperty("citation").GetProperty("page").GetString());
+        Assert.Equal(locator, Ops(result)[0].GetProperty("citations")[0].GetProperty("page").GetString());
     }
 
     [Fact]
@@ -221,7 +221,7 @@ public class ChangesetDrafterTests
                 Fact("DEAT", "1 JAN 1900", null, 2, excerpt: "DEATH 1 Jan 1900"),
                 Fact("BURI", null, "Salem Cemetery", 2, excerpt: "BURIAL Salem Cemetery")])]);
 
-        var citations = Ops(result).Select(o => o.GetProperty("citation").GetProperty("dataText").GetString()).ToList();
+        var citations = Ops(result).Select(o => o.GetProperty("citations")[0].GetProperty("dataText").GetString()).ToList();
         Assert.Equal(2, citations.Count);
         Assert.All(citations, t => Assert.Equal("DEATH 1 Jan 1900 … BURIAL Salem Cemetery", t));
         Assert.Single(result.Decisions, d => d.Kind == "merged-citation");
@@ -237,7 +237,7 @@ public class ChangesetDrafterTests
 
         var vitals = Ops(result).Where(o => o.GetProperty("op").GetString() == "createOrUpdateVital").ToList();
         Assert.Equal(["DEATH 1 Jan 1900", "BIRTH 1 Jan 1850"],
-            vitals.Select(v => v.GetProperty("citation").GetProperty("dataText").GetString()));
+            vitals.Select(v => v.GetProperty("citations")[0].GetProperty("dataText").GetString()));
     }
 
     [Fact]
@@ -246,7 +246,7 @@ public class ChangesetDrafterTests
         var result = new ChangesetDrafter(new FakeLookup()).Draft(
             [Finding("F-1", Memorial(), "x", [Fact("DEAT", "26 Mar 2013", null, 2)])]);
 
-        Assert.Equal("26 MAR 2013", Ops(result)[0].GetProperty("value").GetProperty("date").GetString());
+        Assert.Equal("26 MAR 2013", Ops(result)[0].GetProperty("date").GetString());
     }
 
     [Fact]
@@ -535,7 +535,7 @@ public class ChangesetDrafterTests
         var result = new ChangesetDrafter(lookup).Draft(
             [Finding("F-1", Memorial("Memorial #1"), "x", [Fact("DEAT", "1 JAN 1900", null, 2)])]);
 
-        Assert.True(Ops(result)[0].TryGetProperty("citation", out _));
+        Assert.True(Ops(result)[0].TryGetProperty("citations", out _));
         Assert.DoesNotContain(result.Decisions, d => d.Kind == "kept-citation");
     }
 
@@ -795,7 +795,7 @@ public class ChangesetDrafterTests
         var result = new ChangesetDrafter(new FakeLookup()).Draft([Finding("F-1", Memorial(), "x", facts)]);
 
         var ops = Ops(result);
-        Assert.Equal(["1900", "1910", "1920"], ops.Select(o => o.GetProperty("value").GetProperty("date").GetString()));
+        Assert.Equal(["1900", "1910", "1920"], ops.Select(o => o.GetProperty("date").GetString()));
         Assert.All(ops, o => Assert.Equal("add", o.GetProperty("mode").GetString()));
         Assert.DoesNotContain(result.Decisions, d => d.Kind == "open");
     }
@@ -819,7 +819,7 @@ public class ChangesetDrafterTests
 
         var op = Ops(result)[0];
         Assert.Equal("01 JUN 1900", op.GetProperty("match").GetProperty("date").GetString());
-        Assert.Equal("01 JUN 1900", op.GetProperty("value").GetProperty("date").GetString());
+        Assert.Equal("01 JUN 1900", op.GetProperty("date").GetString());
         Assert.False(op.TryGetProperty("mode", out _));
     }
 

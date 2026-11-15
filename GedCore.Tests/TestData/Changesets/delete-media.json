@@ -1,9 +1,17 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-delete-media",
   "newSources": [],
   "items": [
-    { "item": 1, "target": "@M00001@", "ops": [
-      { "op": "deleteMedia", "xref": "@M00001@" }
-    ] }
+    {
+      "item": 1,
+      "target": "@M00001@",
+      "ops": [
+        {
+          "op": "deleteMedia",
+          "xref": "@M00001@"
+        }
+      ]
+    }
   ]
 }
