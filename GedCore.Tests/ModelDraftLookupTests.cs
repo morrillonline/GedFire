@@ -104,4 +104,15 @@ public class ModelDraftLookupTests
         Assert.Equal(["A note."], Lookup().NotesOn("@I1@"));
         Assert.Empty(Lookup().NotesOn("@I2@"));
     }
+
+    [Fact]
+    public void NotesOn_ReturnsAFamilysNoteTexts()
+    {
+        var model = new GedModel();
+        var family = new GedFamily { Xref = "@F1@" };
+        family.NarrativeNotes.Add(new GedNarrativeNote { Text = "A family note." });
+        model.Families["@F1@"] = family;
+
+        Assert.Equal(["A family note."], new ModelDraftLookup(model).NotesOn("@F1@"));
+    }
 }

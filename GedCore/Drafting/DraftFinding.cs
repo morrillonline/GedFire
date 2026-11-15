@@ -38,13 +38,22 @@ public sealed record DraftSubstructure(string Tag, string Value);
 /// <summary>
 /// A note the author wrote. <see cref="Match"/> is the exact text of an existing note to rewrite;
 /// <see cref="Cites"/> attach citations of findings in the same draft; <see cref="Purpose"/> "biography"
-/// marks a person's note as cited biographical prose.
+/// marks a person's note as cited biographical prose. A note with <see cref="Withdraw"/> deletes the held note
+/// <see cref="Match"/> names and has no text of its own.
 /// </summary>
 public sealed record DraftNote(string Record, string Text)
 {
     public string? Match { get; init; }
     public IReadOnlyList<DraftNoteCitation> Cites { get; init; } = [];
     public string? Purpose { get; init; }
+
+    /// <summary>The author's reason for deleting the note <see cref="Match"/> names; nothing replaces it.</summary>
+    public string? Withdraw { get; init; }
+
+    public bool IsWithdrawal => Withdraw is not null;
+
+    public static DraftNote Withdrawal(string record, string match, string reason) =>
+        new(record, "") { Match = match, Withdraw = reason };
 }
 
 /// <summary>A citation on a note: the finding it cites (the note's own when null), graded on its own, optionally with a narrower extract.</summary>

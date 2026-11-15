@@ -221,7 +221,8 @@ changeset`; `describe_changeset_ops` is the readable guide). Each names its
 family in `familyCitations`; a fact gives `value`, or `date` and `place`, as
 its tag requires; and new people are declared once in the item's `people`.
 Validation still reads changesets written before the contract and lists each
-legacy shape as a warning; `migrate_changeset` rewrites them.
+legacy shape as a warning; redraft such a changeset from its finding with
+`draft_changeset`.
 
 Findings saved to disk follow GedFire's versioned finding-file schema
 (`gedfire schema finding-file`). It holds the draft entry, the identity argument,
@@ -262,12 +263,8 @@ different file or provider.
 |---|---|
 | `get_document_stats` | Report person and family counts, GEDCOM version, and GedFire version. |
 | `find_person` | Rank name matches with optional birth, death, parent, and marriage hints. |
-| `find_family` | Find a person through a named spouse, parent, or child. |
-| `find_source` | Find existing sources by title, author, or URL. |
 | `get_record` | Fetch a person, family, or source with citations and optional source text. |
 | `get_records` | Fetch several records at once, optionally selecting fields. |
-| `list_people` | Page through people in stable surname/name/xref order. |
-| `list_unanchored_people` | Find people with no dated or placed anchors of their own or through immediate kin. |
 | `match_record` | Compare a multi-person record with tree families and survey same-name rivals. |
 | `research_brief` | Summarize a person's facts, kin, gaps, notes, duplicates, and plausibility issues. |
 | `select_targets` | Draw people with research gaps, or score specified people, returning every card that pays for each, including a man's repeatable Biography card. |
@@ -276,7 +273,6 @@ different file or provider.
 | `describe_schemas` | Return the versioned JSON Schemas of the finding-file and changeset contracts, cards, and saved reports. |
 | `validate_finding` | Check finding files for shape, readiness, and xref bindings without drafting. |
 | `draft_changeset` | Compile findings into cited changesets and report unresolved decisions. |
-| `migrate_changeset` | Rewrite a changeset written before the changeset contract into its canonical form. |
 | `draft_package` | Write a review proposal from finished changesets. |
 | `validate_changeset` | Preview selected edits, optionally after earlier changesets, enforce policy, and optionally score gap closures. |
 | `check_plausibility` | Report chronological and biological issues the edits would introduce, optionally after earlier changesets. |
@@ -406,8 +402,8 @@ errors or failed validation/plausibility checks.
 
 `--policy`, `--read-only`, and `--enforce-privacy` have the same meaning as on
 `mcp`. Read-only prevents GEDCOM changes, not separate draft or report files.
-Discovery needs no GEDCOM. Calls to `date_calc`, `describe_changeset_ops`,
-`describe_schemas` and `migrate_changeset` need no `--input`. Without `--input`, `validate_finding`
+Discovery needs no GEDCOM. Calls to `date_calc`, `describe_changeset_ops` and
+`describe_schemas` need no `--input`. Without `--input`, `validate_finding`
 checks every rule that needs no document. Existing convenience commands remain unchanged. See the
 [script interface](docs/mcp-reference.md#command-line-tool-interface) for output details.
 

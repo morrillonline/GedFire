@@ -392,6 +392,31 @@ public class DraftFindingReaderTests
     }
 
     [Fact]
+    public void AWithdrawnNote_IsReadWithItsMatchAndReason()
+    {
+        var note = Valid.Replace("\"text\": \"A note.\"", "\"match\": \"Old.\", \"withdraw\": \"a duplicate\"");
+        var (findings, errors) = Read($"[{note}]");
+
+        Assert.Empty(errors);
+        var read = findings[0].Notes[0];
+        Assert.True(read.IsWithdrawal);
+        Assert.Equal("Old.", read.Match);
+        Assert.Equal("a duplicate", read.Withdraw);
+    }
+
+    [Theory]
+    [InlineData("\"withdraw\": \"a duplicate\"", "findings[0].notes[0].match is required")]
+    [InlineData("\"match\": \"Old.\", \"withdraw\": \"a duplicate\", \"text\": \"New.\"", "findings[0].notes[0].withdraw deletes the note match names")]
+    [InlineData("\"match\": \"Old.\", \"withdraw\": \"a duplicate\", \"cites\": [ { \"quay\": 2 } ]", "findings[0].notes[0].withdraw deletes the note match names")]
+    [InlineData("\"match\": \"Old.\"", "findings[0].notes[0].text is required")]
+    public void AWithdrawnNoteNeedsAMatchAndNothingElse(string fields, string error)
+    {
+        var note = Valid.Replace("\"text\": \"A note.\"", fields);
+
+        Assert.StartsWith(error, Assert.Single(Read($"[{note}]").Errors));
+    }
+
+    [Fact]
     public void ARelationExcerpt_IsRead()
     {
         var (findings, errors) = Read($"[{WithRelations.Replace("\"quay\": 2 }", "\"quay\": 2, \"excerpt\": \"Mary 35\" }")}]");

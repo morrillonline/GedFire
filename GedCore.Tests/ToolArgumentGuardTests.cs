@@ -1,5 +1,4 @@
 using System.Text.Json;
-using GedCore.Matching;
 using GedFire.Mcp;
 
 namespace GedCore.Tests;
@@ -23,7 +22,7 @@ public class ToolArgumentGuardTests : IDisposable
         new SelectTargetsTool(_sessions.Open(Ged), new ToolGate()).ToMcpServerTool(),
         new DateCalcTool(new ToolGate()).ToMcpServerTool(),
         new GetDocumentStatsTool(_sessions.Open(Ged), new ToolGate()).ToMcpServerTool(),
-        new FindFamilyTool(_sessions.Open(Ged), new ToolGate(), NicknameDirectory.LoadEmbedded()).ToMcpServerTool(),
+        new DraftPackageTool("synthetic.ged", new ToolGate()).ToMcpServerTool(),
     ]);
 
     static Dictionary<string, JsonElement> Args(string json) =>
@@ -48,9 +47,9 @@ public class ToolArgumentGuardTests : IDisposable
     [Fact]
     public void Check_EveryMissingRequiredParameter_IsNamed()
     {
-        string? error = Guard().Check("find_family", Args("{}"));
+        string? error = Guard().Check("draft_package", Args("{}"));
 
-        Assert.Contains("missing required parameters \"relation\", \"name\"", error);
+        Assert.Contains("missing required parameters \"changesetPaths\", \"folder\", \"proposal\"", error);
     }
 
     [Fact]
@@ -114,7 +113,7 @@ public class ToolArgumentGuardTests : IDisposable
     [Fact]
     public void Check_NullArgumentsOnAToolWithRequiredParameters_ReportsThemMissing()
     {
-        Assert.Contains("missing required parameters \"relation\", \"name\"", Guard().Check("find_family", null));
+        Assert.Contains("missing required parameters \"changesetPaths\", \"folder\", \"proposal\"", Guard().Check("draft_package", null));
     }
 
     [Fact]

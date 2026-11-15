@@ -45,7 +45,7 @@ internal sealed class VerificationNotePlanner(
         foreach (var op in UpdateStaleNotes(record, name, held, toWrite.Count > 0, findings, decisions)) yield return op;
         if (due.Count == 0) yield break;
 
-        if (authorNotes.Any(n => n.Record == record && n.Text.Contains(rule.NotePrefix, StringComparison.OrdinalIgnoreCase)))
+        if (authorNotes.Any(n => n.Record == record && !n.IsWithdrawal && n.Text.Contains(rule.NotePrefix, StringComparison.OrdinalIgnoreCase)))
         {
             decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote, $"the author's own note on {record} already names the low-graded facts", findings));
             yield break;

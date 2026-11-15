@@ -46,8 +46,8 @@ public static class ChangesetOpsCatalog
         "field names a person only by xref. \"citations\" is always an array and cites the fact or note the op writes; " +
         "a relationship op cites the family record in \"familyCitations\". A fact takes \"value\" (a string) or " +
         "\"date\" and \"place\" as its tag fixes: NAME and SEX take value, an event such as BIRT takes date and place, " +
-        "an attribute such as OCCU or RESI takes all three. Run migrate_changeset to rewrite a changeset written before " +
-        "the contract.",
+        "        an attribute such as OCCU or RESI takes all three. Redraft a changeset written before the contract from its " +
+                "finding with draft_changeset.",
         Ex($$"""
             {
               "schemaVersion": "{{ChangesetDialect.SchemaVersion}}",

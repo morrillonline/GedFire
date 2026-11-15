@@ -34,7 +34,9 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
                 s.GlobalSource!.Xref, NullIfEmpty(s.Page), NullIfEmpty(s.DataText), s.Quay, NullIfEmpty(s.GlobalSource.Title)))];
 
     public IReadOnlyList<string> NotesOn(string record) =>
-        model.Individuals.TryGetValue(record, out var person) ? [.. person.NarrativeNotes.Select(n => n.Text)] : [];
+        model.Individuals.TryGetValue(record, out var person) ? [.. person.NarrativeNotes.Select(n => n.Text)]
+        : model.Families.TryGetValue(record, out var family) ? [.. family.NarrativeNotes.Select(n => n.Text)]
+        : [];
 
     public bool? IsChildOf(string child, string family) =>
         model.Families.TryGetValue(family, out var fam) && model.Individuals.ContainsKey(child)

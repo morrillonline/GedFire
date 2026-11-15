@@ -44,10 +44,10 @@ public static class SchemaCatalog
     public const string ChangesetReportName = "changeset-report";
     public const string DraftReportName = "draft-report";
 
-    public static readonly PublishedSchema Finding = new(FindingName, "3.0", "GedFire finding", () => Parse(FindingSchemas.FindingJson));
+    public static readonly PublishedSchema Finding = new(FindingName, "3.1", "GedFire finding", () => Parse(FindingSchemas.FindingJson));
     public static readonly PublishedSchema Record = new(RecordName, "1.2", "GedFire record", () => Parse(FindingSchemas.RecordJson));
     public static readonly PublishedSchema Argument = new(ArgumentName, "1.0", "GedFire identity argument", () => Parse(FindingSchemas.ArgumentJson));
-    public static readonly PublishedSchema FindingFile = new(FindingFileName, "3.0", "GedFire finding file", FindingFileBody);
+    public static readonly PublishedSchema FindingFile = new(FindingFileName, "3.1", "GedFire finding file", FindingFileBody);
 
     // The changeset schema's version is the contract version a changeset's schemaVersion names.
     public static readonly PublishedSchema Changeset = new(ChangesetName, ChangesetDialect.SchemaVersion, "GedFire changeset", ChangesetSchemas.Changeset);

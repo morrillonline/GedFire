@@ -4,8 +4,7 @@ namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
 // Checks find_person's hints once they are typed: nothing empty or blank, years
-// in range, and no unrecognized property at any level. Shared with find_family,
-// which accepts the same birth and death hints.
+// in range, and no unrecognized property at any level.
 // ---------------------------------------------------------------------------
 
 public static class FindPersonHintsValidator
