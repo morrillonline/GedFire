@@ -212,6 +212,45 @@ public class ChangesetMcpToolTests : IDisposable
         Assert.Equal(before, File.ReadAllBytes(gedPath));
     }
 
+    const string GarbledNoteChangeset = """
+        { "items": [
+          { "item": 1, "ops": [ { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Born at Łódź; married in Århus." } ] },
+          { "item": 2, "ops": [ { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Lived at the CafÃ© Lefèvre." } ] } ] }
+        """;
+
+    [Fact]
+    public async Task ValidateAndApply_RefuseGarbledText_NamingItsItemAndPath()
+    {
+        string gedPath = WriteGed();
+        byte[] before = File.ReadAllBytes(gedPath);
+        string changesetPath = WriteChangeset(GarbledNoteChangeset);
+
+        var validated = StructuredContent(await new ValidateChangesetTool(gedPath, new ToolGate()).HandleAsync(changesetPath, "all", CancellationToken.None));
+        var applied = StructuredContent(await new ApplyChangesetTool(gedPath, new ToolGate(), readOnly: false).HandleAsync(changesetPath, "all", CancellationToken.None));
+
+        foreach (var result in new[] { validated, applied })
+        {
+            Assert.False(result.GetProperty("success").GetBoolean());
+            Assert.Equal(
+                "item 2: ops[0].text has garbled characters \"Ã©\" (UTF-8 text misread as Windows-1252); it should read \"é\".",
+                Assert.Single(result.GetProperty("errors").EnumerateArray()).GetString());
+        }
+        Assert.Equal(before, File.ReadAllBytes(gedPath));
+    }
+
+    [Fact]
+    public async Task ApplyChangeset_ForeignTextInAnExcludedGarbledChangeset_IsApplied()
+    {
+        string gedPath = WriteGed();
+        string changesetPath = WriteChangeset(GarbledNoteChangeset);
+
+        var applied = StructuredContent(await new ApplyChangesetTool(gedPath, new ToolGate(), readOnly: false).HandleAsync(changesetPath, "1", CancellationToken.None));
+
+        Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+        Assert.Equal("Born at Łódź; married in Århus.",
+            Ged70Parser.ReadFile(gedPath).ByXref["@I00001@"].ChildrenByTag("NOTE").Single().Value);
+    }
+
     const string MarriageOnPersonChangeset = """
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "MARR", "date": "4 MAY 1901" } ] } ] }

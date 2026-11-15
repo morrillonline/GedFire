@@ -154,6 +154,7 @@ public static class ChangesetApplier
         }
         foreach (var item in selectedItems)
             SharedSourceCopier.ValidateItem(doc, item, result.Errors);
+        result.Errors.AddRange(usedSources.SelectMany(g => g.TextErrors).Concat(selectedItems.SelectMany(i => i.TextErrors)));
         if (result.Errors.Count > 0) return result;
 
         // New-person duplicate detection runs after every op's own Validate,
