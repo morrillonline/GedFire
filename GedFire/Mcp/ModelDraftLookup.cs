@@ -1,3 +1,4 @@
+using GedCore.Apply;
 using GedCore.Drafting;
 using GedFire.Gen;
 
@@ -47,6 +48,26 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
         model.Individuals.TryGetValue(partner, out var person)
             ? [.. person.FamSpouse.Where(f => f.SpouseOf(person)?.Xref == otherPartner).Select(f => f.Xref).Distinct().Order(StringComparer.Ordinal)]
             : [];
+
+    public Relative? Person(string xref) => model.Individuals.TryGetValue(xref, out var person) ? AsRelative(person) : null;
+
+    public IReadOnlyList<string> FamiliesAsChild(string person) =>
+        model.Individuals.TryGetValue(person, out var indi) && indi.FamChild is { } family ? [family.Xref] : [];
+
+    public IReadOnlyList<string> FamiliesAsPartner(string person) =>
+        model.Individuals.TryGetValue(person, out var indi) ? [.. indi.FamSpouse.Select(f => f.Xref)] : [];
+
+    public Relative? Partner(string family, string tag) =>
+        model.Families.TryGetValue(family, out var fam) && (tag == "HUSB" ? fam.Husband : fam.Wife) is { } partner
+            ? AsRelative(partner)
+            : null;
+
+    public IReadOnlyList<Relative> Children(string family) =>
+        model.Families.TryGetValue(family, out var fam) ? [.. fam.Children.Select(AsRelative)] : [];
+
+    // The model keeps the name in parts; rejoined in GEDCOM form so the surname stays marked.
+    static Relative AsRelative(GedIndividual person) =>
+        new(person.Xref, $"{string.Join(' ', new[] { person.FirstName, person.MiddleName }.Where(p => p.Length > 0))} /{person.LastNameRaw}/");
 
     IEnumerable<GedEvent> EventsOf(string record, string tag)
     {

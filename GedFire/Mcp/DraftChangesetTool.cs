@@ -40,7 +40,9 @@ public sealed class DraftChangesetTool
         "the finding's citation. NAME facts may correct the target or people bound by existingPeople or relations; " +
         "a fact's record alone is not a binding. Surname changes require allowSurnameChange=true. NAME corrections " +
         "preserve the previous name and move its citations to a plain-sentence note, never dropping them. Relations use " +
-        "the finding's citation. A note may rewrite an existing note (match), delete it (match and withdraw, a reason), " +
+        "the finding's citation. A new parent, spouse or child is refused when the person it attaches to already has a " +
+        "parent in that role, or a spouse or child of an agreeing name; the error names that relative's xref, to use in " +
+        "place of the placeholder or to list in the relation's notDuplicateOf. A note may rewrite an existing note (match), delete it (match and withdraw, a reason), " +
         "and cite findings of its item (cites); " +
         "a biography note must cite at least one; " +
         "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +

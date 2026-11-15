@@ -391,12 +391,14 @@ that hold these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-Current versions: `finding` 3.1 (a note may `withdraw` the note its `match`
-names; 3.0 required `cites` on a biography note; 2.0
-tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.1 (embeds
-`finding` 3.1; 2.0 refused unknown keys and a mismatched `draft.id`),
+Current versions: `finding` 3.2 (a parent relation takes `notDuplicateOf`;
+3.1 let a note `withdraw` the note its `match` names; 3.0 required `cites` on
+a biography note; 2.0
+tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.2 (embeds
+`finding` 3.2; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
-`persons[].xref`), `argument` 1.0, `changeset` 1.0, `cards` 1.0,
+`persons[].xref`), `argument` 1.0, `changeset` 1.1 (`createOrUpdateParent`
+takes `notDuplicateOf`), `cards` 1.0,
 `changeset-report` 1.0 and `draft-report` 1.0. A schema
 document states structure only. `validate_finding` is the full check. In its default
 strict mode, ajv rejects the `x-schemaVersion` annotation. Register it with
@@ -534,8 +536,21 @@ of same-sex civil marriage (Netherlands; effective 1 April 2001). This is a
 historical milestone, not a universal legalization date: local law varies.
 The warning requests source review, is not an error, and does not block application.
 
-- `spouse` and `child` relations accept `notDuplicateOf`: existing people
-  the author has confirmed are not the new person.
+- `spouse`, `child` and `parent` relations accept `notDuplicateOf`: existing
+  people the author has confirmed are not the new person.
+- A new relative is refused when the person it attaches to already has it:
+  a new parent when the person already has a parent in that role (of the same
+  name, a duplicate; of another name, a conflicting second parent that would
+  replace the first), a new spouse when the person has a spouse of an agreeing
+  name, and a new child when the family, or an existing partner of a new
+  family, has a child of an agreeing name. Two names agree when they have the
+  same known surname and at least one whole given name in common, after
+  common abbreviations are expanded (Wm, Jas, Geo, Chas, Thos, Jno, Eliz,
+  Margt, Saml, Benj, Danl, Robt, Nath, Nathl, Jos, Edw, Hy). A lone initial is
+  not a given name, and a blank, `Unknown` or underscore surname never agrees.
+  The error names the relative's xref: use it in place of the placeholder, or
+  list it in the relation's `notDuplicateOf`. `validate_changeset`,
+  `check_plausibility`, `apply_changeset` and `draft_package` refuse the same.
 - A child relation with `from` moves the child from that existing family into
   `family`. `unlink-child` takes `family` and `child`; `unlink-parent` takes
   `person`, `role`, and optional `family`.
@@ -653,10 +668,30 @@ Call `draft_package` with:
 - `folder`: an existing output folder.
 - `proposal`: the filename prefix.
 - Optional `overwrite`: allow replacement.
+- Optional `sameNamePeople`: pairs of new people, by placeholder xref, that
+  share a first given name and surname but are truly different people, such
+  as a father and son both named John: `[["@NewI_a@", "@NewI_b@"]]`.
 
 The tool writes `<folder>/<proposal>.md` and reports its path and changesets.
 It validates changesets against the bound document and fails on invalid input.
 It does not repair changesets or replace the upstream plausibility check.
+
+It also checks the package's items together, since no single changeset can
+show these. Each violation is an `errors` entry naming both items and the
+cure, and no proposal is written while one stands:
+
+- One source, page and extract carries one QUAY in every item. Two references
+  are one source when both give a web address and the addresses agree
+  (ignoring query, fragment and a trailing slash), or otherwise when their
+  titles agree, so two `@NewSource…@` placeholders for one source compare equal.
+- Two new people whose names share the first given name and the surname are
+  refused as one person named two ways, unless declared in `sameNamePeople`.
+  A placeholder names a person only within its own changeset.
+- A verification note saying a fact rests on one record alone is refused when
+  the package cites that fact, on that record, from two or more distinct
+  records (source and page). Put the findings for the fact in one item so its
+  note names every record, or draft the later changeset once the earlier one
+  is applied.
 
 Each numbered item presents its cited findings, extracts, source and
 information classes, grades, and supplied identity arguments:
@@ -747,7 +782,7 @@ both are generated from the table the validator reads, so they cannot drift.
 `draft_changeset` writes only this form.
 
 - `schemaVersion` names the contract version the file is written to, now
-  `"1.0"`. `validate_changeset` and `apply_changeset` refuse a major version
+  `"1.1"`. `validate_changeset` and `apply_changeset` refuse a major version
   they do not read.
 - Every object takes only the fields the contract defines: the envelope,
   items, ops, and every nested object (`marriage`, `people` entries, facts,
@@ -814,6 +849,9 @@ references resolve to the same allocated xref. Library callers receive
 
 - Person creation rejects high-confidence duplicates, including planned people.
   Family, source, and media creation do not use the person duplicate detector.
+- A new parent, spouse, or child is refused when the person it attaches to
+  already has that relative (see [Drafting a changeset](#drafting-a-changeset)),
+  unless the op lists the relative in `notDuplicateOf`.
 - Multiple marriages between the same people are valid; a duplicate marriage
   on the same exact date is not.
 - Source creation reuses a matching title and author with no publication,

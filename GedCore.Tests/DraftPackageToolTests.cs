@@ -245,7 +245,38 @@ public class DraftPackageToolTests : IDisposable
         using var schema = JsonDocument.Parse(DraftPackageTool.InputSchemaJson);
 
         string[] properties = [.. schema.RootElement.GetProperty("properties").EnumerateObject().Select(p => p.Name)];
-        Assert.Equal(["changesetPaths", "folder", "proposal", "overwrite"], properties);
+        Assert.Equal(["changesetPaths", "folder", "proposal", "overwrite", "sameNamePeople"], properties);
+    }
+
+    [Fact]
+    public async Task ChangesetsThatGradeOneExtractDifferently_FailTheCallNamingBothAndWriteNothing()
+    {
+        string a = await Drafted("a.changes.json", Finding("F-1", "@I1@", "DEAT", "26 Mar 2013"));
+        string b = await Drafted("b.changes.json", Finding("F-1", "@I2@", "BIRT", "1 Jan 1900").Replace("\"quay\": 2", "\"quay\": 1"));
+
+        var structured = Structured(await Call([a, b]));
+
+        Assert.False(structured.GetProperty("success").GetBoolean());
+        Assert.True(structured.GetProperty("changesets").EnumerateArray().All(c => c.GetProperty("success").GetBoolean()));
+        Assert.StartsWith("changeset 2 item 1 and changeset 1 item 1 cite Find a Grave, page \"Memorial #F-1\", with the same extract at QUAY 1 and QUAY 2",
+            Assert.Single(structured.GetProperty("errors").EnumerateArray()).GetString());
+        Assert.Empty(Directory.GetFiles(_out));
+    }
+
+    [Fact]
+    public async Task SameNamePeople_IsReadAndChecked()
+    {
+        string a = await Drafted("a.changes.json", Finding("F-1", "@I1@", "DEAT", "26 Mar 2013"));
+        Task<CallToolResult> CallWith(object pairs) => _tool.HandleAsync(
+            new DraftPackageArguments(Json(new[] { a }), Json(_out), Json("p"), default) { SameNamePeople = Json(pairs) }, CancellationToken.None);
+
+        var unknown = Structured(await CallWith(new[] { new[] { "@NewI_a@", "@NewI_b@" } }));
+        var malformed = await CallWith(new[] { new[] { "@NewI_a@" } });
+
+        Assert.Contains("sameNamePeople names @NewI_a@, which no changeset in the package creates",
+            unknown.GetProperty("errors").EnumerateArray().Select(e => e.GetString()));
+        Assert.True(malformed.IsError);
+        Assert.Contains("sameNamePeople[0] is not a pair of xrefs", Text(malformed));
     }
 
     [Fact]

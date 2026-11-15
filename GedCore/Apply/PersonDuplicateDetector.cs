@@ -210,6 +210,7 @@ internal static class PersonDuplicateDetector
                     ObservePersonRef(parentOp.Parent);
                     if (parentOp.Parent.Xref == token)
                     {
+                        notDuplicateOf.UnionWith(parentOp.NotDuplicateOf);
                         GedRecord? fam = parentOp.Family is { } f && !Placeholder.IsPlaceholder(f)
                             ? ctx.Existing(f)
                             : null;

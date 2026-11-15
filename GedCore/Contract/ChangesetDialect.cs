@@ -30,7 +30,7 @@ public sealed record DialectShape(string Name, string Description, IReadOnlyList
 /// </summary>
 public static class ChangesetDialect
 {
-    public const string SchemaVersion = "1.0";
+    public const string SchemaVersion = "1.1";
     public const int SupportedMajor = 1;
 
     /// <summary>The shape name an op array names: each element is the op its "op" field names.</summary>
@@ -76,7 +76,7 @@ public static class ChangesetDialect
         "Selects which same-tag fact instance this op targets when the record carries more than one. Omit when the tag occurs at most once, or to always target the sole or created instance.");
 
     static readonly DialectField NotDuplicateOf = Strs("notDuplicateOf",
-        "Existing person xrefs already confirmed not to be the same person as a new person this op creates; overrides the high-confidence duplicate rejection for those xrefs only.");
+        "Existing person xrefs already confirmed not to be the same person as a new person this op creates; overrides the high-confidence duplicate rejection, and the refusal of a new relative the tree person already has (a parent in the same role, or a spouse or child of the same name), for those xrefs only.");
 
     static readonly DialectField FamilyCitations = Objs("familyCitations", "citation",
         "Citations of the family record itself (the relationship's provenance), always an array. GEDCOM 7 allows a citation on FAM but not under HUSB, WIFE or CHIL.");
@@ -120,7 +120,7 @@ public static class ChangesetDialect
             Enum("role", "\"father\" or \"mother\".", "father", "mother") with { Required = true },
             PersonRef("parent", "The parent."),
             Xref("family", "Which of the person's parent families to update, when there is more than one; a new @NewF…@ placeholder creates one."),
-            FamilyCitations),
+            FamilyCitations, NotDuplicateOf),
         OpShape("createOrUpdateSource",
             Xref("xref", "An existing source's xref, or a new @NewSource…@ placeholder to create one.", required: true),
             Str("auth", "Author."),

@@ -308,7 +308,7 @@ public class DraftFindingReaderTests
     }
 
     [Fact]
-    public void NotDuplicateOf_IsReadOnASpouseAndRejectedOnAParent()
+    public void NotDuplicateOf_IsReadOnASpouseAndOnAParent()
     {
         var (findings, errors) = Read($"[{WithRelations.Replace("\"quay\": 2 }", "\"quay\": 2, \"notDuplicateOf\": [\"@I5@\"] }")}]");
         Assert.Empty(errors);
@@ -316,7 +316,9 @@ public class DraftFindingReaderTests
 
         var parent = WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\", \"family\": \"@NewF1@\"",
             "\"kind\": \"parent\", \"person\": \"@I1@\", \"parent\": \"@NewI1@\", \"role\": \"father\", \"notDuplicateOf\": [\"@I5@\"]");
-        Assert.Contains("notDuplicateOf does not apply to a parent relation", Assert.Single(Read($"[{parent}]").Errors));
+        (findings, errors) = Read($"[{parent}]");
+        Assert.Empty(errors);
+        Assert.Equal(["@I5@"], findings[0].Relations[0].NotDuplicateOf);
     }
 
     [Fact]

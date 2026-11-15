@@ -40,7 +40,7 @@ public interface IFamilyRecords
 }
 
 /// <summary>Everything a draft needs to know about the document it will be applied to.</summary>
-public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory, IFamilyRecords
+public interface IDraftLookup : ISourceCatalog, IPersonNames, IRecordHistory, IFamilyRecords, GedCore.Apply.IExistingRelatives
 {
     /// <summary>Whether the document holds a record with this xref; null when the lookup cannot say.</summary>
     bool? HasRecord(string xref) => null;

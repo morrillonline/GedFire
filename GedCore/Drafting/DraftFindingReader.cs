@@ -205,7 +205,7 @@ public sealed class DraftFindingReader
             DraftRelation.Child => ["child", "family", "from", "husb", "wife", "notDuplicateOf"],
             DraftRelation.UnlinkChild => ["child", "family"],
             DraftRelation.UnlinkParent => ["person", "role", "family"],
-            _ => ["person", "parent", "role", "family"],
+            _ => ["person", "parent", "role", "family", "notDuplicateOf"],
         };
         bool removal = kind is DraftRelation.UnlinkChild or DraftRelation.UnlinkParent;
         string[] named = removal
