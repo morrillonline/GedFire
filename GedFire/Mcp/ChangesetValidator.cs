@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GedCore;
 using GedCore.Apply;
 using GedCore.Policy;
 
@@ -19,7 +20,7 @@ sealed class ChangesetValidator(string documentPath, ChangesetPolicy? policy)
         if (reading.Changeset is not { } changeset)
             return [$"{name} is not a readable changeset: {string.Join("; ", reading.Errors)}"];
 
-        var errors = (policy?.Check(json) ?? []).ToList();
+        var errors = (policy?.Check(json, document: ChangesetToolSupport.PolicyDocument(() => GedReader.ReadFile(documentPath))) ?? []).ToList();
         try
         {
             var result = ChangesetApplier.Run(

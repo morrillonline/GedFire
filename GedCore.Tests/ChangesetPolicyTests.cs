@@ -130,6 +130,75 @@ public class ChangesetPolicyTests
             { "op": "createOrUpdateNote", "record": "@I2@", "text": "Needs independent verification: something else." }
             """)));
 
+    const string LowBirth = """
+        { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" },
+          "citation": { "source": "@S1@", "quay": 1 } }
+        """;
+
+    static DocumentHistory Holding(string lines) => new(Ged70.Ged70Parser.Parse($"""
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @I1@ INDI
+        {lines}
+        0 @S1@ SOUR
+        1 TITL Register
+        0 TRLR
+        """.Replace("\r\n", "\n")));
+
+    static DocumentHistory HoldingNote(string note) => Holding($"1 NOTE {note}");
+
+    [Fact]
+    public void LowQuayFact_WithANoteOnTheRecordNamingAnotherFact_IsReported() =>
+        Assert.Single(Load(Verification).Check(Changeset(LowBirth + """
+            , { "op": "createOrUpdateNote", "record": "@I1@", "text": "Needs independent verification: the death rests on one index." }
+            """)));
+
+    [Fact]
+    public void LowQuayFact_NamedByAVerificationNoteTheDocumentHolds_Passes() =>
+        Assert.Empty(Load(Verification).Check(Changeset(LowBirth),
+            document: HoldingNote("Needs independent verification: she was born in 1900 by one index only.")));
+
+    [Fact]
+    public void LowQuayFact_WhoseHeldNoteNamesAnotherFact_IsReported() =>
+        Assert.Single(Load(Verification).Check(Changeset(LowBirth),
+            document: HoldingNote("Needs independent verification: the death rests on one index.")));
+
+    [Fact]
+    public void LowQuayFact_WhoseHeldNoteTheItemDeletes_IsReported()
+    {
+        const string held = "Needs independent verification: the birth rests on one index.";
+
+        Assert.Single(Load(Verification).Check(Changeset(LowBirth + $$"""
+            , { "op": "deleteNote", "record": "@I1@", "text": "{{held}}" }
+            """), document: HoldingNote(held)));
+    }
+
+    [Theory]
+    [InlineData("2", true)]
+    [InlineData("1", false)]
+    public void LowQuayCitation_OfAFactTheDocumentAlreadyCitesMoreStrongly_NeedsNoNote(string heldQuay, bool lifted)
+    {
+        var document = Holding($"1 BIRT\n2 DATE 1900\n2 SOUR @S1@\n3 QUAY {heldQuay}");
+
+        Assert.Equal(lifted, Load(Verification).Check(Changeset(LowBirth), document: document).Count == 0);
+    }
+
+    [Theory]
+    [InlineData("1900", true)]
+    [InlineData("1910", false)]
+    public void ACensusIsLiftedOnlyByAStrongCitationOnTheSameDatedInstance(string heldDate, bool lifted)
+    {
+        var document = Holding($"1 CENS\n2 DATE {heldDate}\n2 SOUR @S1@\n3 QUAY 3");
+
+        var violations = Load(Verification).Check(Changeset("""
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "date": "1900", "mode": "add",
+              "citations": [ { "source": "@S1@", "quay": 1 } ] }
+            """), document: document);
+
+        Assert.Equal(lifted, violations.Count == 0);
+    }
+
     [Fact]
     public void HighQuayFact_NeedsNoNote() =>
         Assert.Empty(Load(Verification).Check(Changeset(

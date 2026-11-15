@@ -1,5 +1,7 @@
 using System.Text.Json;
+using GedCore;
 using GedCore.Apply;
+using GedCore.Ged70;
 
 namespace GedFire.Mcp;
 
@@ -90,13 +92,34 @@ sealed class PriorChangesets
         if (_changesets.Count == 0)
             return ChangesetApplier.Run(gedcomPath, target.Changeset, target.ItemNumbers, dryRun: true, cancellationToken: cancellationToken);
 
-        var log = new List<string>();
-        var (document, failed) = ApplyInOrder(ReadShared(gedcomPath), log, cancellationToken);
+        var (document, log, failed) = Applied(gedcomPath, cancellationToken);
         if (failed is not null) return failed;
 
         var result = ChangesetApplier.Run(document, target.Changeset, target.ItemNumbers, dryRun: true, cancellationToken: cancellationToken);
         result.Log.InsertRange(0, log);
         return result;
+    }
+
+    /// <summary>
+    /// The document at <paramref name="gedcomPath"/> as it stands after these changesets, for the policy to read; the
+    /// document as it is when there are none, and null when one does not apply (the dry run reports why).
+    /// </summary>
+    public GedDocument? DocumentAfter(string gedcomPath, CancellationToken cancellationToken)
+    {
+        if (_changesets.Count == 0) return GedReader.ReadFile(gedcomPath);
+        var (document, _, failed) = Applied(gedcomPath, cancellationToken);
+        return failed is null ? Ged70Parser.Read(new MemoryStream(document)) : null;
+    }
+
+    // Applied once per call, whether the policy or the dry run asks first.
+    (byte[] Document, List<string> Log, ApplyResult? Failed)? _applied;
+
+    (byte[] Document, List<string> Log, ApplyResult? Failed) Applied(string gedcomPath, CancellationToken cancellationToken)
+    {
+        if (_applied is { } applied) return applied;
+        var log = new List<string>();
+        var (document, failed) = ApplyInOrder(ReadShared(gedcomPath), log, cancellationToken);
+        return (_applied = (document, log, failed)).Value;
     }
 
     // The document after each earlier changeset in turn, or the failed result of the first that does not apply.

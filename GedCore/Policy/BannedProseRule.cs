@@ -5,7 +5,7 @@ namespace GedCore.Policy;
 /// <summary>Published prose (note text, citation pages) must not contain banned phrases or patterns.</summary>
 internal sealed class BannedProseRule(IReadOnlyList<string> phrases, IReadOnlyList<Regex> patterns) : IPolicyRule
 {
-    public IEnumerable<string> Check(IReadOnlyList<PolicyItem> items) =>
+    public IEnumerable<string> Check(IReadOnlyList<PolicyItem> items, GedCore.Drafting.IRecordHistory document) =>
         items.SelectMany(item => ProseFields(item).SelectMany(field => Violations(item.Number, field)));
 
     IEnumerable<string> Violations(int item, (string Kind, string Text) field)

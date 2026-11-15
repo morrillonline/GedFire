@@ -6,7 +6,7 @@ namespace GedCore.Policy;
 /// <summary>A death place needs a citation whose page or extract matches the evidence pattern, so a burial record alone cannot supply it.</summary>
 internal sealed class DeathPlaceEvidenceRule(Regex evidence) : IPolicyRule
 {
-    public IEnumerable<string> Check(IReadOnlyList<PolicyItem> items) =>
+    public IEnumerable<string> Check(IReadOnlyList<PolicyItem> items, GedCore.Drafting.IRecordHistory document) =>
         from item in items
         from node in item.Ops.Concat(item.People).SelectMany(OpJson.Objects)
         where OpJson.String(node, "fact") == "DEAT"

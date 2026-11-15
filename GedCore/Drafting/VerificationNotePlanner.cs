@@ -17,13 +17,13 @@ internal sealed class VerificationNotePlanner(
 {
     const string UntitledSource = "a source the record already cites";
 
-    sealed record Assessment(string Tag, int Best, bool HasLowCitation, bool Due, IReadOnlyList<string> Records, IReadOnlyList<string> Information);
+    sealed record Assessment(
+        string Tag, int Best, bool HasLowCitation, bool Due, IReadOnlyList<string> Records, IReadOnlyList<string> Information, int SourceCount);
 
     // A verification note already on the record; Parsed is null when the compiler did not write it.
-    sealed record HeldNote(string Text, ParsedVerificationNote? Parsed, IReadOnlyList<string> StillLow)
-    {
-        public bool Covers(string tag) => Parsed is null ? VerificationNote.Mentions(Text, tag) : StillLow.Contains(tag);
-    }
+    sealed record HeldNote(string Text, ParsedVerificationNote? Parsed, IReadOnlyList<string> StillLow);
+
+    bool Covers(HeldNote note, string tag) => VerificationNoteText.Names(note.Text, rule.NotePrefix, tag);
 
     public IEnumerable<JsonObject> Plan(IReadOnlyList<CitedFact> facts, IReadOnlyList<DraftNote> authorNotes, List<DraftDecision> decisions) =>
         facts.GroupBy(f => f.Fact.Record).SelectMany(record => PlanRecord(record.Key, [.. record], authorNotes, decisions));
@@ -39,7 +39,7 @@ internal sealed class VerificationNotePlanner(
 
         var due = assessments.Where(a => a.Due).ToList();
         var held = HeldNotes(record, name, facts, authorNotes);
-        var covered = due.Where(a => held.Any(n => n.Covers(a.Tag))).ToList();
+        var covered = due.Where(a => held.Any(n => Covers(n, a.Tag))).ToList();
         var toWrite = due.Except(covered).ToList();
 
         foreach (var op in UpdateStaleNotes(record, name, held, toWrite.Count > 0, findings, decisions)) yield return op;
@@ -51,12 +51,14 @@ internal sealed class VerificationNotePlanner(
             yield break;
         }
 
-        foreach (var fact in covered)
+        var refreshed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var op in RefreshSoleSourceNotes(record, name, held, covered, refreshed, findings, decisions)) yield return op;
+        foreach (var fact in covered.Where(f => !refreshed.Contains(f.Tag)))
             decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
                 $"{record}: a note on the record already says the {fact.Tag} awaits verification, so no second note was added", findings));
 
         if (toWrite.Count == 0) yield break;
-        foreach (var other in held.Where(n => n.Parsed is null && !due.Any(a => n.Covers(a.Tag))))
+        foreach (var other in held.Where(n => n.Parsed is null && !due.Any(a => Covers(n, a.Tag))))
             decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
                 $"{record} already has a verification note (\"{other.Text}\"); a new one beside it may contradict it, so rewrite it with createOrUpdateNote and match if it is stale",
                 findings));
@@ -79,9 +81,7 @@ internal sealed class VerificationNotePlanner(
     Assessment Assess(string record, List<CitedFact> facts)
     {
         var fact = facts[0].Fact;
-        var held = history.FactsOn(record, fact.Tag)
-            .Where(e => CreateOrUpdateVitalOp.IsSingleValued(fact.Tag) || string.Equals(e.Date, fact.Date, StringComparison.OrdinalIgnoreCase))
-            .SelectMany(e => e.Citations).ToList();
+        var held = HeldFacts.Of(history, record, fact.Tag, fact.Date).SelectMany(e => e.Citations).ToList();
         int best = facts.Select(f => f.Fact.Quay).Concat(held.Select(c => c.Quay).OfType<int>()).Max();
         var cited = facts.Select(f => (Ref: f.SourceRef, Page: (string?)f.Finding.Source.Locator, Name: f.Finding.Source.Name))
             .Concat(held.Select(c => (Ref: c.Source, c.Page, Name: c.Title ?? UntitledSource)))
@@ -89,7 +89,8 @@ internal sealed class VerificationNotePlanner(
             .ToList();
         return new Assessment(
             fact.Tag, best, facts.Any(f => f.Fact.Quay <= rule.MaxQuay), best <= rule.MaxQuay, RecordNames(cited),
-            [.. facts.Select(f => f.Fact.Information ?? f.Finding.Source.Information)]);
+            [.. facts.Select(f => f.Fact.Information ?? f.Finding.Source.Information)],
+            cited.Select(c => c.Ref).Distinct(StringComparer.Ordinal).Count());
     }
 
     // A source cited at more than one page is named once per page, so each record is counted.
@@ -110,6 +111,39 @@ internal sealed class VerificationNotePlanner(
             .Select(text => VerificationNote.TryParse(text, rule.NotePrefix, name) is { } parsed
                 ? new HeldNote(text, parsed, [.. parsed.Tags.Where(t => !IsGradedAboveCeiling(record, t, facts))])
                 : new HeldNote(text, null, []))];
+
+    // A note the compiler wrote saying a fact rests on one source alone is untrue once a second source is cited: it is
+    // rewritten to name every source. A note naming other facts too keeps those, and the fact gets its own note.
+    IEnumerable<JsonObject> RefreshSoleSourceNotes(
+        string record, string? name, List<HeldNote> held, List<Assessment> covered, HashSet<string> refreshed,
+        List<string> findings, List<DraftDecision> decisions)
+    {
+        foreach (var note in held.Where(n => n.Parsed is { Alone: true } && !n.Parsed.Tags.Except(n.StillLow).Any()))
+        {
+            var parsed = note.Parsed!;
+            var outgrown = covered.Where(a => a.SourceCount > 1 && parsed.Tags.Contains(a.Tag) && !refreshed.Contains(a.Tag)).ToList();
+            if (outgrown.Count == 0) continue;
+
+            var kept = parsed.Tags.Except(outgrown.Select(a => a.Tag)).Distinct().ToList();
+            var texts = outgrown.Select(a => VerificationNote.Text(
+                rule.NotePrefix, a.Tag, name, a.Records, parsed.Grade.Split('/').Concat(a.Information))).ToList();
+            yield return new JsonObject
+            {
+                ["op"] = "createOrUpdateNote", ["record"] = record, ["match"] = note.Text,
+                ["text"] = kept.Count > 0 ? VerificationNote.Rewrite(rule.NotePrefix, parsed, kept, name) : texts[0],
+            };
+            foreach (string text in kept.Count > 0 ? texts : texts.Skip(1))
+                yield return new JsonObject { ["op"] = "createOrUpdateNote", ["record"] = record, ["text"] = text };
+
+            foreach (var fact in outgrown)
+            {
+                refreshed.Add(fact.Tag);
+                decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
+                    $"{record}: the {fact.Tag} now rests on {fact.SourceCount} sources, so its verification note (\"{note.Text}\") no longer says it rests on one alone; rewritten to name them",
+                    findings));
+            }
+        }
+    }
 
     // A note the compiler wrote earlier is rewritten without the facts now graded above the ceiling, or removed when none is left.
     IEnumerable<JsonObject> UpdateStaleNotes(
