@@ -269,7 +269,8 @@ public sealed class DraftFindingReader
         int index = 0;
         foreach (var item in list.EnumerateArray())
         {
-            if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString())) result.Add(item.GetString()!.Trim());
+            if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
+                result.Add(Garbled(item.GetString()!.Trim(), $"{path}.{name}[{index}]"));
             else _errors.Add($"{path}.{name}[{index}] must be a non-blank string.");
             index++;
         }
@@ -309,7 +310,14 @@ public sealed class DraftFindingReader
             _errors.Add($"{path}.{name} must be a non-blank string.");
             return null;
         }
-        return value.GetString()!.Trim();
+        return Garbled(value.GetString()!.Trim(), $"{path}.{name}");
+    }
+
+    // Every string a finding carries passes here, so text garbled on its way from the record is refused before it is drafted.
+    string Garbled(string text, string path)
+    {
+        if (GarbledText.Find(text) is { } garbled) _errors.Add(GarbledText.Describe(path, garbled));
+        return text;
     }
 
     string? Choice(JsonElement el, string name, string path, string[] allowed, bool required)

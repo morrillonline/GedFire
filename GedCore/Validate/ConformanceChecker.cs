@@ -16,7 +16,7 @@ public sealed record GedDiagnostic(
 /// <summary>
 /// GEDCOM 7.0.18 conformance checks the codebase otherwise performs nowhere.
 /// Each rule is implemented by its own private <c>Check&lt;RuleName&gt;</c>
-/// method so the GED001-GED015 rules stay independently testable.
+/// method so the GED001-GED016 rules stay independently testable.
 /// </summary>
 public static class ConformanceChecker
 {
@@ -76,6 +76,8 @@ public static class ConformanceChecker
         CheckSourceObjeCycle(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
         CheckFamilyEventsOnPersons(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
+        CheckGarbledText(doc, diags);
 
         return [.. diags.OrderBy(d => d.Severity).ThenBy(d => d.Code, StringComparer.Ordinal)];
     }
@@ -429,6 +431,21 @@ public static class ConformanceChecker
         var details = new[] { ev.FirstChild("DATE")?.Value, ev.FirstChild("PLAC")?.Value }
             .Where(v => !string.IsNullOrEmpty(v)).ToList();
         return details.Count == 0 ? "" : $" ({string.Join(", ", details)})";
+    }
+
+    // -------------------------------------------------------------------
+    // GED016 — garbled text (UTF-8 misread as Windows-1252)
+    // -------------------------------------------------------------------
+
+    private static void CheckGarbledText(GedDocument doc, List<GedDiagnostic> diags)
+    {
+        foreach (var rec in AllRecords(doc))
+        {
+            if (rec.IsPointerValue || GarbledText.Find(rec.Value) is not { } garbled) continue;
+            string tag = rec.Tag is "CONT" or "CONC" && rec.Parent is not null ? rec.Parent.Tag : rec.Tag;
+            diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, "GED016",
+                GarbledText.Describe(tag, garbled), OwningXref(rec), tag));
+        }
     }
 
     // -------------------------------------------------------------------

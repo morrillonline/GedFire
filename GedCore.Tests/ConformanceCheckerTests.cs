@@ -4,7 +4,7 @@ using GedCore.Validate;
 namespace GedCore.Tests;
 
 /// <summary>
-/// One test per GED001-GED015 rule, each built from a minimal in-memory
+/// One test per GED001-GED016 rule, each built from a minimal in-memory
 /// document exhibiting exactly that
 /// violation, plus two "clean document" tests proving the checker doesn't
 /// false-positive on real, valid GEDCOM 7 content.
@@ -474,6 +474,33 @@ public class ConformanceCheckerTests
         Assert.All(diags, d => Assert.Equal("@I1@", d.Xref));
         Assert.All(diags, d => Assert.Equal(GedDiagnosticSeverity.Error, d.Severity));
         Assert.Contains("4 MAY 1901, Elmford", diags[0].Message);
+    }
+
+    [Fact]
+    public void GED016_GarbledText_IsWarnedWithItsRepair_AndForeignTextIsNot()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME José /Núñez Peña/
+            1 BIRT
+            2 PLAC Łódź, Zażółć, Straße, Ærøskøbing, Αθήνα, Київ
+            1 NOTE Born in Århus
+            2 CONT at the CafÃ© MÃ¼ller
+            0 @S1@ SOUR
+            1 TITL Register
+            0 TRLR
+            """);
+
+        var diag = Assert.Single(ConformanceChecker.Check(doc), d => d.Code == "GED016");
+
+        Assert.Equal(GedDiagnosticSeverity.Warning, diag.Severity);
+        Assert.Equal("@I1@", diag.Xref);
+        Assert.Equal("NOTE", diag.Tag);
+        Assert.Contains("\"Ã© MÃ¼\"", diag.Message);
+        Assert.Contains("\"é Mü\"", diag.Message);
     }
 
     // -------------------------------------------------------------------

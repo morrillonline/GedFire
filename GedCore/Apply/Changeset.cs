@@ -64,19 +64,29 @@ public sealed class Changeset
         var newSources = new List<SourceGroup>();
         if (root.TryGetProperty("newSources", out var newSourcesEl))
             foreach (var group in newSourcesEl.EnumerateArray())
+            {
+                string xref = group.GetProperty("xref").GetString()!;
                 newSources.Add(new SourceGroup(
-                    group.GetProperty("xref").GetString()!,
-                    [.. group.GetProperty("ops").EnumerateArray().Select(op => ChangeOp.ReadOp(op, NoPeople))]));
+                    xref,
+                    [.. group.GetProperty("ops").EnumerateArray().Select(op => ChangeOp.ReadOp(op, NoPeople))])
+                {
+                    TextErrors = GarbledStrings(group, $"newSources {xref}:"),
+                });
+            }
 
         var items = new List<ChangeItem>();
         if (root.TryGetProperty("items", out var itemsEl))
             foreach (var item in itemsEl.EnumerateArray())
             {
                 var people = People(item);
+                int number = item.GetProperty("item").GetInt32();
                 items.Add(new ChangeItem(
-                    item.GetProperty("item").GetInt32(),
+                    number,
                     item.TryGetProperty("target", out var t) ? t.GetString() : null,
-                    [.. item.GetProperty("ops").EnumerateArray().Select(op => ChangeOp.ReadOp(op, people))]));
+                    [.. item.GetProperty("ops").EnumerateArray().Select(op => ChangeOp.ReadOp(op, people))])
+                {
+                    TextErrors = GarbledStrings(item, $"item {number}:"),
+                });
             }
 
         return new Changeset
@@ -88,6 +98,43 @@ public sealed class Changeset
     }
 
     static readonly IReadOnlyDictionary<string, PersonRef> NoPeople = new Dictionary<string, PersonRef>();
+
+    // Every string in the entry, wherever an op keeps it, so a new field is covered without naming it here.
+    // The path is joined into text only for a garbled string.
+    static List<string> GarbledStrings(JsonElement entry, string owner)
+    {
+        var errors = new List<string>();
+        var path = new List<string>();
+        Walk(entry);
+        return errors;
+
+        void Walk(JsonElement el)
+        {
+            switch (el.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in el.EnumerateObject())
+                    {
+                        path.Add(path.Count == 0 ? property.Name : "." + property.Name);
+                        Walk(property.Value);
+                        path.RemoveAt(path.Count - 1);
+                    }
+                    break;
+                case JsonValueKind.Array:
+                    int index = 0;
+                    foreach (var child in el.EnumerateArray())
+                    {
+                        path.Add($"[{index++}]");
+                        Walk(child);
+                        path.RemoveAt(path.Count - 1);
+                    }
+                    break;
+                case JsonValueKind.String when GarbledText.Find(el.GetString()) is { } garbled:
+                    errors.Add(GarbledText.Describe($"{owner} {string.Concat(path)}", garbled));
+                    break;
+            }
+        }
+    }
 
     static IReadOnlyDictionary<string, PersonRef> People(JsonElement item) =>
         item.TryGetProperty("people", out var people)
@@ -101,6 +148,14 @@ public sealed record ChangesetReading(Changeset? Changeset, IReadOnlyList<string
 /// <summary>One <c>newSources[]</c> entry: the xref its ops define, keyed separately
 /// from the ops themselves so <see cref="ChangesetApplier"/> can tell which citations
 /// (across every item, not just the selected ones) would leave it an orphan.</summary>
-public sealed record SourceGroup(string Xref, IReadOnlyList<ChangeOp> Ops);
+public sealed record SourceGroup(string Xref, IReadOnlyList<ChangeOp> Ops)
+{
+    /// <summary>A refusal for each garbled string the group would write.</summary>
+    public IReadOnlyList<string> TextErrors { get; init; } = [];
+}
 
-public sealed record ChangeItem(int Number, string? Target, IReadOnlyList<ChangeOp> Ops);
+public sealed record ChangeItem(int Number, string? Target, IReadOnlyList<ChangeOp> Ops)
+{
+    /// <summary>A refusal for each garbled string the item would write.</summary>
+    public IReadOnlyList<string> TextErrors { get; init; } = [];
+}

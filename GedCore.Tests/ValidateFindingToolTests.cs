@@ -139,6 +139,24 @@ public class ValidateFindingToolTests : IDisposable
     }
 
     [Fact]
+    public async Task GarbledTextInAFinding_IsRefusedAtItsPath_WhileForeignTextPasses()
+    {
+        const string entries = """
+            [ { "id": "F-1", "extract": "Ezra Quillfeather, born in Łódź; Événement à Århus Ã¢â‚¬Â¦ José Núñez …",
+                "source": { "name": "Fictional County Register", "locator": "p. 9", "class": "original", "information": "primary" },
+                "target": { "xref": "@I1@" },
+                "facts": [ { "record": "@I1@", "fact": "BIRT", "date": "4 May 1801", "place": "Łódź, Polska", "quay": 3 } ] } ]
+            """;
+
+        var result = Structured(await new ValidateFindingTool(_sessions.Open(Ged), new ToolGate()).HandleAsync(
+            new ValidateFindingArguments(default, Arg(entries), default, default), CancellationToken.None));
+
+        Assert.Equal(
+            "findings[0].extract has garbled characters \"Ã¢â‚¬Â¦\" (UTF-8 text misread as Windows-1252); it should read \"…\".",
+            Assert.Single(result.GetProperty("findings")[0].GetProperty("errors").EnumerateArray()).GetString());
+    }
+
+    [Fact]
     public async Task AFamilyEventOnAPerson_IsRefused_NamingThePath()
     {
         const string entries = """
