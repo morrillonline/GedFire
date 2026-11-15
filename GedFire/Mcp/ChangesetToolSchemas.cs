@@ -56,7 +56,7 @@ static class ChangesetToolSchemas
             "warnings": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Each legacy shape the changeset was read from, by path: a singular citation, a relationship op's citations, an object value, a string match, an inline person, an undeclared new person, a field the dialect does not define, a missing schemaVersion. They do not fail the run; the contract will refuse them once it is enforced, and migrate_changeset rewrites most of them. Absent from the digest; the report file holds it."
+              "description": "Each legacy shape the changeset was read from, by path: a singular citation, a relationship op's citations, an object value, a string match, an inline person, an undeclared new person, a field the dialect does not define, a missing schemaVersion. They do not fail the run; the contract will refuse them once it is enforced; redraft the changeset from its finding with draft_changeset. Absent from the digest; the report file holds it."
             },
             "deltas": {
               "type": "object",

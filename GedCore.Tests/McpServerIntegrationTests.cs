@@ -106,7 +106,7 @@ public class McpServerIntegrationTests : IDisposable
 
         var response = await client.SendRequestAsync("tools/list", null, ShortTimeout);
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Equal(22, tools.GetArrayLength());
+        Assert.Equal(17, tools.GetArrayLength());
 
         // The SDK's own McpServerPrimitiveCollection does not preserve the
         // alphabetical order this server registers tools in — confirmed
@@ -115,14 +115,14 @@ public class McpServerIntegrationTests : IDisposable
         // membership is asserted.
         Assert.Equal(
             new HashSet<string> {
-                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "describe_schemas", "draft_changeset", "draft_package", "find_family", "find_person", "find_source",
-                "get_document_stats", "get_record", "get_records", "list_people", "list_unanchored_people", "match_record", "migrate_changeset", "research_brief", "select_targets",
+                "apply_changeset", "check_plausibility", "date_calc", "describe_changeset_ops", "describe_schemas",                 "draft_changeset", "draft_package", "find_person",
+                                "get_document_stats", "get_record", "get_records", "match_record", "research_brief", "select_targets",
                 "validate_changeset", "validate_document", "validate_finding",
             },
             tools.EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToHashSet());
 
         // apply_changeset is the one tool on this server that writes to the
-        // file, so it alone is destructive. draft_changeset and migrate_changeset can create new changeset files and
+        // file, so it alone is destructive. draft_changeset can create new changeset files and
         // draft_package a new proposal file (each replaces one only with overwrite), so they are neither read-only
         // nor destructive. Every other tool — including validate_changeset,
         // its dry-run twin — is read-only, non-destructive, and idempotent.
@@ -130,7 +130,7 @@ public class McpServerIntegrationTests : IDisposable
         {
             string name = tool.GetProperty("name").GetString()!;
             bool isApply = name == "apply_changeset";
-            bool isDraft = name is "draft_changeset" or "draft_package" or "migrate_changeset";
+            bool isDraft = name is "draft_changeset" or "draft_package";
             var annotations = tool.GetProperty("annotations");
             Assert.Equal(!isApply && !isDraft, annotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.Equal(isApply, annotations.GetProperty("destructiveHint").GetBoolean());
@@ -275,7 +275,7 @@ public class McpServerIntegrationTests : IDisposable
     [InlineData("find_person", """{"nme": "Frederick Morrill"}""", "missing required parameter \"query\"; unrecognized parameter \"nme\"")]
     [InlineData("find_person", """{"query": "Frederick", "surname": "Morrill"}""", "unrecognized parameter \"surname\"")]
     [InlineData("get_document_stats", """{"verbose": true}""", "This tool takes no parameters.")]
-    [InlineData("find_family", """{}""", "missing required parameter")]
+    [InlineData("draft_package", """{}""", "missing required parameter")]
     public async Task ToolsCall_InvalidArguments_NamesTheParametersAndListsAcceptedOnes(
         string tool, string arguments, string expected)
     {
@@ -603,22 +603,6 @@ public class McpServerIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task ToolsCall_ListPeople_WithSurnamesAndPageSize_PagesOverRealJsonRpc()
-    {
-        await using var client = McpStdioTestClient.Start(WriteFamilyGed());
-        await client.InitializeAsync(ShortTimeout);
-
-        var first = await CallTool(client, "list_people", """{"surnames":["Ashworth"],"pageSize":1}""");
-        Assert.Equal(2, first.GetProperty("totalMatches").GetInt32());
-        Assert.Equal("@I1@", first.GetProperty("people")[0].GetProperty("xref").GetString());
-
-        string cursor = first.GetProperty("nextCursor").GetString()!;
-        var second = await CallTool(client, "list_people", $$"""{"surnames":["Ashworth"],"pageSize":1,"cursor":"{{cursor}}"}""");
-        Assert.Equal("@I3@", second.GetProperty("people")[0].GetProperty("xref").GetString());
-        Assert.Equal(JsonValueKind.Null, second.GetProperty("nextCursor").ValueKind);
-    }
-
-    [Fact]
     public async Task ToolsCall_GetRecords_ReturnsRecordsInOrderWithNotFoundSlots_OverRealJsonRpc()
     {
         await using var client = McpStdioTestClient.Start(WriteFamilyGed());
@@ -644,31 +628,6 @@ public class McpServerIntegrationTests : IDisposable
         Assert.True(result.GetProperty("totalCandidates").GetInt32() > 0);
         var people = result.GetProperty("targets").EnumerateArray().Select(t => t.GetProperty("xref").GetString()).Distinct();
         Assert.InRange(people.Count(), 1, 2);
-    }
-
-    [Fact]
-    public async Task ToolsCall_FindFamily_FindsTheParentsOfAChild_OverRealJsonRpc()
-    {
-        await using var client = McpStdioTestClient.Start(WriteFamilyGed());
-        await client.InitializeAsync(ShortTimeout);
-
-        var result = await CallTool(client, "find_family",
-            """{"relation":"child","name":"Levi Ashworth","hints":{"birth":{"year":1741}},"maxResults":5}""");
-
-        var candidates = result.GetProperty("candidates");
-        Assert.Equal("@I1@", candidates[0].GetProperty("person").GetProperty("xref").GetString());
-        Assert.Equal("@F1@", candidates[0].GetProperty("familyXref").GetString());
-    }
-
-    [Fact]
-    public async Task ToolsCall_ListUnanchoredPeople_ListsOnlyThePersonWithNoFactsOrTies_OverRealJsonRpc()
-    {
-        await using var client = McpStdioTestClient.Start(WriteFamilyGed());
-        await client.InitializeAsync(ShortTimeout);
-
-        var result = await CallTool(client, "list_unanchored_people", "{}");
-
-        Assert.Equal(["@I4@"], result.GetProperty("people").EnumerateArray().Select(p => p.GetProperty("xref").GetString()!));
     }
 
     [Fact]

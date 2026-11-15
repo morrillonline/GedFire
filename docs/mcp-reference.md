@@ -35,8 +35,7 @@ one tool's metadata. Neither opens a GEDCOM file.
 
 `call` accepts the tool's unchanged MCP arguments object from `--args <file>`
 or stdin with `--args -`; omitting `--args` supplies `{}`. All tools require
-`--input` except `date_calc`, `describe_changeset_ops`, `describe_schemas`,
-`migrate_changeset` and
+`--input` except `date_calc`, `describe_changeset_ops`, `describe_schemas` and
 `validate_finding`, which without `--input` checks every rule that needs no document. Tool names and JSON
 field names are case-sensitive. Relative paths, including paths inside the
 arguments object, resolve against the process's working directory.
@@ -113,17 +112,7 @@ When the query or candidate has an unknown surname, `matchScore` is capped at
 data. Names and sex alone cannot produce `single`; missing event data and
 disagreeing event hints do not lift the cap.
 
-`find_family` searches through a named relative. `relation` is `spouse`
-(find the named person's partner), `child` (find their parents), or `parent`
-(find their children). Optional birth and death hints describe the person
-sought. Results include the connecting family xref and matched relative.
-
-`find_source` accepts case-insensitive title, author, and URL substrings.
-Supply at least one; all supplied filters must match. An empty `sources`
-array means no match. A matching source returns `xref`, `title`, `author`,
-and `url` (null when absent).
-
-### Records and lists
+### Records
 
 `get_record` returns a person, family, or source. Citations include the source
 xref, page, quoted `dataText`, and `quay`. `includeSources` adds the cited
@@ -137,14 +126,6 @@ null. Families carry their own `citations`.
 `includeSources`, it returns one top-level `sources` array. `fields` selects
 fields while retaining `recordType` and `xref`. An unknown field is an error;
 a missing xref yields a `not_found` record in its slot.
-
-`list_people` sorts by surname, given name, and xref. It supports surname
-filters and `pageSize` 1-2000 (default 500). Pass `nextCursor` back as `cursor`
-to continue. Death summaries use burial year when no death exists.
-
-`list_unanchored_people` finds people without a dated event, place, or placed
-parent, spouse, or child. Ties only to unplaced people do not count as anchors.
-It reports fact counts and unplaced relatives, and omits privacy-hidden people.
 
 ## Correlation and research targets
 
@@ -791,18 +772,9 @@ it identically: a field of the wrong type, a missing required field, an unknown
 op, `citation` beside `citations`, an object `value` beside `date` or `place`,
 an unsupported `schemaVersion`, and, in the new syntax, a `people` entry no op
 names, a `people` entry with a real xref, or one person declared twice. A later
-release raises the `changeset` major version and refuses every warning.
-
-`migrate_changeset {changesetPath, outPath, overwrite?}` rewrites a legacy
-changeset into the canonical form without changing what any op does: it adds
-`schemaVersion`, turns `citation` into `citations`, renames a relationship op's
-citations `familyCitations`, moves an object value's date and place beside it,
-turns a string match into `{"value": ...}`, moves each inline person into
-its item's `people`, and removes `null` optional fields. It refuses a file that gives both `citation` and
-`citations`, or describes one new person two ways (a later description may
-repeat the first, or omit its sex or facts, but not add to them), rather than choosing, and
-writes nothing then. `remaining` lists what no rule can fix, such as a
-misspelled field. It never reads or writes the GEDCOM document.
+release raises the `changeset` major version and refuses every warning. To
+bring a legacy changeset to the contract, redraft it from its finding with
+`draft_changeset`.
 
 ## Changeset application
 
