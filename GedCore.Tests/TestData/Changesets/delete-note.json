@@ -1,10 +1,17 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-delete-note",
   "items": [
     {
       "item": 1,
       "target": "@I00001@",
-      "ops": [ { "op": "deleteNote", "record": "@I00001@", "text": "No such note." } ]
+      "ops": [
+        {
+          "op": "deleteNote",
+          "record": "@I00001@",
+          "text": "No such note."
+        }
+      ]
     }
   ]
 }

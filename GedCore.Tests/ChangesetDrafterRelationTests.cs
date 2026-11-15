@@ -55,6 +55,10 @@ public class ChangesetDrafterRelationTests
 
     static string Verb(JsonElement op) => op.GetProperty("op").GetString()!;
 
+    // A relationship op cites the family record; any other op cites what it writes.
+    static JsonElement Citations(JsonElement op) =>
+        op.TryGetProperty("familyCitations", out var family) ? family : op.GetProperty("citations");
+
     static ApplyResult DryRun(DraftResult result) =>
         ChangesetApplier.Run(Encoding.UTF8.GetBytes(Document), Changeset.Parse(result.Changeset!.ToJsonString()), [1], dryRun: true);
 
@@ -100,7 +104,7 @@ public class ChangesetDrafterRelationTests
         var result = new ChangesetDrafter(new FakeLookup()).Draft(
             [Finding([Person("@NewI1@", "Mary /Test/", "F")], [Spouse("@I1@", "@NewI1@", "@NewF1@", quay: 1)])]);
 
-        var citation = Ops(result)[0].GetProperty("citation");
+        var citation = Assert.Single(Ops(result)[0].GetProperty("familyCitations").EnumerateArray());
         Assert.Equal("@NewSource1@", citation.GetProperty("source").GetString());
         Assert.Equal("p. 4, line 9", citation.GetProperty("page").GetString());
         Assert.Equal(1, citation.GetProperty("quay").GetInt32());
@@ -111,7 +115,7 @@ public class ChangesetDrafterRelationTests
     {
         var finding = Finding([Person("@NewI1@", "Mary /Test/", "F")], [Spouse("@I1@", "@NewI1@", "@NewF1@") with { Excerpt = "Mary 35" }]);
 
-        var citation = Ops(new ChangesetDrafter(new FakeLookup()).Draft([finding]))[0].GetProperty("citation");
+        var citation = Ops(new ChangesetDrafter(new FakeLookup()).Draft([finding]))[0].GetProperty("familyCitations")[0];
 
         Assert.Equal("Mary 35", citation.GetProperty("dataText").GetString());
     }
@@ -126,7 +130,7 @@ public class ChangesetDrafterRelationTests
 
         var ops = Ops(new ChangesetDrafter(new FakeLookup()).Draft([finding]));
 
-        Assert.All(ops, o => Assert.Equal("Mary 35", o.GetProperty("citation").GetProperty("dataText").GetString()));
+        Assert.All(ops, o => Assert.Equal("Mary 35", Citations(o)[0].GetProperty("dataText").GetString()));
     }
 
     [Fact]
@@ -141,21 +145,26 @@ public class ChangesetDrafterRelationTests
         var ops = Ops(new ChangesetDrafter(new FakeLookup()).Draft([first, second]));
 
         var op = Assert.Single(ops, o => Verb(o) == "createOrUpdateSpouse");
-        Assert.Equal(2, op.GetProperty("citations").GetArrayLength());
+        Assert.Equal(2, op.GetProperty("familyCitations").GetArrayLength());
     }
 
     [Fact]
-    public void ANewPerson_IsDescribedInlineWhereTheRelationCreatesThem()
+    public void ANewPerson_IsDeclaredOnceInTheItemsPeopleAndNamedByXref()
     {
         var result = new ChangesetDrafter(new FakeLookup()).Draft([Finding(
             [Person("@NewI1@", "Mary /Test/", "F"), Person("@NewI2@", "Ann /Test/")],
             [Spouse("@I1@", "@NewI1@", "@NewF1@"), Child("@NewF1@", "@NewI2@", husb: "@I1@", wife: "@NewI1@")])]);
 
+        var item = JsonDocument.Parse(result.Changeset!.ToJsonString()).RootElement.GetProperty("items")[0];
+        var people = item.GetProperty("people").EnumerateArray().ToList();
+        Assert.Equal(["@NewI1@", "@NewI2@"], people.Select(p => p.GetProperty("xref").GetString()));
+        Assert.Equal("Mary /Test/", people[0].GetProperty("name").GetString());
+        Assert.Equal("F", people[0].GetProperty("sex").GetString());
+        Assert.Equal("Ann /Test/", people[1].GetProperty("name").GetString());
+        Assert.False(people[1].TryGetProperty("sex", out _));
         var ops = Ops(result);
-        Assert.Equal("Mary /Test/", ops[0].GetProperty("spouse").GetProperty("name").GetString());
-        Assert.Equal("F", ops[0].GetProperty("spouse").GetProperty("sex").GetString());
-        Assert.Equal("Ann /Test/", ops[1].GetProperty("child").GetProperty("name").GetString());
-        Assert.False(ops[1].GetProperty("child").TryGetProperty("sex", out _));
+        Assert.Equal("@NewI1@", ops[0].GetProperty("spouse").GetString());
+        Assert.Equal("@NewI2@", ops[1].GetProperty("child").GetString());
         Assert.False(ops[1].TryGetProperty("wife", out _));
     }
 

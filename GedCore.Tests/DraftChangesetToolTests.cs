@@ -50,8 +50,8 @@ public class DraftChangesetToolTests : IDisposable
         var structured = Structured(result);
         Assert.True(structured.GetProperty("success").GetBoolean());
         var op = structured.GetProperty("changeset").GetProperty("items")[0].GetProperty("ops")[0];
-        Assert.Equal("@S1@", op.GetProperty("citation").GetProperty("source").GetString());
-        Assert.Equal("26 MAR 2013", op.GetProperty("value").GetProperty("date").GetString());
+        Assert.Equal("@S1@", op.GetProperty("citations")[0].GetProperty("source").GetString());
+        Assert.Equal("26 MAR 2013", op.GetProperty("date").GetString());
         Assert.Null(structured.GetProperty("writtenTo").GetString());
     }
 
@@ -193,7 +193,7 @@ public class DraftChangesetToolTests : IDisposable
         var structured = Structured(result);
         Assert.True(structured.GetProperty("success").GetBoolean());
         Assert.Equal("@S1@", structured.GetProperty("changeset").GetProperty("items")[0].GetProperty("ops")[0]
-            .GetProperty("citation").GetProperty("source").GetString());
+            .GetProperty("citations")[0].GetProperty("source").GetString());
     }
 
     [Fact]
@@ -471,5 +471,19 @@ public class DraftChangesetToolTests : IDisposable
         Assert.Contains(ops, o => o.TryGetProperty("value", out var v) && v.ValueKind == JsonValueKind.String);
         var parsed = GedCore.Apply.Changeset.Parse(structured.GetProperty("changeset").GetRawText());
         Assert.Single(parsed.Items);
+    }
+
+    [Fact]
+    public async Task TheDraftedChangeset_IsCanonical_AndTheChangesetSchemaAcceptsIt()
+    {
+        var result = await Tool().HandleAsync(Arg(RichFindings), Arg(null), default, CancellationToken.None);
+
+        var changeset = Structured(result).GetProperty("changeset");
+        Assert.Equal(GedCore.Contract.ChangesetDialect.SchemaVersion, changeset.GetProperty("schemaVersion").GetString());
+        Assert.Empty(GedCore.Apply.Changeset.Read(changeset.GetRawText()).Warnings);
+        var evaluation = SchemaCatalogTests.Compile(GedFire.Schemas.SchemaCatalog.Changeset)
+            .Evaluate(changeset, new Json.Schema.EvaluationOptions { OutputFormat = Json.Schema.OutputFormat.List });
+        Assert.True(evaluation.IsValid, string.Join("\n", (evaluation.Details ?? []).Where(d => d.Errors is not null)
+            .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation} {d.EvaluationPath}: {e.Value}"))));
     }
 }

@@ -28,11 +28,15 @@ internal sealed class ItemDrafter(
 
     readonly HashSet<string> _plannedFamilies = new(StringComparer.Ordinal);
 
+    // The new people the current item's relationship ops name, in the order first named.
+    readonly List<string> _itemPeople = [];
+
     // Facts whose citation was not attached because their approximate date does not fit the one chosen.
     readonly HashSet<Asserted> _excluded = [];
 
     public JsonObject Draft(int number, IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions, List<string> errors)
     {
+        _itemPeople.Clear();
         var withdrawals = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is not null).Select(x => (Finding: f, Fact: x))).ToList();
         var asserted = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is null).Select(x => new Asserted(f, x, new CiteKey(sources.RefFor(f), f.Source.Locator, x.Quay)))).ToList();
         var noteCites = group.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => NoteClaim(group, f, c)))).ToList();
@@ -59,7 +63,18 @@ internal sealed class ItemDrafter(
         var noted = asserted.Where(a => !_excluded.Contains(a)).Select(a => new CitedFact(a.Finding, a.Fact, a.Cite.Source)).ToList();
         foreach (var note in verificationNotes.Plan(noted, [.. group.SelectMany(f => f.Notes)], decisions)) ops.Add(note);
 
-        return new JsonObject { ["item"] = number, ["target"] = Label(group[0].Target), ["ops"] = ops };
+        var item = new JsonObject { ["item"] = number, ["target"] = Label(group[0].Target) };
+        if (_itemPeople.Count > 0) item["people"] = new JsonArray([.. _itemPeople.Select(Declaration)]);
+        item["ops"] = ops;
+        return item;
+    }
+
+    JsonNode Declaration(string xref)
+    {
+        var person = newPeople[xref];
+        var declaration = new JsonObject { ["xref"] = xref, ["name"] = person.Name };
+        if (person.Sex is not null) declaration["sex"] = person.Sex;
+        return declaration;
     }
 
     Claim NoteClaim(IReadOnlyList<DraftFinding> group, DraftFinding owner, DraftNoteCitation cite)
@@ -86,10 +101,9 @@ internal sealed class ItemDrafter(
         return op;
     }
 
-    static void AttachCitations(JsonObject op, List<JsonNode> cites)
+    static void AttachCitations(JsonObject op, List<JsonNode> cites, string key = "citations")
     {
-        if (cites.Count == 1) op["citation"] = cites[0];
-        else if (cites.Count > 1) op["citations"] = new JsonArray([.. cites]);
+        if (cites.Count > 0) op[key] = new JsonArray([.. cites]);
     }
 
     static string Label(DraftTarget target) =>
@@ -228,7 +242,7 @@ internal sealed class ItemDrafter(
         if (relation.Family is not null && Placeholder.IsPlaceholder(relation.Family)) _plannedFamilies.Add(relation.Family);
 
         if (relation.NotDuplicateOf.Count > 0) op["notDuplicateOf"] = new JsonArray([.. relation.NotDuplicateOf.Select(x => (JsonNode)x)]);
-        AttachCitations(op, [.. link.Select(l => l.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!)]);
+        AttachCitations(op, [.. link.Select(l => l.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!)], "familyCitations");
         return Backed(op, link.Select(l => l.Finding.Id));
     }
 
@@ -247,13 +261,11 @@ internal sealed class ItemDrafter(
         op["family"] = relation.Family;
     }
 
-    // A person the changeset creates is described inline each time; the dialect lets repeated descriptions agree.
+    // A person the changeset creates is declared once in the item's people; every op names it by xref.
     JsonNode PersonRef(string xref)
     {
-        if (!newPeople.TryGetValue(xref, out var person)) return xref;
-        var inline = new JsonObject { ["xref"] = xref, ["name"] = person.Name };
-        if (person.Sex is not null) inline["sex"] = person.Sex;
-        return inline;
+        if (newPeople.ContainsKey(xref) && !_itemPeople.Contains(xref)) _itemPeople.Add(xref);
+        return xref;
     }
 
     IEnumerable<JsonObject> VitalOps(List<Asserted> asserted, Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
@@ -495,10 +507,8 @@ internal sealed class ItemDrafter(
         if (placement.Instance is { } instance)
             cites.AddRange(RestatedCitations(key, instance, cites, [.. facts.Select(a => a.Finding.Id).Distinct()], decisions));
 
-        var op = new JsonObject
-        {
-            ["op"] = "createOrUpdateVital", ["record"] = key.Record, ["fact"] = key.Tag, ["value"] = ValueOf(key),
-        };
+        var op = new JsonObject { ["op"] = "createOrUpdateVital", ["record"] = key.Record, ["fact"] = key.Tag };
+        AddPayload(op, key);
         if (placement.Match is not null) op["match"] = placement.Match;
         if (placement.Add) op["mode"] = "add";
         if (facts[0].Fact.Substructures.Count > 0)
@@ -526,13 +536,16 @@ internal sealed class ItemDrafter(
         }
     }
 
-    static JsonNode ValueOf(FactKey key)
+    // A text value is written alone; otherwise the date and place.
+    static void AddPayload(JsonObject op, FactKey key)
     {
-        if (key.Value is not null) return key.Value;
-        var value = new JsonObject();
-        if (key.Date is not null) value["date"] = key.Date;
-        if (key.Place is not null) value["place"] = key.Place;
-        return value;
+        if (key.Value is not null)
+        {
+            op["value"] = key.Value;
+            return;
+        }
+        if (key.Date is not null) op["date"] = key.Date;
+        if (key.Place is not null) op["place"] = key.Place;
     }
 
     // A page stated for a source the fact already cites replaces the old page unless the old citation is stated again.

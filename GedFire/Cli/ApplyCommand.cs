@@ -22,7 +22,17 @@ public sealed class ApplyCommand : SynchronousOptionCommand
 
         if (context.FileMissing(input, "File") || context.FileMissing(changesPath, "File")) return 1;
 
-        var changeset = Changeset.LoadFile(changesPath);
+        var reading = Changeset.Read(File.ReadAllText(changesPath));
+        foreach (var warning in reading.Warnings)
+            context.Error.WriteLine($"warning: {warning}");
+        if (reading.Changeset is not { } changeset)
+        {
+            context.Error.WriteLine($"APPLY FAILED — {changesPath} does not satisfy the changeset contract; file not modified:");
+            foreach (var error in reading.Errors)
+                context.Error.WriteLine($"  - {error}");
+            return 1;
+        }
+
         if (!ItemSelector.TryParse(commandLine.Require("--items"), changeset, out int[] itemNumbers, out string? itemsError))
             return context.Fail($"--{itemsError}");
 

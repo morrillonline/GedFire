@@ -1,12 +1,14 @@
 using System.Text.Json.Nodes;
+using GedCore.Contract;
 
 namespace GedFire.Schemas;
 
 // ---------------------------------------------------------------------------
 // The published, versioned JSON Schemas (draft 2020-12) of the finding-file
-// contract. A new optional field or enum value bumps a schema's minor
-// version; a removal, rename, new required field or tighter constraint bumps
-// its major version, and with it the $id.
+// and changeset contracts, and of the files the changeset tools read and
+// write. A new optional field or enum value bumps a schema's minor version; a
+// removal, rename, new required field or tighter constraint bumps its major
+// version, and with it the $id.
 // ---------------------------------------------------------------------------
 
 /// <summary>One published schema: its name, version, and the document <see cref="SchemaCatalog"/> builds for it.</summary>
@@ -37,13 +39,24 @@ public static class SchemaCatalog
     public const string FindingFileName = "finding-file";
     public const string RecordName = "record";
     public const string ArgumentName = "argument";
+    public const string ChangesetName = "changeset";
+    public const string CardsName = "cards";
+    public const string ChangesetReportName = "changeset-report";
+    public const string DraftReportName = "draft-report";
 
     public static readonly PublishedSchema Finding = new(FindingName, "3.0", "GedFire finding", () => Parse(FindingSchemas.FindingJson));
     public static readonly PublishedSchema Record = new(RecordName, "1.2", "GedFire record", () => Parse(FindingSchemas.RecordJson));
     public static readonly PublishedSchema Argument = new(ArgumentName, "1.0", "GedFire identity argument", () => Parse(FindingSchemas.ArgumentJson));
     public static readonly PublishedSchema FindingFile = new(FindingFileName, "3.0", "GedFire finding file", FindingFileBody);
 
-    public static readonly IReadOnlyList<PublishedSchema> All = [Finding, FindingFile, Record, Argument];
+    // The changeset schema's version is the contract version a changeset's schemaVersion names.
+    public static readonly PublishedSchema Changeset = new(ChangesetName, ChangesetDialect.SchemaVersion, "GedFire changeset", ChangesetSchemas.Changeset);
+    public static readonly PublishedSchema Cards = new(CardsName, "1.0", "GedFire cards file", ChangesetSchemas.Cards);
+    public static readonly PublishedSchema ChangesetReport = new(ChangesetReportName, "1.0", "GedFire validate_changeset and apply_changeset report", ChangesetSchemas.ChangesetReport);
+    public static readonly PublishedSchema DraftReport = new(DraftReportName, "1.0", "GedFire draft_changeset report", ChangesetSchemas.DraftReport);
+
+    public static readonly IReadOnlyList<PublishedSchema> All =
+        [Finding, FindingFile, Record, Argument, Changeset, Cards, ChangesetReport, DraftReport];
 
     public static IEnumerable<string> Names => All.Select(s => s.Name);
 

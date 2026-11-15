@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace GedCore.Policy;
 
-/// <summary>One selected changeset item as raw JSON ops, the form every policy rule reads.</summary>
-internal sealed record PolicyItem(int Number, IReadOnlyList<JsonElement> Ops)
+/// <summary>One selected changeset item as raw JSON: its ops, and the new people it declares. The form every policy rule reads.</summary>
+internal sealed record PolicyItem(int Number, IReadOnlyList<JsonElement> Ops, IReadOnlyList<JsonElement> People)
 {
     public static IReadOnlyList<PolicyItem> Read(JsonElement changeset, IReadOnlySet<int>? selected)
     {
@@ -12,6 +12,10 @@ internal sealed record PolicyItem(int Number, IReadOnlyList<JsonElement> Ops)
             .Where(i => i.TryGetProperty("item", out var n) && n.TryGetInt32(out int number) && (selected is null || selected.Contains(number)))
             .Select(i => new PolicyItem(
                 i.GetProperty("item").GetInt32(),
-                i.TryGetProperty("ops", out var ops) ? [.. ops.EnumerateArray()] : []))];
+                Elements(i, "ops"),
+                Elements(i, "people")))];
     }
+
+    static IReadOnlyList<JsonElement> Elements(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var array) && array.ValueKind == JsonValueKind.Array ? [.. array.EnumerateArray()] : [];
 }

@@ -38,7 +38,7 @@ public class ChangesetDrafterHeldDateTests
     static JsonElement[] OpsOf(DraftResult result, string kind) => [.. Ops(result).Where(o => o.GetProperty("op").GetString() == kind)];
 
     static string? DateOf(JsonElement vital) =>
-        vital.GetProperty("value").TryGetProperty("date", out var date) ? date.GetString() : null;
+        vital.TryGetProperty("date", out var date) ? date.GetString() : null;
 
     static string? Str(JsonElement op, string name) => op.TryGetProperty(name, out var value) ? value.GetString() : null;
 

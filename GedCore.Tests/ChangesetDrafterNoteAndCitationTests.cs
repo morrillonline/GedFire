@@ -105,15 +105,15 @@ public class ChangesetDrafterNoteAndCitationTests
     }
 
     [Fact]
-    public void ANoteCitingOneFinding_UsesTheSingularCitationKey()
+    public void ANoteCitingOneFinding_UsesTheCitationsArray()
     {
         var finding = Finding("F-1", Source("Register", "Register p. 2"), "Hiram, narrower. Hiram.",
             notes: [new DraftNote("@I1@", "A cited note.") { Cites = [new DraftNoteCitation(null, 2, "Hiram, narrower.")] }]);
 
         var note = Ops(Draft(finding))[0];
 
-        Assert.Equal("Hiram, narrower.", note.GetProperty("citation").GetProperty("dataText").GetString());
-        Assert.False(note.TryGetProperty("citations", out _));
+        Assert.Equal("Hiram, narrower.", Assert.Single(note.GetProperty("citations").EnumerateArray()).GetProperty("dataText").GetString());
+        Assert.False(note.TryGetProperty("citation", out _));
     }
 
     [Fact]
@@ -224,7 +224,7 @@ public class ChangesetDrafterNoteAndCitationTests
         Assert.Equal("createOrUpdateCitation", op.GetProperty("op").GetString());
         Assert.Equal("DEAT", op.GetProperty("fact").GetString());
         Assert.False(op.TryGetProperty("match", out _));
-        Assert.Equal("memorial 1", op.GetProperty("citation").GetProperty("page").GetString());
+        Assert.Equal("memorial 1", op.GetProperty("citations")[0].GetProperty("page").GetString());
         AssertApplies(result);
     }
 

@@ -73,6 +73,22 @@ public class ChangesetOpsCatalogTests
     }
 
     [Fact]
+    public void EveryExample_IsCanonical_AndTheChangesetSchemaAcceptsIt()
+    {
+        var schema = SchemaCatalogTests.Compile(GedFire.Schemas.SchemaCatalog.Changeset);
+        var changesets = ChangesetOpsCatalog.Ops
+            .Select(op => $$"""{ "schemaVersion": "{{ChangesetOpsCatalog.Envelope.SchemaVersion}}", "items": [ { "item": 1, "ops": [ {{op.Example.GetRawText()}} ] } ] }""")
+            .Append(ChangesetOpsCatalog.Envelope.Example.GetRawText());
+
+        foreach (string json in changesets)
+        {
+            using var document = JsonDocument.Parse(json);
+            Assert.Empty(Changeset.Read(json).Warnings);
+            Assert.True(schema.Evaluate(document.RootElement).IsValid, json);
+        }
+    }
+
+    [Fact]
     public async Task DescribeChangesetOpsTool_ReturnsTheCatalogAsStructuredContent()
     {
         var tool = new DescribeChangesetOpsTool(new ToolGate());

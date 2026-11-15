@@ -34,7 +34,7 @@ public class SchemaCommandTests
         var result = await Run(args);
 
         Assert.Equal(1, result.Exit);
-        Assert.Contains("Usage: gedfire schema <finding|finding-file|record|argument>", result.Error);
+        Assert.Contains("Usage: gedfire schema <finding|finding-file|record|argument|changeset|cards|changeset-report|draft-report>", result.Error);
     }
 
     [Fact]

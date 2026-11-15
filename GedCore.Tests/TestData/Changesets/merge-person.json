@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-merge-person",
   "items": [
     {
@@ -9,7 +10,16 @@
           "op": "mergePerson",
           "survivor": "@I00005@",
           "duplicate": "@I00006@",
-          "facts": [ { "fact": "BIRT", "keep": "survivor" }, { "fact": "NAME", "keep": "survivor" } ],
+          "facts": [
+            {
+              "fact": "BIRT",
+              "keep": "survivor"
+            },
+            {
+              "fact": "NAME",
+              "keep": "survivor"
+            }
+          ],
           "note": "Merged per reviewed correlation evidence."
         }
       ]

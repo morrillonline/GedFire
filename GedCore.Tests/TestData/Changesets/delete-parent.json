@@ -1,10 +1,17 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-delete-parent",
   "items": [
     {
       "item": 1,
       "target": "@I00001@",
-      "ops": [ { "op": "deleteParent", "person": "@I00001@", "role": "mother" } ]
+      "ops": [
+        {
+          "op": "deleteParent",
+          "person": "@I00001@",
+          "role": "mother"
+        }
+      ]
     }
   ]
 }

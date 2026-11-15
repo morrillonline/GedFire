@@ -1,12 +1,26 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-create-or-update-source",
   "newSources": [
     {
       "xref": "@New1@",
       "ops": [
-        { "op": "createOrUpdateSource", "xref": "@New1@", "auth": "County Clerk", "title": "Death record", "url": "https://example.org/record", "accessed": "2026-07-18" }
+        {
+          "op": "createOrUpdateSource",
+          "xref": "@New1@",
+          "auth": "County Clerk",
+          "title": "Death record",
+          "url": "https://example.org/record",
+          "accessed": "2026-07-18"
+        }
       ]
     }
   ],
-  "items": [ { "item": 1, "target": "@S00002@", "ops": [] } ]
+  "items": [
+    {
+      "item": 1,
+      "target": "@S00002@",
+      "ops": []
+    }
+  ]
 }

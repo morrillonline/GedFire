@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-create-or-update-citation",
   "items": [
     {
@@ -9,7 +10,14 @@
           "op": "createOrUpdateCitation",
           "record": "@I00001@",
           "fact": "BIRT",
-          "citation": { "source": "@S00001@", "page": "p. 2", "dataText": "born 1928", "quay": 2 }
+          "citations": [
+            {
+              "source": "@S00001@",
+              "page": "p. 2",
+              "dataText": "born 1928",
+              "quay": 2
+            }
+          ]
         }
       ]
     }

@@ -66,8 +66,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
     {
         Record = JsonRead.Req(el, "record", "createOrUpdateVital"),
         Fact = JsonRead.Req(el, "fact", "createOrUpdateVital"),
-        Value = EventValue.Read(el, "value")
-                ?? throw new JsonException("createOrUpdateVital: required field 'value' missing"),
+        Value = EventValue.ReadFact(el)
+                ?? throw new JsonException("createOrUpdateVital: one of 'value', 'date' or 'place' is required"),
         Match = FactMatch.Read(el, "match"),
         Mode = JsonRead.Str(el, "mode") ?? "upsert",
         Substructures = SubStructure.ReadList(el, "substructures"),

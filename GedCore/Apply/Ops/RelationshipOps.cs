@@ -5,11 +5,11 @@ namespace GedCore.Apply;
 /// <summary>
 /// CreateOrUpdate for the Spouse noun: ensure a family links the two people
 /// as partners, with the marriage fact and provenance. The spouse may be an
-/// existing person (xref) or described inline (created here). Creating a
+/// existing person or a new one its item declares in "people" (created here). Creating a
 /// family always requires an explicit new family xref; with no family named,
 /// the two people must already share exactly one.
 ///
-/// Relationship provenance ("citations") attaches at the FAM record level:
+/// Relationship provenance ("familyCitations") attaches at the FAM record level:
 /// GEDCOM 7 allows SOURCE_CITATION on the FAM record but only PHRASE under
 /// HUSB/WIFE/CHIL. Marriage citations attach on MARR, which is an event.
 /// A citation whose page the family does not already carry is added beside the
@@ -26,7 +26,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
     public EventValue? Marriage { get; init; }
     public IReadOnlyList<Citation> MarriageCitations { get; init; } = [];
     public string? Note { get; init; }
-    public IReadOnlyList<Citation> Citations { get; init; } = [];
+    public IReadOnlyList<Citation> FamilyCitations { get; init; } = [];
 
     /// <summary>
     /// Existing person xref(s) the caller has already confirmed are NOT the
@@ -37,10 +37,10 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
     public IReadOnlyList<string> NotDuplicateOf { get; init; } = [];
 
     internal override IEnumerable<string> CitedSources =>
-        Citations.Concat(MarriageCitations).Concat(Spouse.Facts.SelectMany(f => f.Citations))
+        FamilyCitations.Concat(MarriageCitations).Concat(Spouse.Facts.SelectMany(f => f.Citations))
                  .Select(c => c.Source);
 
-    internal static CreateOrUpdateSpouseOp Read(JsonElement el)
+    internal static CreateOrUpdateSpouseOp Read(JsonElement el, IReadOnlyDictionary<string, PersonRef> people)
     {
         EventValue? marriage = null;
         IReadOnlyList<Citation> marriageCitations = [];
@@ -52,13 +52,13 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
         return new CreateOrUpdateSpouseOp
         {
             Person = JsonRead.Req(el, "person", "createOrUpdateSpouse"),
-            Spouse = PersonRef.Read(el, "spouse")
+            Spouse = PersonRef.Read(el, "spouse", people)
                      ?? throw new JsonException("createOrUpdateSpouse: required field 'spouse' missing"),
             Family = JsonRead.Str(el, "family"),
             Marriage = marriage,
             MarriageCitations = marriageCitations,
             Note = JsonRead.Str(el, "note"),
-            Citations = Citation.ReadAll(el),
+            FamilyCitations = Citation.ReadFamily(el),
             NotDuplicateOf = JsonRead.StrArray(el, "notDuplicateOf"),
         };
     }
@@ -91,7 +91,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
             OpChecks.CitationsRequired($"{Context}: MARR", MarriageCitations, errors);
             OpChecks.CitationsValid(ctx, $"{Context}: MARR", MarriageCitations, errors);
         }
-        OpChecks.CitationsValid(ctx, Context, Citations, errors);
+        OpChecks.CitationsValid(ctx, Context, FamilyCitations, errors);
         OpChecks.InlineFactsValid(ctx, Context, Spouse, errors);
         ProseXrefGuard.Check(Context, "note", Note, errors);
 
@@ -131,7 +131,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
         string person = state.Resolve(Person);
         var spouse = state.ResolvePersonRef(Spouse);
         string? family = state.ResolveOptional(Family);
-        var citations = state.ResolveCitations(Citations);
+        var citations = state.ResolveCitations(FamilyCitations);
         var marriageCitations = state.ResolveCitations(MarriageCitations);
 
         Kin.EnsurePerson(state, spouse, log);
@@ -189,7 +189,7 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
     public required PersonRef Child { get; init; }
     public string? Husb { get; init; }
     public string? Wife { get; init; }
-    public IReadOnlyList<Citation> Citations { get; init; } = [];
+    public IReadOnlyList<Citation> FamilyCitations { get; init; } = [];
 
     /// <summary>
     /// Existing person xref(s) the caller has already confirmed are NOT the
@@ -200,16 +200,16 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
     public IReadOnlyList<string> NotDuplicateOf { get; init; } = [];
 
     internal override IEnumerable<string> CitedSources =>
-        Citations.Concat(Child.Facts.SelectMany(f => f.Citations)).Select(c => c.Source);
+        FamilyCitations.Concat(Child.Facts.SelectMany(f => f.Citations)).Select(c => c.Source);
 
-    internal static CreateOrUpdateChildOp Read(JsonElement el) => new()
+    internal static CreateOrUpdateChildOp Read(JsonElement el, IReadOnlyDictionary<string, PersonRef> people) => new()
     {
         Family = JsonRead.Req(el, "family", "createOrUpdateChild"),
-        Child = PersonRef.Read(el, "child")
+        Child = PersonRef.Read(el, "child", people)
                 ?? throw new JsonException("createOrUpdateChild: required field 'child' missing"),
         Husb = JsonRead.Str(el, "husb"),
         Wife = JsonRead.Str(el, "wife"),
-        Citations = Citation.ReadAll(el),
+        FamilyCitations = Citation.ReadFamily(el),
         NotDuplicateOf = JsonRead.StrArray(el, "notDuplicateOf"),
     };
 
@@ -239,7 +239,7 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
             errors.Add($"{Context}: husb/wife are creation seeds; {Family} already exists " +
                        "(use createOrUpdateSpouse to change partners)");
 
-        OpChecks.CitationsValid(ctx, Context, Citations, errors);
+        OpChecks.CitationsValid(ctx, Context, FamilyCitations, errors);
         OpChecks.InlineFactsValid(ctx, Context, Child, errors);
 
         if (child.Hit == PersonHit.Create) ctx.Planned.Add(Child.Xref);
@@ -250,7 +250,7 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
     {
         var child = state.ResolvePersonRef(Child);
         string family = state.Resolve(Family);
-        var citations = state.ResolveCitations(Citations);
+        var citations = state.ResolveCitations(FamilyCitations);
         string? husb = state.ResolveOptional(Husb);
         string? wife = state.ResolveOptional(Wife);
 
@@ -296,19 +296,19 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
     public required string Role { get; init; }
     public required PersonRef Parent { get; init; }
     public string? Family { get; init; }
-    public IReadOnlyList<Citation> Citations { get; init; } = [];
+    public IReadOnlyList<Citation> FamilyCitations { get; init; } = [];
 
     internal override IEnumerable<string> CitedSources =>
-        Citations.Concat(Parent.Facts.SelectMany(f => f.Citations)).Select(c => c.Source);
+        FamilyCitations.Concat(Parent.Facts.SelectMany(f => f.Citations)).Select(c => c.Source);
 
-    internal static CreateOrUpdateParentOp Read(JsonElement el) => new()
+    internal static CreateOrUpdateParentOp Read(JsonElement el, IReadOnlyDictionary<string, PersonRef> people) => new()
     {
         Person = JsonRead.Req(el, "person", "createOrUpdateParent"),
         Role = JsonRead.Req(el, "role", "createOrUpdateParent"),
-        Parent = PersonRef.Read(el, "parent")
+        Parent = PersonRef.Read(el, "parent", people)
                  ?? throw new JsonException("createOrUpdateParent: required field 'parent' missing"),
         Family = JsonRead.Str(el, "family"),
-        Citations = Citation.ReadAll(el),
+        FamilyCitations = Citation.ReadFamily(el),
     };
 
     private string Context => $"{Kind} {Role} {Parent.Xref} of {Person}";
@@ -337,7 +337,7 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
             if (family.CreateXref is not null) ctx.Planned.Add(family.CreateXref);
         }
 
-        OpChecks.CitationsValid(ctx, Context, Citations, errors);
+        OpChecks.CitationsValid(ctx, Context, FamilyCitations, errors);
         OpChecks.InlineFactsValid(ctx, Context, Parent, errors);
         if (parent.Hit == PersonHit.Create) ctx.Planned.Add(Parent.Xref);
     }
@@ -350,7 +350,7 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
         string person = state.Resolve(Person);
         var parent = state.ResolvePersonRef(Parent);
         string? family = state.ResolveOptional(Family);
-        var citations = state.ResolveCitations(Citations);
+        var citations = state.ResolveCitations(FamilyCitations);
 
         Kin.EnsurePerson(state, parent, log);
         parent = parent with { Xref = state.Resolve(parent.Xref) };

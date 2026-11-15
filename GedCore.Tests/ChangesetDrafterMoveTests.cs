@@ -100,7 +100,7 @@ public class ChangesetDrafterMoveTests
     {
         var result = new ChangesetDrafter(new FamilyLookup()).Draft([Finding(Move("@NewF1@", "@F1@"))]);
 
-        var citation = Ops(result)[0].GetProperty("citation");
+        var citation = Assert.Single(Ops(result)[0].GetProperty("familyCitations").EnumerateArray());
         Assert.Equal("p. 2", citation.GetProperty("page").GetString());
         Assert.Equal(2, citation.GetProperty("quay").GetInt32());
     }
@@ -169,7 +169,7 @@ public class ChangesetDrafterMoveTests
         Assert.True(result.Success, string.Join("; ", result.Errors));
         var op = Assert.Single(Ops(result));
         Assert.Equal("deleteChild", Verb(op));
-        Assert.False(op.TryGetProperty("citation", out _));
+        Assert.False(op.TryGetProperty("citations", out _));
         Assert.Contains(result.Decisions, d => d.Kind == DraftDecisionKinds.Open && d.Detail.Contains("removing @I4@ from @F1@ is not cited"));
         Assert.True(Apply(result).Success);
     }

@@ -1,10 +1,17 @@
 {
+  "schemaVersion": "1.0",
   "proposal": "example-delete-spouse",
   "items": [
     {
       "item": 1,
       "target": "@F00001@",
-      "ops": [ { "op": "deleteSpouse", "person": "@I00002@", "spouse": "@I00003@" } ]
+      "ops": [
+        {
+          "op": "deleteSpouse",
+          "person": "@I00002@",
+          "spouse": "@I00003@"
+        }
+      ]
     }
   ]
 }
