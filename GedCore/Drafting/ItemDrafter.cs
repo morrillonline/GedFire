@@ -58,8 +58,9 @@ internal sealed class ItemDrafter(
         foreach (var withdrawal in WithdrawalOps(withdrawals, group, decisions)) ops.Add(withdrawal);
         foreach (var vital in vitals.Where(op => !sexCorrections.Contains(op))) ops.Add(vital);
         foreach (var citation in CitationOps([.. asserted.Where(a => a.Fact.CiteOnly)], citations)) ops.Add(citation);
+        foreach (var withdrawal in NoteWithdrawalOps(group, decisions)) ops.Add(withdrawal);
         foreach (var finding in group)
-            foreach (var note in finding.Notes) ops.Add(NoteOp(note, group, finding, citations));
+            foreach (var note in finding.Notes.Where(n => !n.IsWithdrawal)) ops.Add(NoteOp(note, group, finding, citations));
         var noted = asserted.Where(a => !_excluded.Contains(a)).Select(a => new CitedFact(a.Finding, a.Fact, a.Cite.Source)).ToList();
         foreach (var note in verificationNotes.Plan(noted, [.. group.SelectMany(f => f.Notes)], decisions)) ops.Add(note);
 
@@ -205,10 +206,31 @@ internal sealed class ItemDrafter(
             string reasons = string.Join("; ", byFact.Select(w => w.Fact.Withdraw).Distinct());
             decisions.Add(new DraftDecision(DraftDecisionKinds.Resolved,
                 $"withdrawn: {tag} on {record} ({Describe(held[0].Date, held[0].Place, null)}), {reasons}", findingIds));
-            if (!group.Any(f => f.Notes.Any(n => n.Record == record)))
+            if (!group.Any(f => f.Notes.Any(n => n.Record == record && !n.IsWithdrawal)))
                 decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
                     $"withdrawing {tag} on {record} is not cited; record the evidence in a note that cites the finding", findingIds));
             yield return Backed(op, findingIds);
+        }
+    }
+
+    // A withdrawn note is deleted only when the record holds that exact text, so a misquoted match drafts nothing.
+    IEnumerable<JsonObject> NoteWithdrawalOps(IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions)
+    {
+        var withdrawals = group.SelectMany(f => f.Notes.Where(n => n.IsWithdrawal).Select(n => (Finding: f, Note: n)));
+        foreach (var byNote in withdrawals.GroupBy(w => (w.Note.Record, Text: NodeBuilder.NormalizeText(w.Note.Match!))))
+        {
+            var (record, text) = byNote.Key;
+            List<string> findingIds = [.. byNote.Select(w => w.Finding.Id).Distinct()];
+            if (!history.NotesOn(record).Select(NodeBuilder.NormalizeText).Contains(text, StringComparer.Ordinal))
+            {
+                decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
+                    $"{record} holds no note \"{text}\" to withdraw; match must give the note's exact text, so nothing was drafted for it", findingIds));
+                continue;
+            }
+
+            string reasons = string.Join("; ", byNote.Select(w => w.Note.Withdraw).Distinct());
+            decisions.Add(new DraftDecision(DraftDecisionKinds.Resolved, $"withdrawn: the note \"{text}\" on {record}, {reasons}", findingIds));
+            yield return Backed(new JsonObject { ["op"] = "deleteNote", ["record"] = record, ["text"] = text }, findingIds);
         }
     }
 

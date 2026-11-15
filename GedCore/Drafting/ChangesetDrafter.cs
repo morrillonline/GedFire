@@ -55,7 +55,7 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         {
             int number = items.Count + 1;
             items.Add(itemDrafter.Draft(number, [.. group], decisions, errors));
-            foreach (var finding in group) evidence.Add(FindingEvidence.Describe(finding, number, sources.RefFor(finding)));
+            foreach (var finding in group) evidence.Add(FindingEvidence.Describe(finding, number, sources.CitedRefOf(finding)));
         }
 
         var changeset = new JsonObject { ["schemaVersion"] = ChangesetDialect.SchemaVersion };

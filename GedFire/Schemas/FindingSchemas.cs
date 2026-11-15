@@ -155,7 +155,8 @@ public static class FindingSchemas
                 "properties": {
                   "record": { "type": "string", "pattern": "^@[^@]+@$" },
                   "text": { "type": "string" },
-                  "match": { "type": "string", "description": "The exact text of an existing note on the record, to rewrite instead of adding a new note." },
+                  "match": { "type": "string", "description": "The exact text of an existing note on the record, to rewrite instead of adding a new note, or to delete with withdraw." },
+                  "withdraw": { "type": "string", "minLength": 1, "description": "The reason to delete the note match names, with nothing in its place. Takes match and no text, cites or purpose; a match the record does not hold drafts nothing and is reported as an open decision." },
                   "purpose": { "type": "string", "enum": ["biography"], "description": "biography: the note is the person's cited biographical prose (service, occupation, migration, probate...), compiled to a createOrUpdateNote with purpose biography so a citation it adds earns biography credit. A biography note needs at least one cite. Biography notes are joined only with other biography notes." },
                   "cites": {
                     "type": "array",
@@ -172,9 +173,18 @@ public static class FindingSchemas
                     }
                   }
                 },
-                "required": ["record", "text"],
-                "if": { "properties": { "purpose": { "const": "biography" } }, "required": ["purpose"] },
-                "then": { "properties": { "cites": { "minItems": 1 } }, "required": ["cites"] }
+                "required": ["record"],
+                "allOf": [
+                  {
+                    "if": { "properties": { "purpose": { "const": "biography" } }, "required": ["purpose"] },
+                    "then": { "properties": { "cites": { "minItems": 1 } }, "required": ["cites"] }
+                  },
+                  {
+                    "if": { "required": ["withdraw"] },
+                    "then": { "required": ["match"], "not": { "anyOf": [{ "required": ["text"] }, { "required": ["cites"] }, { "required": ["purpose"] }] } },
+                    "else": { "required": ["text"] }
+                  }
+                ]
               }
             }
           },

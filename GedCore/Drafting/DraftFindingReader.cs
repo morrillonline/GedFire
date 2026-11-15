@@ -219,11 +219,20 @@ public sealed class DraftFindingReader
 
     DraftNote? ReadNote(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "text", "match", "cites", "purpose")) return null;
+        if (!IsObject(el, path, "record", "text", "match", "cites", "purpose", "withdraw")) return null;
         int before = _errors.Count;
+        string? withdraw = Text(el, "withdraw", path);
         string? record = Text(el, "record", path, required: true);
+        string? match = Text(el, "match", path, required: withdraw is not null);
+        if (withdraw is not null)
+        {
+            if (el.TryGetProperty("text", out _) || el.TryGetProperty("cites", out _) || el.TryGetProperty("purpose", out _))
+                _errors.Add($"{path}.withdraw deletes the note match names; text, cites and purpose do not apply.");
+            if (_errors.Count > before || record is null || match is null) return null;
+            return DraftNote.Withdrawal(record, match, withdraw);
+        }
+
         string? text = Text(el, "text", path, required: true);
-        string? match = Text(el, "match", path);
         string? purpose = Choice(el, "purpose", path, [CreateOrUpdateNoteOp.BiographyPurpose], required: false);
         var cites = ReadList(el, "cites", path, ReadNoteCitation);
         if (_errors.Count > before || record is null || text is null) return null;

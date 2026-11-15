@@ -391,9 +391,10 @@ that hold these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-Current versions: `finding` 3.0 (a biography note needs `cites`; 2.0
-tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.0 (embeds
-`finding` 3.0; 2.0 refused unknown keys and a mismatched `draft.id`),
+Current versions: `finding` 3.1 (a note may `withdraw` the note its `match`
+names; 3.0 required `cites` on a biography note; 2.0
+tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.1 (embeds
+`finding` 3.1; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
 `persons[].xref`), `argument` 1.0, `changeset` 1.0, `cards` 1.0,
 `changeset-report` 1.0 and `draft-report` 1.0. A schema
@@ -559,6 +560,12 @@ The warning requests source review, is not an error, and does not block applicat
   A cited finding aims at the same target and is drafted in the same batch.
   The compiler joins notes on the same record within a changeset and retains
   every finding's citations.
+- A note with `withdraw: "<reason>"` and `match` deletes the record's note
+  with exactly that text, drafting a `deleteNote`; it takes no `text`,
+  `cites`, or `purpose`. The reason is reported as a `resolved` decision. A
+  `match` the record does not hold drafts nothing and raises an `open`
+  decision. A finding that only withdraws or removes cites nothing, so it
+  mints or reuses no source.
 - A note's `purpose: "biography"` claims biography credit for the citations it
   adds to the person's cited biographical prose (service, occupation,
   migration, probate). It must carry at least one `cites` entry. It compiles

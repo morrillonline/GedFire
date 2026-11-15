@@ -9,7 +9,7 @@ namespace GedCore.Drafting;
 /// </summary>
 internal static class FindingEvidence
 {
-    public static JsonObject Describe(DraftFinding finding, int item, string sourceRef)
+    public static JsonObject Describe(DraftFinding finding, int item, string? sourceRef)
     {
         var claims = finding.Facts.Select(FactClaim).Concat(finding.Relations.Where(r => !r.IsRemoval).Select(RelationClaim));
         var evidence = new JsonObject
@@ -24,9 +24,11 @@ internal static class FindingEvidence
         return evidence;
     }
 
-    static JsonObject SourceOf(DraftSource source, string sourceRef)
+    static JsonObject SourceOf(DraftSource source, string? sourceRef)
     {
-        var node = new JsonObject { ["ref"] = sourceRef, ["name"] = source.Name };
+        var node = new JsonObject();
+        Set(node, "ref", sourceRef);
+        node["name"] = source.Name;
         Set(node, "author", source.Author);
         Set(node, "url", source.Url);
         node["locator"] = source.Locator;
