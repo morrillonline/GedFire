@@ -131,7 +131,7 @@ public class FindingValidatorTests : IDisposable
 
     [Theory]
     [InlineData(UnlinkedHannah, "@NewI_hannah@ is declared in people but no relation links it to the tree.")]
-    [InlineData("", "F-200.json (findings[0]) has no facts, relations or notes, and no note cites it.")]
+    [InlineData("", "F-200.json (findings[0]) has no facts, relations or notes, and no note or fact cites it.")]
     public async Task ACompletenessRule_IsNotReadyWhileGapsAreOpenAndAnErrorOnceTheyClose(string draftBody, string error)
     {
         foreach (var model in new[] { null, await Model() })
@@ -222,13 +222,17 @@ public class FindingValidatorTests : IDisposable
     }
 
     [Fact]
-    public async Task ANoteCitingAFindingWithADifferentTarget_IsRefused()
+    public async Task ANoteCitingAFindingAboutAnotherPerson_IsValidAndReady()
     {
-        var other = Cited("\"card\": \"enrich-life\"", "\"card\": \"enrich-death\"");
+        var other = Cited("\"target\": { \"xref\": \"@I1@\", \"card\": \"enrich-life\" }", "\"target\": { \"xref\": \"@I2@\", \"card\": \"new-spouse\" }");
 
-        var result = new FindingValidator(await Model(), null, requireDraft: false).Validate(Fixture("F-106.json"), [other]);
+        foreach (var model in new[] { null, await Model() })
+        {
+            var result = new FindingValidator(model, null, requireDraft: false).Validate(Fixture("F-106.json"), [other]);
 
-        Assert.Contains("F-106.json (findings[0]).notes[0].cites[1].finding \"F-105\" is aimed at a different target, so it lands in another item; a note cites findings of its own item.", result.Errors);
+            Assert.True(result.Valid, string.Join("; ", result.Errors));
+            Assert.True(result.ReadyToDraft);
+        }
     }
 
     [Fact]
@@ -242,11 +246,25 @@ public class FindingValidatorTests : IDisposable
     }
 
     [Fact]
+    public async Task TwoBiographyNotesOnOneRecord_AreJoinedBeforeTheyAreChecked_AsDraftChangesetJoinsThem()
+    {
+        var file = Variant("F-106.json", "\"excerpt\": \"Ezra Quillfeather, 49, farmer\" } ]",
+            "\"excerpt\": \"Ezra Quillfeather, 49, farmer\" } ] }, { \"record\": \"@I1@\", \"purpose\": \"biography\", \"text\": \"He was buried at Larkspur.\"");
+
+        foreach (var model in new[] { null, await Model() })
+        {
+            var result = new FindingValidator(model, null, requireDraft: false).Validate(file, [Cited()]);
+
+            Assert.True(result.Valid, string.Join("; ", result.Errors));
+        }
+    }
+
+    [Fact]
     public void ANoteCitingAFindingNotGiven_IsStillRefused()
     {
         var result = new FindingValidator(null, null, requireDraft: false).Validate(Fixture("F-106.json"), [Fixture("F-100.json").Draft!]);
 
-        Assert.Equal("F-106.json (findings[0]).notes[0].cites[1].finding \"F-105\" is not a finding of this draft.", Assert.Single(result.Errors));
+        Assert.Equal("F-106.json (findings[0]).notes[0].cites[1].finding \"F-105\" is not a finding of this draft, nor a finding file beside it (F-105.json).", Assert.Single(result.Errors));
     }
 
     [Theory]

@@ -98,7 +98,21 @@ public static class FindingSchemas
                   "replacedCitations": { "type": "string", "enum": ["keep", "drop", "moveToNote"], "description": "What becomes of the citations on a fact whose value this replaces; default keep except NAME, which requires moveToNote and preserves the previous name even when uncited." },
                   "citeOnly": { "type": "boolean", "description": "Only add this finding's citation to a fact the record already holds. date and place then select the instance when the record has several." },
                   "replaceHeld": { "type": "string", "minLength": 1, "description": "The reason to write this value over the one the record holds, even a more specific or better-cited one (a single-valued fact). Its citations move to a note unless replacedCitations says otherwise." },
-                  "withdraw": { "type": "string", "minLength": 1, "description": "The reason to delete the fact the record holds, with nothing in its place; date and place select the instance. Its citations move to a note. Cite the evidence in a note." }
+                  "withdraw": { "type": "string", "minLength": 1, "description": "The reason to delete the fact the record holds, with nothing in its place; date and place select the instance. Its citations move to a note. Cite the evidence in a note." },
+                  "cites": {
+                    "type": "array",
+                    "description": "Other findings whose records also support this fact, whatever their target or status: another finding drafted with this one, or one staged as <id>.json beside this file. The fact keeps its own finding's citation at quay and gains one citation per entry, carrying the cited finding's source, locator and extract (or excerpt); nothing else is drafted from the cited finding. Not with withdraw.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "finding": { "type": "string", "minLength": 1, "description": "The id of the finding cited; not this fact's own finding." },
+                        "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "The grade of the cited record for this fact, at most its source's ceiling. One quoted text carries one grade, so a differently graded cite needs its own excerpt." },
+                        "excerpt": { "type": "string", "description": "A narrower extract than the cited finding's, quoted word for word from it." }
+                      },
+                      "required": ["finding", "quay"]
+                    }
+                  }
                 },
                 "required": ["record", "fact", "quay"]
               }
@@ -160,7 +174,7 @@ public static class FindingSchemas
                   "purpose": { "type": "string", "enum": ["biography"], "description": "biography: the note is the person's cited biographical prose (service, occupation, migration, probate...), compiled to a createOrUpdateNote with purpose biography so a citation it adds earns biography credit. A biography note needs at least one cite. Biography notes are joined only with other biography notes." },
                   "cites": {
                     "type": "array",
-                    "description": "Citations on the note. Each cites a finding aimed at the same target (the note's own finding when finding is omitted), graded on its own. A cited finding is another finding drafted with this one; validate_finding also finds a single file's cited finding in the <id>.json beside it.",
+                    "description": "Citations on the note. Each cites a finding by id (the note's own finding when finding is omitted), graded on its own: any finding, whatever its target or status, either drafted with this one or staged as <id>.json beside this file. A cited finding lends only its source, locator and extract (or excerpt); it is not drafted because it is cited.",
                     "items": {
                       "type": "object",
                       "additionalProperties": false,

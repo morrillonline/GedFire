@@ -64,12 +64,12 @@ public class ChangesetDrafterNoteAndCitationTests
     [Fact]
     public void ABiographyNoteWithNoCites_IsRefused_AndPassesOnceCited()
     {
-        DraftFinding With(IReadOnlyList<DraftNoteCitation> cites) => Finding("F-1", Source("Register", "p. 2"), "Hiram, farmer.",
+        DraftFinding With(IReadOnlyList<DraftCite> cites) => Finding("F-1", Source("Register", "p. 2"), "Hiram, farmer.",
             notes: [new DraftNote("@I1@", "Hiram farmed.") { Purpose = CreateOrUpdateNoteOp.BiographyPurpose, Cites = cites }]);
 
         Assert.Equal("findings[0].notes[0] is a biography note with no cites; a biography note cites the findings that support it.",
             Assert.Single(Draft(With([])).Errors));
-        AssertApplies(Draft(With([new DraftNoteCitation(null, 1, null)])));
+        AssertApplies(Draft(With([new DraftCite(null, 1, null)])));
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class ChangesetDrafterNoteAndCitationTests
     {
         var obituary = Finding("F-1", Source("Obituaries", "Star obituary"), "Hiram died 1873.", [Fact("BIRT", "1800", null, quay: 1)]);
         var register = Finding("F-2", Source("Register", "Register p. 2"), "Hiram, born 1800.",
-            notes: [new DraftNote("@I1@", "He appears in two sources.") { Cites = [new DraftNoteCitation("F-1", 1, null), new DraftNoteCitation(null, 2, null)] }]);
+            notes: [new DraftNote("@I1@", "He appears in two sources.") { Cites = [new DraftCite("F-1", 1, null), new DraftCite(null, 2, null)] }]);
 
         var result = Draft(obituary, register);
 
@@ -93,7 +93,7 @@ public class ChangesetDrafterNoteAndCitationTests
     public void ABiographyNote_CompilesToABiographyNoteOpThatEarnsItsCitation()
     {
         var pension = Finding("F-1", Source("Pension Files", "File 4471"), "Hiram served in the 3rd Maine.",
-            notes: [new DraftNote("@I1@", "Hiram served in the 3rd Maine Infantry.") { Purpose = "biography", Cites = [new DraftNoteCitation(null, 2, null)] }]);
+            notes: [new DraftNote("@I1@", "Hiram served in the 3rd Maine Infantry.") { Purpose = "biography", Cites = [new DraftCite(null, 2, null)] }]);
 
         var result = Draft(pension);
 
@@ -108,7 +108,7 @@ public class ChangesetDrafterNoteAndCitationTests
     public void ANoteCitingOneFinding_UsesTheCitationsArray()
     {
         var finding = Finding("F-1", Source("Register", "Register p. 2"), "Hiram, narrower. Hiram.",
-            notes: [new DraftNote("@I1@", "A cited note.") { Cites = [new DraftNoteCitation(null, 2, "Hiram, narrower.")] }]);
+            notes: [new DraftNote("@I1@", "A cited note.") { Cites = [new DraftCite(null, 2, "Hiram, narrower.")] }]);
 
         var note = Ops(Draft(finding))[0];
 
@@ -132,26 +132,115 @@ public class ChangesetDrafterNoteAndCitationTests
     public void ANoteCitingAnUnknownFinding_IsRefused()
     {
         var finding = Finding("F-1", Source("Register", "p. 2"), "x",
-            notes: [new DraftNote("@I1@", "N.") { Cites = [new DraftNoteCitation("F-9", 1, null)] }]);
+            notes: [new DraftNote("@I1@", "N.") { Cites = [new DraftCite("F-9", 1, null)] }]);
 
         Assert.Contains("findings[0].notes[0].cites[0].finding \"F-9\" is not a finding of this draft", Assert.Single(Draft(finding).Errors));
     }
 
     [Fact]
-    public void ANoteCitingAFindingOfAnotherItem_IsRefused()
+    public void ANoteCitingAFindingAboutAnotherPerson_IsDraftedAsACitationOfItsRecordOnly()
     {
-        var other = Finding("F-2", Source("Register", "p. 3"), "y", [Fact("BIRT", "1800", null)] , xref: "@I2@");
+        var marriage = Finding("F-2", Source("Marriage Returns", "Return 88"), "Hiram Test married Ada Vale, 1842.",
+            [Fact("BIRT", "1800", null) with { Record = "@I2@" }], xref: "@I2@");
         var finding = Finding("F-1", Source("Register", "p. 2"), "x",
-            notes: [new DraftNote("@I1@", "N.") { Cites = [new DraftNoteCitation("F-2", 1, null)] }]);
+            notes: [new DraftNote("@I1@", "His marriage return gives a later age.") { Cites = [new DraftCite("F-2", 2, null)] }]);
 
-        Assert.Contains(Draft(finding, other).Errors, e => e.Contains("aimed at a different target"));
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([finding], cited: [marriage]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var note = Assert.Single(Ops(result));
+        Assert.Equal("createOrUpdateNote", note.GetProperty("op").GetString());
+        var citation = Assert.Single(note.GetProperty("citations").EnumerateArray());
+        Assert.Equal("Return 88", citation.GetProperty("page").GetString());
+        Assert.Equal("Hiram Test married Ada Vale, 1842.", citation.GetProperty("dataText").GetString());
+        Assert.Equal(["F-2"], note.GetProperty("findings").EnumerateArray().Select(f => f.GetString()));
+        var table = JsonDocument.Parse(result.Changeset!.ToJsonString()).RootElement.GetProperty("findings").EnumerateArray().ToList();
+        var cited = Assert.Single(table, f => f.GetProperty("id").GetString() == "F-2");
+        Assert.False(cited.TryGetProperty("item", out _));
+        Assert.False(cited.TryGetProperty("claims", out _));
+        Assert.Empty(Changeset.Read(result.Changeset!.ToJsonString()).Warnings);
+        using var document = JsonDocument.Parse(result.Changeset!.ToJsonString());
+        Assert.True(SchemaCatalogTests.Compile(GedFire.Schemas.SchemaCatalog.Changeset).Evaluate(document.RootElement).IsValid);
+        AssertApplies(result);
+    }
+
+    [Fact]
+    public void ANoteCitingAFindingAboutAnotherPersonInTheSameDraft_CitesItAndDraftsItInItsOwnItem()
+    {
+        var other = Finding("F-2", Source("Register", "p. 3"), "y", [Fact("BIRT", "1800", null) with { Record = "@I2@" }], xref: "@I2@");
+        var finding = Finding("F-1", Source("Register", "p. 2"), "x",
+            notes: [new DraftNote("@I1@", "N.") { Cites = [new DraftCite("F-2", 2, null)] }]);
+
+        var result = Draft(finding, other);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var items = JsonDocument.Parse(result.Changeset!.ToJsonString()).RootElement.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, items.Count);
+        Assert.Equal("p. 3", items[0].GetProperty("ops")[0].GetProperty("citations")[0].GetProperty("page").GetString());
+    }
+
+    [Fact]
+    public void AFactCitingAnotherFinding_AddsThatRecordsCitationAndDraftsNothingFromIt()
+    {
+        var marriage = Finding("F-2", Source("Marriage Returns", "Return 88"), "Hiram Test, aged 42, married Ada Vale.",
+            [Fact("BIRT", "1790", null) with { Record = "@I2@" }, Fact("DEAT", "1850", null) with { Record = "@I2@" }], xref: "@I2@");
+        var finding = Finding("F-1", Source("Register", "p. 2"), "Hiram born 1800.",
+            [Fact("BIRT", "ABT 1800", null) with { Cites = [new DraftCite("F-2", 2, "aged 42")] }]);
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([finding], cited: [marriage]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var birth = Assert.Single(Ops(result));
+        Assert.Equal("@I1@", birth.GetProperty("record").GetString());
+        Assert.Equal(["p. 2", "Return 88"], birth.GetProperty("citations").EnumerateArray().Select(c => c.GetProperty("page").GetString()));
+        Assert.Equal("aged 42", birth.GetProperty("citations")[1].GetProperty("dataText").GetString());
+        Assert.Equal(["F-1", "F-2"], birth.GetProperty("findings").EnumerateArray().Select(f => f.GetString()));
+        AssertApplies(result);
+    }
+
+    [Fact]
+    public void AFactCiteOfItsOwnFindingOrOfNoFinding_IsRefused()
+    {
+        var own = Finding("F-1", Source("Register", "p. 2"), "x", [Fact("BIRT", "1800", null) with { Cites = [new DraftCite("F-1", 2, null)] }]);
+        var missing = Finding("F-1", Source("Register", "p. 2"), "x", [Fact("BIRT", "1800", null) with { Cites = [new DraftCite("F-9", 2, null)] }]);
+
+        Assert.StartsWith("findings[0].facts[0].cites[0].finding \"F-1\" is the fact's own finding", Assert.Single(Draft(own).Errors));
+        Assert.Equal("findings[0].facts[0].cites[0].finding \"F-9\" is not a finding of this draft, nor a finding file beside it (F-9.json).",
+            Assert.Single(Draft(missing).Errors));
+    }
+
+    [Fact]
+    public void ACiteGradingACitedFindingsTextDifferentlyFromItsOwnClaim_IsRefusedUntilGivenAnExcerpt()
+    {
+        var marriage = Finding("F-2", Source("Marriage Returns", "Return 88"), "Hiram Test, aged 42, married Ada Vale.",
+            [Fact("MARR", "1842", null) with { Record = "@F1@" }], xref: "@I2@");
+        DraftFinding Citing(string? excerpt) => Finding("F-1", Source("Register", "p. 2"), "x",
+            notes: [new DraftNote("@I1@", "N.") { Cites = [new DraftCite("F-2", 1, excerpt)] }]);
+        var drafter = new ChangesetDrafter(new FakeLookup());
+
+        Assert.Equal(
+            "findings[0].notes[0].cites[0].quay is 1, but finding \"F-2\".facts[0] cites the same text of finding \"F-2\" at 2; one quoted text carries one grade, so give the differently graded claim its own excerpt.",
+            Assert.Single(drafter.Draft([Citing(null)], cited: [marriage]).Errors));
+        Assert.Empty(drafter.Draft([Citing("aged 42")], cited: [marriage]).Errors);
+    }
+
+    [Fact]
+    public void ACitedFindingNoNoteOrFactCites_IsLeftOut()
+    {
+        var unused = Finding("F-2", Source("Marriage Returns", "Return 88"), "y", xref: "@I2@");
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([Finding("F-1", Source("Register", "p. 2"), "x", [Fact("BIRT", "1800", null)])], cited: [unused]);
+
+        var changeset = JsonDocument.Parse(result.Changeset!.ToJsonString()).RootElement;
+        Assert.DoesNotContain(changeset.GetProperty("findings").EnumerateArray(), f => f.GetProperty("id").GetString() == "F-2");
+        Assert.Single(changeset.GetProperty("newSources").EnumerateArray());
     }
 
     [Fact]
     public void ANoteCitationAboveTheCitedSourcesCeiling_IsRefused()
     {
         var finding = Finding("F-1", Source("Index", "p. 2", cls: "derivative", info: "secondary"), "x",
-            notes: [new DraftNote("@I1@", "N.") { Cites = [new DraftNoteCitation(null, 2, null)] }]);
+            notes: [new DraftNote("@I1@", "N.") { Cites = [new DraftCite(null, 2, null)] }]);
 
         Assert.Contains("findings[0].notes[0].cites[0].quay is 2", Assert.Single(Draft(finding).Errors));
     }
@@ -161,7 +250,7 @@ public class ChangesetDrafterNoteAndCitationTests
     {
         var supporting = Finding("F-1", Source("Obituaries", "Star obituary"), "Hiram died 1873.");
         var author = Finding("F-2", Source("Register", "Register p. 2"), "Hiram.",
-            [Fact("BIRT", "1800", null)], [new DraftNote("@I1@", "Two sources.") { Cites = [new DraftNoteCitation("F-1", 2, null)] }]);
+            [Fact("BIRT", "1800", null)], [new DraftNote("@I1@", "Two sources.") { Cites = [new DraftCite("F-1", 2, null)] }]);
 
         var result = Draft(supporting, author);
 

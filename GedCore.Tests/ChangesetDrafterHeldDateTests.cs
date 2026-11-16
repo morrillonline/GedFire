@@ -239,7 +239,7 @@ public class ChangesetDrafterHeldDateTests
     {
         var finding = Finding("F-1", null, tag: "BIRT", withdraw: "she bore children 1735-1739") with
         {
-            Notes = [new DraftNote("@I1@", "Her recorded birth about 1755 cannot stand: she bore children 1735-1739.") { Cites = [new DraftNoteCitation(null, 2, null)] }],
+            Notes = [new DraftNote("@I1@", "Her recorded birth about 1755 cannot stand: she bore children 1735-1739.") { Cites = [new DraftCite(null, 2, null)] }],
         };
 
         var result = Draft(HoldingTag("BIRT", "ABT 1755"), finding);

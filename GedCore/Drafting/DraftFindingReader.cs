@@ -85,7 +85,7 @@ public sealed class DraftFindingReader
 
     DraftFact? ReadFact(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange")) return null;
+        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange", "cites")) return null;
         int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
         string? tag = Text(el, "fact", path, required: true)?.ToUpperInvariant();
@@ -103,14 +103,15 @@ public sealed class DraftFindingReader
         bool allowSurnameChange = ReadFlag(el, "allowSurnameChange", path);
         string? replaceHeld = Text(el, "replaceHeld", path);
         string? withdraw = Text(el, "withdraw", path);
+        var cites = ReadList(el, "cites", path, ReadFactCite);
         int quay = ReadQuay(el, path, "this fact (not inherited from the finding)");
 
         if (allowSurnameChange && (tag?.ToUpperInvariant() != "NAME" || value is null || citeOnly || withdraw is not null))
             _errors.Add($"{path}.allowSurnameChange applies only to a NAME fact with a value.");
         if (withdraw is not null)
         {
-            if (value is not null || substructures.Count > 0 || replaced is not null || citeOnly || replaceHeld is not null)
-                _errors.Add($"{path}.withdraw deletes the fact the record holds; value, substructures, replacedCitations, citeOnly and replaceHeld do not apply.");
+            if (value is not null || substructures.Count > 0 || replaced is not null || citeOnly || replaceHeld is not null || cites.Count > 0)
+                _errors.Add($"{path}.withdraw deletes the fact the record holds; value, substructures, replacedCitations, citeOnly, replaceHeld and cites do not apply.");
         }
         else if (citeOnly)
         {
@@ -131,6 +132,7 @@ public sealed class DraftFindingReader
             AllowSurnameChange = allowSurnameChange,
             ReplaceHeld = replaceHeld,
             Withdraw = withdraw,
+            Cites = cites,
         };
     }
 
@@ -234,19 +236,24 @@ public sealed class DraftFindingReader
 
         string? text = Text(el, "text", path, required: true);
         string? purpose = Choice(el, "purpose", path, [CreateOrUpdateNoteOp.BiographyPurpose], required: false);
-        var cites = ReadList(el, "cites", path, ReadNoteCitation);
+        var cites = ReadList(el, "cites", path, ReadCite);
         if (_errors.Count > before || record is null || text is null) return null;
         return new DraftNote(record, text) { Match = match, Cites = cites, Purpose = purpose };
     }
 
-    DraftNoteCitation? ReadNoteCitation(JsonElement el, string path)
+    DraftCite? ReadCite(JsonElement el, string path) => ReadCite(el, path, findingRequired: false, "this note citation");
+
+    // A fact already cites its own finding at its quay, so each of its cites names another finding.
+    DraftCite? ReadFactCite(JsonElement el, string path) => ReadCite(el, path, findingRequired: true, "this fact citation");
+
+    DraftCite? ReadCite(JsonElement el, string path, bool findingRequired, string graded)
     {
         if (!IsObject(el, path, "finding", "quay", "excerpt")) return null;
         int before = _errors.Count;
-        string? finding = Text(el, "finding", path);
+        string? finding = Text(el, "finding", path, required: findingRequired);
         string? excerpt = Text(el, "excerpt", path);
-        int quay = ReadQuay(el, path, "this note citation");
-        return _errors.Count > before ? null : new DraftNoteCitation(finding, quay, excerpt);
+        int quay = ReadQuay(el, path, graded);
+        return _errors.Count > before ? null : new DraftCite(finding, quay, excerpt);
     }
 
     List<T> ReadList<T>(JsonElement el, string name, string path, Func<JsonElement, string, T?> read) where T : class

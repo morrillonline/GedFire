@@ -63,6 +63,19 @@ public class SchemaCatalogTests
         Assert.False(ReaderAccepts(json, "F-100.json"));
     }
 
+    [Theory]
+    [InlineData("{ \"finding\": \"F-105\", \"quay\": 2, \"excerpt\": \"farmer\" }", true)]
+    [InlineData("{ \"quay\": 2 }", false)]
+    [InlineData("{ \"finding\": \"F-105\" }", false)]
+    [InlineData("{ \"finding\": \"F-105\", \"quay\": 2, \"source\": \"S\" }", false)]
+    public void AFactsCites_AreAcceptedAndRefusedAlikeByTheSchemaAndTheReader(string cite, bool valid)
+    {
+        string json = FindingFixtures.Read("F-100.json").Replace("\"quay\": 3 }", $"\"quay\": 3, \"cites\": [ {cite} ] }}");
+
+        Assert.Equal(valid, SchemaAccepts(json));
+        Assert.Equal(valid, ReaderAccepts(json, "F-100.json"));
+    }
+
     [Fact]
     public void ABiographyNoteWithNoCites_IsRefusedByTheSchema()
     {

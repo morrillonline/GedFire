@@ -228,9 +228,11 @@ Findings saved to disk follow GedFire's versioned finding-file schema
 (`gedfire schema finding-file`). It holds the draft entry, the identity argument,
 the record it was matched from, and a `meta` object that belongs to your own
 workflow. `validate_finding` checks those files before drafting, using the same
-error text `draft_changeset` gives. A note may cite another finding of the
-same batch, or the `<id>.json` file beside a file checked alone. A biography
-note must cite at least one finding.
+error text `draft_changeset` gives. A note or a fact may cite any finding by
+id, whatever its target: another finding of the batch, or the `<id>.json`
+file staged beside the citing file. The cited finding lends only a citation of
+its record; nothing else is drafted from it. A biography note must cite at
+least one finding.
 
 NAME facts can correct the target or an existing relative bound by
 `existingPeople: ["@I10@"]` or a relation. Corrections preserve the previous

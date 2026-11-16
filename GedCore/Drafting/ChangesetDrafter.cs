@@ -19,44 +19,58 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
 {
     /// <summary>The refusals the findings earn before compiling against the document, without compiling them.</summary>
     /// <param name="complete">False for findings still open: a new person nothing links yet, or a finding with nothing to compile, is then not refused.</param>
-    public IReadOnlyList<string> Check(IReadOnlyList<DraftFinding> findings, bool complete = true) => [.. DraftChecks.Check(findings, lookup, complete)];
+    /// <param name="cited">Findings the drafted ones may cite but that are not drafted themselves.</param>
+    public IReadOnlyList<string> Check(IReadOnlyList<DraftFinding> findings, bool complete = true, IReadOnlyList<DraftFinding>? cited = null) =>
+        [.. DraftChecks.Check(findings, lookup, new CitableFindings(findings, cited ?? []), complete)];
 
     /// <summary>
     /// The refusals the findings alone decide, with no document: QUAY ceilings, placeholder declarations, verbatim
     /// excerpts, one grade per quoted text, and the rest. Each is worded exactly as <see cref="Draft"/> words it.
     /// </summary>
     /// <param name="complete">False for findings still open: a new person nothing links yet, or a finding with nothing to compile, is then not refused.</param>
-    public static IReadOnlyList<string> CheckWithoutDocument(IReadOnlyList<DraftFinding> findings, bool complete = true) =>
-        [.. DraftChecks.Check(findings, null, complete)];
+    /// <param name="cited">Findings the drafted ones may cite but that are not drafted themselves.</param>
+    public static IReadOnlyList<string> CheckWithoutDocument(
+        IReadOnlyList<DraftFinding> findings, bool complete = true, IReadOnlyList<DraftFinding>? cited = null) =>
+        [.. DraftChecks.Check(findings, null, new CitableFindings(findings, cited ?? []), complete)];
 
     /// <summary>The spouse relations between existing partners that compile onto the family they already share.</summary>
     public IReadOnlyList<FamilySubstitution> FamilySubstitutions(IReadOnlyList<DraftFinding> findings) => SpouseFamilies.Find(findings, lookup);
 
-    public DraftResult Draft(IReadOnlyList<DraftFinding> findings)
+    /// <summary>Compiles <paramref name="findings"/> into a changeset, one item per target and card.</summary>
+    /// <param name="cited">
+    /// Findings a note or fact of <paramref name="findings"/> may cite, whatever their target, that are not drafted: each lends
+    /// a citation of its record, and nothing else comes from it. A finding in both lists is drafted.
+    /// </param>
+    public DraftResult Draft(IReadOnlyList<DraftFinding> findings, IReadOnlyList<DraftFinding>? cited = null)
     {
         var decisions = new List<DraftDecision>();
-        var errors = DraftChecks.Check(findings, lookup).ToList();
+        var citable = new CitableFindings(findings, cited ?? []);
+        var errors = DraftChecks.Check(findings, lookup, citable).ToList();
         if (errors.Count > 0) return new DraftResult(null, decisions, errors);
 
         var substitutions = FamilySubstitutions(findings);
         findings = SpouseFamilies.Apply(findings, substitutions);
         decisions.AddRange(SpouseFamilies.Decisions(findings, substitutions));
 
-        var sources = SourcePlan.Build(findings, lookup, decisions);
+        var citedIds = findings.SelectMany(f => f.CitedIds).ToHashSet(StringComparer.Ordinal);
+        citable = new CitableFindings(findings, [.. citable.CitedOnly.Where(f => citedIds.Contains(f.Id))]);
+        var sources = SourcePlan.Build(findings, citable.CitedOnly, lookup, decisions);
         var newPeople = findings.SelectMany(f => f.People).DistinctBy(p => p.Xref).ToDictionary(p => p.Xref);
         decisions.AddRange(MintedPeople(findings));
-        var verificationNotes = new VerificationNotePlanner(lookup, lookup, policy?.VerificationNote ?? VerificationNoteRule.Default, newPeople);
-        var itemDrafter = new ItemDrafter(sources, lookup, verificationNotes, newPeople);
+        var itemDrafter = new ItemDrafter(sources, lookup, citable, newPeople);
 
-        var items = new JsonArray();
+        var drafted = new List<DraftedItem>();
         var evidence = new JsonArray();
         foreach (var group in findings.GroupBy(f => (f.Target.Xref, f.Target.Card)))
         {
-            int number = items.Count + 1;
-            items.Add(itemDrafter.Draft(number, [.. group], decisions, errors));
+            int number = drafted.Count + 1;
+            drafted.Add(itemDrafter.Draft(number, [.. group], decisions, errors));
             foreach (var finding in group) evidence.Add(FindingEvidence.Describe(finding, number, sources.CitedRefOf(finding)));
         }
+        foreach (var finding in citable.CitedOnly) evidence.Add(FindingEvidence.DescribeCited(finding, sources.RefFor(finding)));
+        AddVerificationNotes(drafted, newPeople, decisions);
 
+        var items = new JsonArray([.. drafted.Select(d => (JsonNode)d.Item)]);
         var changeset = new JsonObject { ["schemaVersion"] = ChangesetDialect.SchemaVersion };
         if (sources.NewSources.Count > 0) changeset["newSources"] = sources.NewSources;
         changeset["items"] = items;
@@ -66,6 +80,16 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         errors.AddRange(RelativeDuplicates(changeset));
         if (policy is not null) errors.AddRange(policy.Check(changeset.ToJsonString(), document: lookup));
         return new DraftResult(changeset, decisions, errors);
+    }
+
+    // Each item's notes are due by its own evidence, as the policy judges an item, but name every record the draft cites
+    // for the fact, so two items citing one fact from different records never each say it rests on one record alone.
+    void AddVerificationNotes(List<DraftedItem> drafted, IReadOnlyDictionary<string, DraftPerson> newPeople, List<DraftDecision> decisions)
+    {
+        var planner = new VerificationNotePlanner(lookup, lookup, policy?.VerificationNote ?? VerificationNoteRule.Default, newPeople);
+        IReadOnlyList<CitedFact> package = [.. drafted.SelectMany(d => d.Noted)];
+        foreach (var item in drafted)
+            item.Add(planner.Plan(item.Noted, item.AuthorNotes, package, decisions).ToList());
     }
 
     // The same refusal validation gives, so a draft that would be refused is never written.

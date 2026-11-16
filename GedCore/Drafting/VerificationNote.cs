@@ -38,7 +38,7 @@ internal static partial class VerificationNote
         var tags = new List<string>();
         foreach (string label in labelText.Replace(" and ", ", ").Split(", "))
         {
-            if (VerificationNoteText.Labels.FirstOrDefault(l => l.Value == label).Key is not { } tag) return null;
+            if (VerificationNoteText.TagOf(label) is not { } tag) return null;
             tags.Add(tag);
         }
         return new ParsedVerificationNote(tags, match.Groups["basis"].Value, match.Groups["grade"].Value, match.Groups["alone"].Success);

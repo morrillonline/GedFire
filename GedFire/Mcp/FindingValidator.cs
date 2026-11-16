@@ -48,9 +48,10 @@ public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, b
         bool compiles = errors.Count == 0 && file.NotReadyReason is null;
         if (file.Draft is { } draft)
         {
-            var cited = new CitedFindings(draft, others);
-            var ruleErrors = RuleErrors(DraftNoteJoiner.Join(cited.Findings), compiles, complete: file.Gaps.Count == 0);
-            errors.AddRange(cited.OwnErrors(ruleErrors, $"{file.Name} (findings[0])"));
+            // draft_changeset joins a file's notes before compiling, so the check sees the notes it compiles.
+            var cited = new CitedFindings(DraftNoteJoiner.Join([draft])[0], others);
+            var ruleErrors = RuleErrors(cited, compiles, complete: file.Gaps.Count == 0);
+            errors.AddRange(CitedFindings.Relabel(ruleErrors, $"{file.Name} (findings[0])"));
         }
         var recordBindings = _binder.Record(file.Record);
         errors.AddRange(recordBindings.Where(b => b.Exists == false).Select(b => $"{file.Name}: {b.At} {b.Ref} is not a person in the document."));
@@ -77,10 +78,7 @@ public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, b
         var (draft, readErrors) = ReadEntry(entry);
         var errors = readErrors.Select(e => e.Replace("findings[0]", path)).ToList();
         if (draft is not null)
-        {
-            var cited = new CitedFindings(draft, others);
-            errors.AddRange(cited.OwnErrors(RuleErrors(cited.Findings, compiles: true, complete: true), path));
-        }
+            errors.AddRange(CitedFindings.Relabel(RuleErrors(new CitedFindings(draft, others), compiles: true, complete: true), path));
 
         string? id = entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty("id", out var given)
                      && given.ValueKind == JsonValueKind.String ? given.GetString() : null;
@@ -95,11 +93,13 @@ public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, b
         return (errors.Count == 0 ? read[0] : null, errors);
     }
 
-    // Without a document, the rules the finding alone decides; with one, the drafter's own refusals, compiling when the finding could be drafted.
-    IReadOnlyList<string> RuleErrors(IReadOnlyList<DraftFinding> findings, bool compiles, bool complete)
+    // Without a document, the rules the finding alone decides; with one, the drafter's own refusals, compiling when the finding
+    // could be drafted. Only the checked finding is drafted; the findings it cites lend their records.
+    IReadOnlyList<string> RuleErrors(CitedFindings finding, bool compiles, bool complete)
     {
-        if (model is null) return ChangesetDrafter.CheckWithoutDocument(findings, complete);
+        IReadOnlyList<DraftFinding> drafted = [finding.Finding];
+        if (model is null) return ChangesetDrafter.CheckWithoutDocument(drafted, complete, finding.Cited);
         var drafter = new ChangesetDrafter(new ModelDraftLookup(model), policy);
-        return compiles ? drafter.Draft(findings).Errors : drafter.Check(findings, complete);
+        return compiles ? drafter.Draft(drafted, finding.Cited).Errors : drafter.Check(drafted, complete, finding.Cited);
     }
 }

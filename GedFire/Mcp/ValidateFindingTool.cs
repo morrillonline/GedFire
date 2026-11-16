@@ -28,12 +28,12 @@ public sealed class ValidateFindingTool
         "placeholder. Every rule the finding alone decides is checked with or without a document, and even while " +
         "draftGaps keep it from drafting: field shapes, GEDCOM 7 dates, fact tags, QUAY ceilings, placeholder " +
         "declarations, sex on a new partner or parent, verbatim excerpts, one grade per quoted text, and cites on a " +
-        "biography note. A note's cites[].finding is resolved against the other findings checked with it and, when one " +
-        "file is checked, against the file <id>.json beside it; the cited finding must aim at the same target, and its " +
-        "excerpt must be in that finding's extract. While draftGaps " +
+        "biography note. A note's or fact's cites[].finding is resolved against the other findings checked with it and " +
+        "against the file <id>.json beside the citing file; the cited finding may aim at any target, is not drafted, and " +
+        "its excerpt must be in that finding's extract. While draftGaps " +
         "are open, a new person no relation links yet and a finding with nothing to compile are not errors, only not " +
         "ready; once the gaps close they are errors. Against the " +
-        "server's document a finding that is ready is also compiled, with the findings its notes cite, by draft_changeset's own checks, so the " +
+        "server's document a finding that is ready is also compiled, citing the findings its notes and facts cite, by draft_changeset's own checks, so the " +
         "errors are the ones draft_changeset gives for the same fault and readyToDraft is true exactly when " +
         "draft_changeset compiles that file without error; each record person's xref must name a person. A file with no " +
         "draft or with draftGaps is not ready, and is an error only with requireDraft. Writes nothing.";

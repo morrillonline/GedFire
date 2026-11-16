@@ -25,14 +25,18 @@ internal sealed class VerificationNotePlanner(
 
     bool Covers(HeldNote note, string tag) => VerificationNoteText.Names(note.Text, rule.NotePrefix, tag);
 
-    public IEnumerable<JsonObject> Plan(IReadOnlyList<CitedFact> facts, IReadOnlyList<DraftNote> authorNotes, List<DraftDecision> decisions) =>
-        facts.GroupBy(f => f.Fact.Record).SelectMany(record => PlanRecord(record.Key, [.. record], authorNotes, decisions));
+    /// <param name="facts">The facts one item asserts; whether a note is due is judged from these and the document alone.</param>
+    /// <param name="package">Every fact the draft asserts, this item's included, in item order; a note names every record they cite.</param>
+    public IEnumerable<JsonObject> Plan(
+        IReadOnlyList<CitedFact> facts, IReadOnlyList<DraftNote> authorNotes, IReadOnlyList<CitedFact> package, List<DraftDecision> decisions) =>
+        facts.GroupBy(f => f.Fact.Record).SelectMany(record => PlanRecord(record.Key, [.. record], authorNotes, package, decisions));
 
-    IEnumerable<JsonObject> PlanRecord(string record, List<CitedFact> facts, IReadOnlyList<DraftNote> authorNotes, List<DraftDecision> decisions)
+    IEnumerable<JsonObject> PlanRecord(
+        string record, List<CitedFact> facts, IReadOnlyList<DraftNote> authorNotes, IReadOnlyList<CitedFact> package, List<DraftDecision> decisions)
     {
         var findings = facts.Select(f => f.Finding.Id).Distinct().ToList();
         string? name = NameOf(record, facts[0].Finding.Target);
-        var assessments = facts.GroupBy(f => InstanceOf(f.Fact)).Select(g => Assess(record, [.. g])).ToList();
+        var assessments = facts.GroupBy(f => InstanceOf(f.Fact)).Select(g => Assess(record, [.. g], package)).ToList();
         foreach (var strong in assessments.Where(a => a.HasLowCitation && !a.Due))
             decisions.Add(new DraftDecision(DraftDecisionKinds.VerificationNote,
                 $"{record}: {strong.Tag} is cited at QUAY {strong.Best}, above {rule.MaxQuay}, so it needs no verification note", findings));
@@ -78,18 +82,22 @@ internal sealed class VerificationNotePlanner(
     static (string Tag, string? Date) InstanceOf(DraftFact fact) =>
         (fact.Tag, CreateOrUpdateVitalOp.IsSingleValued(fact.Tag) ? null : fact.Date?.ToUpperInvariant());
 
-    Assessment Assess(string record, List<CitedFact> facts)
+    // Due and best come from the item and the document, as the policy judges them; the records the fact rests on, and their
+    // information, from the whole draft, so items that cite one fact from different records write the same note.
+    Assessment Assess(string record, List<CitedFact> facts, IReadOnlyList<CitedFact> package)
     {
         var fact = facts[0].Fact;
+        var instance = InstanceOf(fact);
+        var evidence = package.Where(p => p.Fact.Record == record && InstanceOf(p.Fact) == instance).ToList();
         var held = HeldFacts.Of(history, record, fact.Tag, fact.Date).SelectMany(e => e.Citations).ToList();
         int best = facts.Select(f => f.Fact.Quay).Concat(held.Select(c => c.Quay).OfType<int>()).Max();
-        var cited = facts.Select(f => (Ref: f.SourceRef, Page: (string?)f.Finding.Source.Locator, Name: f.Finding.Source.Name))
+        var cited = evidence.Select(f => (Ref: f.SourceRef, Page: (string?)f.Finding.Source.Locator, Name: f.Finding.Source.Name))
             .Concat(held.Select(c => (Ref: c.Source, c.Page, Name: c.Title ?? UntitledSource)))
             .DistinctBy(c => (c.Ref, c.Page))
             .ToList();
         return new Assessment(
             fact.Tag, best, facts.Any(f => f.Fact.Quay <= rule.MaxQuay), best <= rule.MaxQuay, RecordNames(cited),
-            [.. facts.Select(f => f.Fact.Information ?? f.Finding.Source.Information)],
+            [.. evidence.Select(f => f.Fact.Information ?? f.Finding.Source.Information)],
             cited.Select(c => c.Ref).Distinct(StringComparer.Ordinal).Count());
     }
 
