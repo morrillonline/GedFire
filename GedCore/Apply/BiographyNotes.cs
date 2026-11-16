@@ -17,8 +17,12 @@ public sealed record BiographyCitation(string Source, string? Page)
         page is null ? null : string.Join(' ', page.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 }
 
-/// <summary>A person whose biography notes gained citations they did not carry before the changeset.</summary>
-public sealed record BiographyWrite(string Record, IReadOnlyList<BiographyCitation> NewCitations);
+/// <summary>
+/// A person whose biography notes gained new information: <see cref="NewCitations"/>, citations none of their biography
+/// notes carried before the changeset, and <see cref="NewText"/>, whether a biography note's text matches none of the
+/// person's notes before it (see <see cref="BiographyNotes.NormalizeText"/>). Either earns the credit.
+/// </summary>
+public sealed record BiographyWrite(string Record, IReadOnlyList<BiographyCitation> NewCitations, bool NewText = false);
 
 /// <summary>
 /// A person's biographical notes, recognized by standard GEDCOM 7 structure alone: a person-level NOTE
@@ -35,11 +39,24 @@ public static class BiographyNotes
         note.ChildrenByTag("SOUR")
             .Where(s => s.IsPointerValue && s.Value != "@VOID@")
             .Select(s => new BiographyCitation(s.Value, s.FirstChild("PAGE")?.Value));
+
+    /// <summary>
+    /// A note's text as biography credit compares it: case folded, punctuation dropped, and whitespace collapsed, so a
+    /// replay that differs only in those is the same text. Rewording is not judged; a reviewer decides that.
+    /// </summary>
+    public static string NormalizeText(string text)
+    {
+        var kept = new System.Text.StringBuilder(text.Length);
+        foreach (char c in text.ToLowerInvariant())
+            kept.Append(char.IsLetterOrDigit(c) ? c : char.IsWhiteSpace(c) ? ' ' : '\0');
+        return string.Join(' ', kept.ToString().Replace("\0", "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
 }
 
 /// <summary>
-/// Finds the biography credit a run earned: per person, the citations biography note ops added that none of
-/// the person's biography notes carried before the run and that a biography note still carries after it.
+/// Finds the biography credit a run earned, per person: the citations biography note ops added that none of the person's
+/// biography notes carried before the run and that a biography note still carries after it; or a biography note the
+/// run wrote whose text matches none of the person's notes before the run and that is still on the person after it.
 /// A source copied for the run counts as the source it stands in for.
 /// </summary>
 internal static class BiographyCredit
@@ -53,12 +70,14 @@ internal static class BiographyCredit
             originals.TryGetValue(c.Source, out var original) ? c with { Source = original } : c;
 
         var writes = new List<BiographyWrite>();
-        foreach (var (person, added) in state.BiographyCitationsAdded)
+        foreach (string person in state.BiographyCitationsAdded.Keys.Union(state.BiographyTextsWritten.Keys))
         {
+            var added = state.BiographyCitationsAdded.GetValueOrDefault(person, []);
             var held = Citations(before, person, Canonical);
             var kept = Citations(after, person, Canonical);
             var fresh = added.Select(Canonical).Distinct().Where(c => kept.Contains(c) && !held.Contains(c)).ToList();
-            if (fresh.Count > 0) writes.Add(new BiographyWrite(person, fresh));
+            bool newText = NewText(before, after, person, state.BiographyTextsWritten.GetValueOrDefault(person, []));
+            if (fresh.Count > 0 || newText) writes.Add(new BiographyWrite(person, fresh, newText));
         }
         return writes;
     }
@@ -66,5 +85,18 @@ internal static class BiographyCredit
     static HashSet<BiographyCitation> Citations(GedDocument doc, string person, Func<BiographyCitation, BiographyCitation> canonical) =>
         doc.ByXref.TryGetValue(person, out var record)
             ? BiographyNotes.On(record).SelectMany(BiographyNotes.CitationsOf).Select(canonical).ToHashSet()
+            : [];
+
+    // Every note the person held counts, cited or not: information already captured in any note is not new.
+    static bool NewText(GedDocument before, GedDocument after, string person, IReadOnlyList<string> written)
+    {
+        var held = NoteTexts(before, person);
+        var kept = NoteTexts(after, person);
+        return written.Select(BiographyNotes.NormalizeText).Any(text => text.Length > 0 && !held.Contains(text) && kept.Contains(text));
+    }
+
+    static HashSet<string> NoteTexts(GedDocument doc, string person) =>
+        doc.ByXref.TryGetValue(person, out var record)
+            ? record.ChildrenByTag("NOTE").Select(n => BiographyNotes.NormalizeText(n.FullValue())).ToHashSet(StringComparer.Ordinal)
             : [];
 }

@@ -157,7 +157,7 @@ static class ChangesetToolSchemas
         schema["properties"]!["cards"] = JsonNode.Parse("""
             {
               "type": "array",
-              "description": "Research cards the author is working. When given, the result carries pointsPreview: which cards this changeset closes by what it actually writes to the tree, which it leaves open and why, and any card whose subject the changeset renamed. An enrich card closes only when the fact it names is written on its subject; a citation alone writes no fact. A biography card closes when a createOrUpdateNote with purpose biography adds to the subject's biography notes a citation (same source and page) none of them carried before; one biography card per person closes per changeset."
+              "description": "Research cards the author is working. When given, the result carries pointsPreview: which cards this changeset closes by what it actually writes to the tree, which it leaves open and why, and any card whose subject the changeset renamed. An enrich card closes only when the fact it names is written on its subject; a citation alone writes no fact. A biography card closes when a createOrUpdateNote with purpose biography adds new information to the subject: a citation (same source and page) none of the subject's biography notes carried before, or note text that matches none of the subject's notes once case, whitespace and punctuation are folded (rewording is not judged); one biography card per person closes per changeset."
             }
             """);
         schema["properties"]!["cards"]!["items"] = JsonNode.Parse(CardJson);

@@ -226,7 +226,8 @@ in `xrefsWithoutGaps` and sets `draw.seed` to null. An unknown xref is an error.
 - A man outside the privacy floor who has at least one other card also gets
   one `Biography` card; women and people with no other card get none. It
   stays open for people with complete vitals or existing prose, and pays again
-  for each later changeset that adds a new citation. `nominalPoints` is 3, and
+  for each later changeset that adds new information: a new citation, or a
+  biography note whose text none of the person's notes carried. `nominalPoints` is 3, and
   `score` adds the enrichment difficulty bonus for the person's birth era and
   region, without the anchor adjustment (3, 8, 13, or 18).
 - An `enrich-person` card covers all inexact birth, marriage, and death dates
@@ -602,9 +603,10 @@ The warning requests source review, is not an error, and does not block applicat
   `match` the record does not hold drafts nothing and raises an `open`
   decision. A finding that only withdraws or removes cites nothing, so it
   mints or reuses no source.
-- A note's `purpose: "biography"` claims biography credit for the citations it
-  adds to the person's cited biographical prose (service, occupation,
-  migration, probate). It must carry at least one `cites` entry. It compiles
+- A note's `purpose: "biography"` claims biography credit for the new
+  information it adds to the person's cited biographical prose (service,
+  occupation, migration, probate): a new citation, or new text. It must carry
+  at least one `cites` entry. It compiles
   to a `createOrUpdateNote` with the same purpose and joins only other
   biography notes. The note itself is a plain cited note.
 
@@ -777,20 +779,29 @@ rest claim by anchor xref, and a card left only with already-claimed people
 appears in `notClosed` with the collision named.
 
 A `biography` card closes at its `points` when a `createOrUpdateNote` with
-`purpose: "biography"` adds to its subject's biographical notes a citation that
-none of them carried before the changeset. Biographical notes are plain
+`purpose: "biography"` adds new information to its subject, either of:
+
+- a citation that none of the subject's biographical notes carried before the
+  changeset; or
+- note text that matches none of the subject's notes before the changeset, cited
+  or not, once case, whitespace and punctuation are folded. The note's citation
+  does not matter here: a second note from an already-cited record pays when
+  its text is new. Rewording is not judged; a reviewer decides whether
+  differently worded text says anything new.
+
+Biographical notes are plain
 person-level notes with prose and at least one source citation; GedFire writes
 no marker or extension, so they are recognized from standard GEDCOM structure.
-Only an op with the purpose earns credit; note text is never read, and
+Only an op with the purpose earns credit, and
 uncited verification notes never qualify. A citation is its source and page
 (`SOUR` + `PAGE`), so quotation text, QUAY, spacing or case in the page,
 citation order, and a placeholder or copied source xref do not make it new.
-Existing prose never exhausts the card: a new note beside it, or a new
-citation strengthening it, pays; new text backed only by a
-citation one of the person's cited notes already carries, an identical replay,
-or a run that changes nothing does not. A person earns at most one Biography
-award per changeset, alongside any fact cards; a later changeset adding a
-different citation earns another. A note a biography op writes never receives
+Existing prose never exhausts the card: a new note beside it, a new
+citation strengthening it, or new text from a record it already cites pays; an
+identical replay (the same text, ignoring case, spacing and punctuation, with no
+new citation) or a run that changes nothing does not. A person earns at most one Biography
+award per changeset, alongside any fact cards; a later changeset adding
+new information earns another. A note a biography op writes never receives
 citations moved off a replaced fact in the same changeset.
 
 Points measure changes, not evidentiary reliability.

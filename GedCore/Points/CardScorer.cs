@@ -100,8 +100,10 @@ public static class CardScorer
 
     static Closure CloseBiography(PointsCard card, TreeChanges changes) =>
         changes.Biographies.FirstOrDefault(b => b.Record == card.Xref) is { } write
-            ? Closure.Closes($"biography note on {card.Xref} citing {string.Join("; ", write.NewCitations)}")
-            : Closure.Open("no biography note on the subject gained a citation its biography notes did not already carry");
+            ? Closure.Closes(write.NewCitations.Count > 0
+                ? $"biography note on {card.Xref} citing {string.Join("; ", write.NewCitations)}"
+                : $"biography note on {card.Xref} with text none of its notes carried")
+            : Closure.Open("no biography note on the subject added text or a citation (source and page) its notes did not already carry");
 
     static Closure ToClosure(NewRelativeOutcome outcome) =>
         outcome.Wrote is not null ? Closure.Closes(outcome.Wrote, outcome.Added) : Closure.Open(outcome.Reason!);

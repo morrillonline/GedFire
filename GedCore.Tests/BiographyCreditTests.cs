@@ -97,14 +97,49 @@ public class BiographyCreditTests : ApplyTestBase
     }
 
     [Fact]
-    public void NewTextBackedOnlyByACitationAnotherCitedNoteCarries_EarnsNothing()
+    public void NewTextBackedOnlyByACitationAnotherCitedNoteCarries_EarnsCreditForTheText()
     {
         WriteFileWithNotesOnAllen($"1 NOTE {Service}", "2 SOUR @S00001@", "3 PAGE muster  roll, P. 12", "3 QUAY 1");
 
         var result = RunExpectSuccess(NoteOp("Allen was rated seaman first class in 1945.", MusterRoll));
 
         Assert.Contains(result.Log, l => l.StartsWith("createOrUpdateNote on @I00001@: created"));
+        var write = Assert.Single(result.Changes.Biographies);
+        Assert.Empty(write.NewCitations);
+        Assert.True(write.NewText);
+    }
+
+    [Theory]
+    [InlineData(Service)]
+    [InlineData("  ALLEN served aboard the destroyer, Kidd, from 1944 to 1946  ")]
+    public void ReplayingTheSameTextFromTheSameRecord_EarnsNothing(string text)
+    {
+        WriteFileWithNotesOnAllen($"1 NOTE {Service}", "2 SOUR @S00001@", "3 PAGE Muster roll, p. 12");
+
+        var result = RunExpectSuccess(NoteOp(text, MusterRoll));
+
         Assert.Empty(result.Changes.Biographies);
+    }
+
+    [Fact]
+    public void TextAlreadyInAnUncitedNote_IsNotNewInformation()
+    {
+        WriteFileWithNotesOnAllen("1 NOTE Allen was rated seaman first class in 1945.");
+
+        var result = RunExpectSuccess(NoteOp("Allen was rated seaman first class in 1945.", MusterRoll));
+
+        Assert.False(Assert.Single(result.Changes.Biographies).NewText);
+    }
+
+    [Fact]
+    public void NewTextFromAnAlreadyCitedRecord_ClosesTheBiographyCard()
+    {
+        WriteFileWithNotesOnAllen($"1 NOTE {Service}", "2 SOUR @S00001@", "3 PAGE Muster roll, p. 12");
+
+        var result = RunExpectSuccess(NoteOp("Allen was rated seaman first class in 1945.", MusterRoll));
+
+        var preview = GedCore.Points.CardScorer.Preview([new GedCore.Points.PointsCard("@I00001@", "biography", null, null, 3)], result.Changes);
+        Assert.Contains("with text none of its notes carried", Assert.Single(preview.Closed).Wrote);
     }
 
     [Fact]
