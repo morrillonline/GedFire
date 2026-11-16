@@ -30,6 +30,9 @@ public sealed record DraftFact(
 
     /// <summary>The author's reason for deleting the fact the record holds (date and place select the instance); nothing replaces it.</summary>
     public string? Withdraw { get; init; }
+
+    /// <summary>Other findings whose records also support this fact, each cited as its own record; none of them is drafted.</summary>
+    public IReadOnlyList<DraftCite> Cites { get; init; } = [];
 }
 
 /// <summary>An extra line under a fact, such as the TYPE of an EVEN.</summary>
@@ -37,14 +40,14 @@ public sealed record DraftSubstructure(string Tag, string Value);
 
 /// <summary>
 /// A note the author wrote. <see cref="Match"/> is the exact text of an existing note to rewrite;
-/// <see cref="Cites"/> attach citations of findings in the same draft; <see cref="Purpose"/> "biography"
+/// <see cref="Cites"/> attach citations of any findings, whatever their target; <see cref="Purpose"/> "biography"
 /// marks a person's note as cited biographical prose. A note with <see cref="Withdraw"/> deletes the held note
 /// <see cref="Match"/> names and has no text of its own.
 /// </summary>
 public sealed record DraftNote(string Record, string Text)
 {
     public string? Match { get; init; }
-    public IReadOnlyList<DraftNoteCitation> Cites { get; init; } = [];
+    public IReadOnlyList<DraftCite> Cites { get; init; } = [];
     public string? Purpose { get; init; }
 
     /// <summary>The author's reason for deleting the note <see cref="Match"/> names; nothing replaces it.</summary>
@@ -56,8 +59,11 @@ public sealed record DraftNote(string Record, string Text)
         new(record, "") { Match = match, Withdraw = reason };
 }
 
-/// <summary>A citation on a note: the finding it cites (the note's own when null), graded on its own, optionally with a narrower extract.</summary>
-public sealed record DraftNoteCitation(string? Finding, int Quay, string? Excerpt);
+/// <summary>
+/// A citation of a finding's record: the finding it cites (on a note, the note's own when null), graded on its own,
+/// optionally with a narrower extract. The cited finding lends only its source, locator and extract; it is not drafted.
+/// </summary>
+public sealed record DraftCite(string? Finding, int Quay, string? Excerpt);
 
 public sealed record DraftTarget(string Xref, string? Card, string? Name);
 
@@ -98,6 +104,11 @@ public sealed record DraftFinding(
     public IReadOnlyList<DraftPerson> People { get; init; } = [];
     public IReadOnlyList<string> ExistingPeople { get; init; } = [];
     public IReadOnlyList<DraftRelation> Relations { get; init; } = [];
+
+    /// <summary>The ids of the other findings this one's notes and facts cite.</summary>
+    public IEnumerable<string> CitedIds =>
+        Notes.SelectMany(n => n.Cites).Concat(Facts.SelectMany(f => f.Cites))
+            .Select(c => c.Finding).OfType<string>().Where(id => id != Id).Distinct(StringComparer.Ordinal);
 
     /// <summary>Why the records concern this person and not a same-named rival, exactly as correlation wrote it; carried into the changeset, never judged.</summary>
     public JsonObject? Argument { get; init; }

@@ -13,8 +13,14 @@ namespace GedFire.Mcp;
 /// <summary>One finding file as loaded for drafting: its draft when ready, otherwise why not.</summary>
 public sealed record LoadedFindingFile(string Name, DraftFinding? Finding, IReadOnlyList<string> Errors);
 
-/// <summary>The drafts of a set of finding files; <see cref="Files"/> holds each finding's file, in order.</summary>
-public sealed record LoadedFindings(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Files, IReadOnlyList<string> Errors);
+/// <summary>
+/// The drafts of a set of finding files; <see cref="Files"/> holds each finding's file, in order. <see cref="Cited"/> holds the
+/// findings staged beside them that they cite but that are not among them: those are cited, never drafted.
+/// </summary>
+public sealed record LoadedFindings(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Files, IReadOnlyList<string> Errors)
+{
+    public IReadOnlyList<DraftFinding> Cited { get; init; } = [];
+}
 
 public static partial class FindingFileLoader
 {
@@ -30,7 +36,10 @@ public static partial class FindingFileLoader
         var errors = loaded.SelectMany(f => f.Errors).ToList();
         if (errors.Count > 0) return new LoadedFindings([], [], errors);
 
-        return new LoadedFindings(DraftNoteJoiner.Join([.. loaded.Select(f => f.Finding!)]), [.. loaded.Select(f => f.Name)], []);
+        return new LoadedFindings(DraftNoteJoiner.Join([.. loaded.Select(f => f.Finding!)]), [.. loaded.Select(f => f.Name)], [])
+        {
+            Cited = StagedFindings.CitedBeside(loaded.Select(f => (f.Name, f.Finding!))),
+        };
     }
 
     /// <summary>Reads each named file, in order; a file that cannot be read comes back with its error.</summary>

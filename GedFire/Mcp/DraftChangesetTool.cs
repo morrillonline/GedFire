@@ -27,7 +27,8 @@ public sealed class DraftChangesetTool
                 "of minted; titles match ignoring case and punctuation, and a trailing \" - <person name>\" is dropped, so " +
                 "record-specific text belongs in the locator), one merged extract per (source, page, grade) in each item, the locator copied verbatim into the " +
         "citation page, a verification note for each fact whose best citation (in the item or already in the document) is at or below the policy ceiling " +
-        "(QUAY 1 without a policy file), naming every record the fact rests on and skipped when a note on the record already says so, and a refusal, naming the field, for a QUAY the source and information " +
+        "(QUAY 1 without a policy file), naming the fact in words (\"occupation\", never OCCU) and every record it rests on across the draft's items, " +
+        "so two items citing one fact from different records write one note naming both; skipped when a note on the record already says so; and a refusal, naming the field, for a QUAY the source and information " +
         "class cannot support, a target name that differs from the person's recorded name, or prose the server's " +
         "policy bans. You supply the judgement: each fact's record, tag, date, place (or a text value such as a NAME " +
         "change) and QUAY, and any note text. A repeatable tag (CENS, RESI, ...) is placed by date: a date no instance " +
@@ -43,7 +44,9 @@ public sealed class DraftChangesetTool
         "the finding's citation. A new parent, spouse or child is refused when the person it attaches to already has a " +
         "parent in that role, or a spouse or child of an agreeing name; the error names that relative's xref, to use in " +
         "place of the placeholder or to list in the relation's notDuplicateOf. A note may rewrite an existing note (match), delete it (match and withdraw, a reason), " +
-        "and cite findings of its item (cites); " +
+        "and cite findings (cites); a fact may cite other findings too (cites), keeping its own citation. A cite may name any " +
+        "finding, whatever its target: one of the draft, or with findingPaths one staged as <id>.json beside the citing " +
+        "file, which lends only its source, locator and extract and is not drafted; " +
         "a biography note must cite at least one; " +
         "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +
         "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
@@ -213,7 +216,7 @@ public sealed class DraftChangesetTool
             return Respond(new DraftResult(null, [], input.Errors), null, report);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        var draft = new ChangesetDrafter(new ModelDraftLookup(snapshot.Model), _policy).Draft(input.Findings);
+        var draft = new ChangesetDrafter(new ModelDraftLookup(snapshot.Model), _policy).Draft(input.Findings, input.Cited);
         if (input.Files.Count > 0) draft = draft with { Errors = FindingFileLoader.NameFiles(draft.Errors, input.Files) };
 
         string? writtenTo = null;
@@ -226,8 +229,12 @@ public sealed class DraftChangesetTool
         return Respond(draft, writtenTo, report);
     }
 
-    // Files names the file each finding came from when they came from findingPaths, so a check can name it.
-    sealed record FindingInput(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Errors, IReadOnlyList<string> Files);
+    // Files names the file each finding came from when they came from findingPaths, so a check can name it; Cited holds the
+    // findings staged beside those files that they cite, which are cited but not drafted.
+    sealed record FindingInput(IReadOnlyList<DraftFinding> Findings, IReadOnlyList<string> Errors, IReadOnlyList<string> Files)
+    {
+        public IReadOnlyList<DraftFinding> Cited { get; init; } = [];
+    }
 
     // The findings come from exactly one of: the findings argument, the inputPath file, or the finding files.
     static FindingInput ReadFindings(DraftChangesetArguments arguments, out string? error)
@@ -245,7 +252,7 @@ public sealed class DraftChangesetTool
             }
 
             var loaded = FindingFileLoader.Load(arguments.FindingPaths);
-            return new FindingInput(loaded.Findings, loaded.Errors, loaded.Files);
+            return new FindingInput(loaded.Findings, loaded.Errors, loaded.Files) { Cited = loaded.Cited };
         }
 
         if (!ArgumentFile.TryResolve(arguments.Findings, "findings", arguments.InputPath, "inputPath", out var findings, out error))

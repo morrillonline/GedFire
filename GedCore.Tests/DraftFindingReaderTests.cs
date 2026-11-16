@@ -382,7 +382,7 @@ public class DraftFindingReaderTests
         Assert.Empty(errors);
         var read = findings[0].Notes[0];
         Assert.Equal("Old.", read.Match);
-        Assert.Equal([new DraftNoteCitation("F-9", 1, "x"), new DraftNoteCitation(null, 2, null)], read.Cites);
+        Assert.Equal([new DraftCite("F-9", 1, "x"), new DraftCite(null, 2, null)], read.Cites);
     }
 
     [Fact]
@@ -391,6 +391,37 @@ public class DraftFindingReaderTests
         var note = Valid.Replace("\"text\": \"A note.\"", "\"text\": \"A note.\", \"cites\": [ { \"finding\": \"F-9\" } ]");
 
         Assert.Contains("findings[0].notes[0].cites[0].quay is required", Assert.Single(Read($"[{note}]").Errors));
+    }
+
+    [Fact]
+    public void AFactsCites_AreRead()
+    {
+        var fact = Valid.Replace("\"quay\": 2 }", "\"quay\": 2, \"cites\": [ { \"finding\": \"F-9\", \"quay\": 1, \"excerpt\": \"x\" } ] }");
+        var (findings, errors) = Read($"[{fact}]");
+
+        Assert.Empty(errors);
+        Assert.Equal([new DraftCite("F-9", 1, "x")], findings[0].Facts[0].Cites);
+        Assert.Equal(["F-9"], findings[0].CitedIds);
+    }
+
+    [Theory]
+    [InlineData("\"cites\": [ { \"quay\": 1 } ]", "findings[0].facts[0].cites[0].finding is required.")]
+    [InlineData("\"cites\": [ { \"finding\": \"F-9\" } ]", "findings[0].facts[0].cites[0].quay is required: an integer 0-3, graded for this fact citation.")]
+    [InlineData("\"cites\": [ { \"finding\": \"F-9\", \"quay\": 1, \"page\": \"p\" } ]", "findings[0].facts[0].cites[0].page is not a recognized field")]
+    public void AFactCite_NeedsAFindingAndAGrade(string cites, string error)
+    {
+        var fact = Valid.Replace("\"quay\": 2 }", $"\"quay\": 2, {cites} }}");
+
+        Assert.StartsWith(error, Assert.Single(Read($"[{fact}]").Errors));
+    }
+
+    [Fact]
+    public void AWithdrawnFact_TakesNoCites()
+    {
+        var fact = Valid.Replace("\"date\": \"1 Jan 1900\", \"quay\": 2 }",
+            "\"quay\": 0, \"withdraw\": \"wrong man\", \"cites\": [ { \"finding\": \"F-9\", \"quay\": 1 } ] }");
+
+        Assert.StartsWith("findings[0].facts[0].withdraw deletes the fact the record holds;", Assert.Single(Read($"[{fact}]").Errors));
     }
 
     [Fact]

@@ -41,6 +41,88 @@ public class ChangesetDrafterVerificationNoteTests
 
     // ---- one assessment per fact ----
 
+    static DraftFinding Finding(string id, string card, DraftSource source, params DraftFact[] facts) =>
+        new(id, source, $"extract {id}", new DraftTarget("@I1@", card, null), facts, []);
+
+    static readonly ChangesetPolicy NotePolicy = ChangesetPolicy.Load(new MemoryStream(Encoding.UTF8.GetBytes(
+        $$"""{ "verificationNote": { "maxQuay": 1, "notePrefix": "{{Prefix}}" } }""")));
+
+    [Theory]
+    [InlineData("RESI")]
+    [InlineData("DEAT")]
+    public void OneFactCitedFromTwoRecordsInTwoItems_IsNeverCalledSingleSource_AndThePackagePasses(string tag)
+    {
+        var result = new ChangesetDrafter(new FakeLookup(), NotePolicy).Draft([
+            Finding("F-1", "enrich-a", Index("1920 Census Index", "Sheet 4"), Fact(tag, "1920", 1)),
+            Finding("F-2", "enrich-b", Index("City Directory", "p. 88"), Fact(tag, "1920", 1)),
+        ]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var notes = Notes(result);
+        Assert.Equal(2, notes.Count);
+        Assert.Equal(notes[0], notes[1]);
+        Assert.DoesNotContain("alone", notes[0]);
+        Assert.Contains("rests on 1920 Census Index and City Directory", notes[0]);
+        Assert.Empty(GedCore.Packages.PackageChecks.Check(
+            [new GedCore.Packages.PackageChangeset(1, result.Changeset!.ToJsonString())],
+            new NoSources(), new GedCore.Packages.PackageOptions([], Prefix)));
+    }
+
+    sealed class NoSources : GedCore.Packages.ISourceRecords
+    {
+        public GedCore.Packages.SourceDescription? Source(string xref) => null;
+    }
+
+    [Fact]
+    public void AFactCitedFromOneRecord_IsStillCalledSingleSource_BesideAnotherItem()
+    {
+        var result = Draft(new FakeLookup(),
+            Finding("F-1", "enrich-a", Index("1920 Census Index", "Sheet 4"), Fact("RESI", "1920", 1)),
+            Finding("F-2", "enrich-b", Index("City Directory", "p. 88"), Fact("RESI", "1930", 1)));
+
+        Assert.All(Notes(result), note => Assert.Contains("alone and has not yet been confirmed by a second source", note));
+    }
+
+    [Theory]
+    [InlineData("OCCU", "occupation")]
+    [InlineData("RESI", "residence")]
+    [InlineData("EDUC", "education")]
+    [InlineData("NATU", "naturalization")]
+    public void ANotesFieldIsWrittenInWords_NeverAsATag(string tag, string word)
+    {
+        var fact = new DraftFact("@I1@", tag, "1920", null, 1, null, null, null, Value: tag == "NATU" ? null : "x");
+        var result = new ChangesetDrafter(new FakeLookup(), NotePolicy).Draft([Finding("F-1", Index("City Directory", "p. 88"), fact)]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        string note = Assert.Single(Notes(result));
+        Assert.Contains($"the {word} of Gladys Giedd", note);
+        Assert.DoesNotMatch($@"(?i)\b{tag}\b", note);
+    }
+
+    [Fact]
+    public void ANoteOnALongerNamedFact_DoesNotCoverTheShorterOne()
+    {
+        string held = $"{Prefix} the adult christening of Gladys Giedd rests on Parish Register (secondary information) alone and has not yet been confirmed by a second source.";
+
+        var result = new ChangesetDrafter(new FakeLookup(notes: [held]), NotePolicy)
+            .Draft([Finding("F-1", Index("Parish Register", "p. 3"), Fact("CHR", "1850", 1))]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Contains("the christening of Gladys Giedd", Assert.Single(Notes(result)));
+    }
+
+    [Fact]
+    public void ANoteAnOlderVersionWroteWithATag_StillCountsForThatFact()
+    {
+        string older = $"{Prefix} the occu of Gladys Giedd rests on City Directory (secondary information) alone and has not yet been confirmed by a second source.";
+        var fact = new DraftFact("@I1@", "OCCU", "1920", null, 1, null, null, null, Value: "farmer");
+
+        var result = new ChangesetDrafter(new FakeLookup(notes: [older]), NotePolicy).Draft([Finding("F-1", Index("City Directory", "p. 88"), fact)]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Empty(Notes(result));
+    }
+
     [Fact]
     public void TwoLowFacts_EachGetTheirOwnNote()
     {

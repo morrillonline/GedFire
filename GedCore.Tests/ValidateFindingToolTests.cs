@@ -127,6 +127,44 @@ public class ValidateFindingToolTests : IDisposable
     }
 
     [Fact]
+    public async Task ANoteCitingAFindingAboutAnotherPersonStagedBesideIt_IsValid_AndDraftsAsACitationOnly()
+    {
+        File.WriteAllText(Path.Combine(_dir, "F-105.json"), FindingFixtures.Read("F-105.json")
+            .Replace("\"target\": { \"xref\": \"@I1@\", \"card\": \"enrich-life\" }", "\"target\": { \"xref\": \"@I2@\", \"card\": \"new-spouse\" }")
+            .Replace("\"record\": \"@I1@\"", "\"record\": \"@I2@\""));
+        var session = _sessions.Open(Ged);
+        string[] paths = [WriteFixture("F-100.json"), WriteFixture("F-106.json")];
+
+        var validated = Structured(await new ValidateFindingTool(session, new ToolGate()).HandleAsync(Paths(true, paths), CancellationToken.None));
+        var drafted = Structured(await new DraftChangesetTool(session, new ToolGate()).HandleAsync(
+            new DraftChangesetArguments(default, default, Arg(JsonSerializer.Serialize(paths)), default, default), CancellationToken.None));
+
+        Assert.True(validated.GetProperty("success").GetBoolean(), validated.ToString());
+        Assert.True(drafted.GetProperty("success").GetBoolean(), drafted.ToString());
+        var changeset = drafted.GetProperty("changeset");
+        var items = changeset.GetProperty("items").EnumerateArray().ToList();
+        Assert.All(items, item => Assert.StartsWith("@I1@", item.GetProperty("target").GetString()));
+        Assert.DoesNotContain(items.SelectMany(i => i.GetProperty("ops").EnumerateArray()), op => op.GetProperty("op").GetString() == "createOrUpdateVital" && op.GetProperty("fact").GetString() == "CENS");
+        var cited = Assert.Single(changeset.GetProperty("findings").EnumerateArray(), f => f.GetProperty("id").GetString() == "F-105");
+        Assert.False(cited.TryGetProperty("item", out _));
+    }
+
+    [Fact]
+    public async Task ANoteCitingAFindingNotStaged_IsRefusedByBothTools_InTheSameWords()
+    {
+        var session = _sessions.Open(Ged);
+        string[] paths = [WriteFixture("F-106.json")];
+
+        var validated = Structured(await new ValidateFindingTool(session, new ToolGate()).HandleAsync(Paths(true, paths), CancellationToken.None));
+        var drafted = Structured(await new DraftChangesetTool(session, new ToolGate()).HandleAsync(
+            new DraftChangesetArguments(default, default, Arg(JsonSerializer.Serialize(paths)), default, default), CancellationToken.None));
+
+        const string error = "notes[0].cites[1].finding \"F-105\" is not a finding of this draft, nor a finding file beside it (F-105.json).";
+        Assert.EndsWith(error, Assert.Single(validated.GetProperty("findings")[0].GetProperty("errors").EnumerateArray()).GetString());
+        Assert.EndsWith(error, Assert.Single(drafted.GetProperty("errors").EnumerateArray()).GetString());
+    }
+
+    [Fact]
     public async Task FindingsEntriesMayCiteEachOther()
     {
         string entries = "[" + string.Join(",", new[] { "F-105.json", "F-106.json" }.Select(name =>

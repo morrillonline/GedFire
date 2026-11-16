@@ -10,7 +10,7 @@ public class DraftNoteJoinerTests
         new(id, Source, "text", new DraftTarget(xref, card, null), [], notes);
 
     static DraftNote Note(string record, string text, string? citedFinding = null, int quay = 2) =>
-        new(record, text) { Cites = [new DraftNoteCitation(citedFinding, quay, null)] };
+        new(record, text) { Cites = [new DraftCite(citedFinding, quay, null)] };
 
     [Fact]
     public void NotesOnTheSameRecordInOneItem_BecomeOneNoteCarriedByTheFirstFinding()

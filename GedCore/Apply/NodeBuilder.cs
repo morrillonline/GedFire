@@ -276,7 +276,7 @@ internal static class NodeBuilder
         if (note is null && (!state.NotesAddedThisItem.TryGetValue(record.Xref!, out note) || state.BiographyNotesWritten.Contains(note)))
         {
             note = NewNode(1, "NOTE",
-                $"Prior citation(s) on {factTag} superseded by a correction and retained here.");
+                $"Prior citation(s) on the {FactLabel.Of(factTag)} superseded by a correction and retained here.");
             Attach(record, note);
             state.NotesAddedThisItem[record.Xref!] = note;
         }

@@ -3,15 +3,24 @@ using GedCore.Apply;
 
 namespace GedCore.Drafting;
 
+/// <summary>One drafted item, and what its verification notes are planned from once every item of the draft is known.</summary>
+internal sealed record DraftedItem(JsonObject Item, IReadOnlyList<CitedFact> Noted, IReadOnlyList<DraftNote> AuthorNotes)
+{
+    public void Add(IEnumerable<JsonObject> ops)
+    {
+        var array = Item["ops"]!.AsArray();
+        foreach (var op in ops) array.Add(op);
+    }
+}
+
 /// <summary>
 /// Compiles the findings aimed at one target into a changeset item: one citation per
 /// (source, page, grade) with every extract merged into its dataText, the relationship ops that
-/// create new people and families, one vital op per distinct fact value, and a verification
-/// note on each fact still graded low.
+/// create new people and families, and one vital op per distinct fact value. A cite of another
+/// finding adds that finding's citation and drafts nothing from it.
 /// </summary>
 internal sealed class ItemDrafter(
-    SourcePlan sources, IRecordHistory history, VerificationNotePlanner verificationNotes,
-    IReadOnlyDictionary<string, DraftPerson> newPeople)
+    SourcePlan sources, IRecordHistory history, CitableFindings citable, IReadOnlyDictionary<string, DraftPerson> newPeople)
 {
     sealed record CiteKey(string Source, string Locator, int Quay);
 
@@ -34,12 +43,12 @@ internal sealed class ItemDrafter(
     // Facts whose citation was not attached because their approximate date does not fit the one chosen.
     readonly HashSet<Asserted> _excluded = [];
 
-    public JsonObject Draft(int number, IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions, List<string> errors)
+    public DraftedItem Draft(int number, IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions, List<string> errors)
     {
         _itemPeople.Clear();
         var withdrawals = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is not null).Select(x => (Finding: f, Fact: x))).ToList();
-        var asserted = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is null).Select(x => new Asserted(f, x, new CiteKey(sources.RefFor(f), f.Source.Locator, x.Quay)))).ToList();
-        var noteCites = group.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => NoteClaim(group, f, c)))).ToList();
+        var asserted = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is null).SelectMany(x => Assert(f, x))).ToList();
+        var noteCites = group.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => NoteClaim(f, c)))).ToList();
         var relations = group.SelectMany(f => f.Relations.Where(r => !r.IsRemoval).Select(r => new AssertedRelation(f, r, new CiteKey(sources.RefFor(f), f.Source.Locator, r.Quay)))).ToList();
         var claims = asserted.Select(a => new Claim(a.Finding, a.Cite, a.Fact.Excerpt ?? a.Finding.Extract))
             .Concat(relations.Select(r => new Claim(r.Finding, r.Cite, r.Relation.Excerpt ?? r.Finding.Extract)))
@@ -60,14 +69,25 @@ internal sealed class ItemDrafter(
         foreach (var citation in CitationOps([.. asserted.Where(a => a.Fact.CiteOnly)], citations)) ops.Add(citation);
         foreach (var withdrawal in NoteWithdrawalOps(group, decisions)) ops.Add(withdrawal);
         foreach (var finding in group)
-            foreach (var note in finding.Notes.Where(n => !n.IsWithdrawal)) ops.Add(NoteOp(note, group, finding, citations));
+            foreach (var note in finding.Notes.Where(n => !n.IsWithdrawal)) ops.Add(NoteOp(note, finding, citations));
         var noted = asserted.Where(a => !_excluded.Contains(a)).Select(a => new CitedFact(a.Finding, a.Fact, a.Cite.Source)).ToList();
-        foreach (var note in verificationNotes.Plan(noted, [.. group.SelectMany(f => f.Notes)], decisions)) ops.Add(note);
 
         var item = new JsonObject { ["item"] = number, ["target"] = Label(group[0].Target) };
         if (_itemPeople.Count > 0) item["people"] = new JsonArray([.. _itemPeople.Select(Declaration)]);
         item["ops"] = ops;
-        return item;
+        return new DraftedItem(item, noted, [.. group.SelectMany(f => f.Notes)]);
+    }
+
+    // A fact is cited from its own finding at its grade, and from each finding it cites, as that finding's own record.
+    IEnumerable<Asserted> Assert(DraftFinding finding, DraftFact fact)
+    {
+        yield return new Asserted(finding, fact, new CiteKey(sources.RefFor(finding), finding.Source.Locator, fact.Quay));
+        foreach (var cite in fact.Cites)
+        {
+            var cited = citable.Find(cite.Finding!)!;
+            var claim = fact with { Quay = cite.Quay, Excerpt = cite.Excerpt, Class = null, Information = null, Cites = [] };
+            yield return new Asserted(cited, claim, new CiteKey(sources.RefFor(cited), cited.Source.Locator, cite.Quay));
+        }
     }
 
     JsonNode Declaration(string xref)
@@ -78,18 +98,18 @@ internal sealed class ItemDrafter(
         return declaration;
     }
 
-    Claim NoteClaim(IReadOnlyList<DraftFinding> group, DraftFinding owner, DraftNoteCitation cite)
+    Claim NoteClaim(DraftFinding owner, DraftCite cite)
     {
-        var cited = cite.Finding is null ? owner : group.First(f => f.Id == cite.Finding);
+        var cited = citable.Cited(owner, cite)!;
         return new Claim(cited, new CiteKey(sources.RefFor(cited), cited.Source.Locator, cite.Quay), cite.Excerpt ?? cited.Extract);
     }
 
-    JsonObject NoteOp(DraftNote note, IReadOnlyList<DraftFinding> group, DraftFinding owner, Dictionary<CiteKey, JsonObject> citations)
+    JsonObject NoteOp(DraftNote note, DraftFinding owner, Dictionary<CiteKey, JsonObject> citations)
     {
         var op = new JsonObject { ["op"] = "createOrUpdateNote", ["record"] = note.Record, ["text"] = note.Text };
         if (note.Match is not null) op["match"] = note.Match;
         if (note.Purpose is not null) op["purpose"] = note.Purpose;
-        var cites = note.Cites.Select(c => NoteClaim(group, owner, c).Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!).ToList();
+        var cites = note.Cites.Select(c => NoteClaim(owner, c).Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!).ToList();
         AttachCitations(op, cites);
         return Backed(op, note.Cites.Select(c => c.Finding ?? owner.Id));
     }

@@ -24,6 +24,17 @@ internal static class FindingEvidence
         return evidence;
     }
 
+    /// <summary>
+    /// A finding that is only cited, never drafted: its record and extract, with no item and no claims of its own. Its identity
+    /// argument concerns its own target, not the item that cites it, so it is left out.
+    /// </summary>
+    public static JsonObject DescribeCited(DraftFinding finding, string sourceRef) => new()
+    {
+        ["id"] = finding.Id,
+        ["extract"] = finding.Extract,
+        ["source"] = SourceOf(finding.Source, sourceRef),
+    };
+
     static JsonObject SourceOf(DraftSource source, string? sourceRef)
     {
         var node = new JsonObject();

@@ -10,7 +10,7 @@ namespace GedCore.Drafting;
 internal static class DraftChecks
 {
     /// <param name="complete">False for a finding still open (draftGaps): a new person nothing links yet, or a finding with nothing to compile, is then not yet complete rather than wrong.</param>
-    public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup, bool complete = true)
+    public static IEnumerable<string> Check(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup, CitableFindings citable, bool complete = true)
     {
         // Each rule's refusals, in the order they are reported.
         IEnumerable<string>[] rules =
@@ -19,12 +19,12 @@ internal static class DraftChecks
             NewRecordErrors(findings, complete),
             RemovalErrors(findings, lookup),
             BiographyNoteErrors(findings),
-            NoteCitationErrors(findings),
+            CiteErrors(findings, citable),
             complete ? EmptyFindingErrors(findings) : [],
             NameErrors(findings, lookup),
             MissingRecordErrors(findings, lookup),
-            ExcerptErrors(findings),
-            GradeErrors(findings),
+            ExcerptErrors(findings, citable),
+            GradeErrors(findings, citable),
             RepeatableFacts.Errors(findings, lookup),
             SpouseFamilies.Errors(findings, lookup),
             FamilyEventPlacement.Errors(findings, lookup),
@@ -135,34 +135,44 @@ internal static class DraftChecks
 
     static string Fold(string name) => string.Join(' ', name.Replace("/", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
-    // A finding may exist only to be cited by another finding's note.
+    // A finding may exist only to be cited by another finding's note or fact.
     static IEnumerable<string> EmptyFindingErrors(IReadOnlyList<DraftFinding> findings)
     {
-        var cited = findings.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => c.Finding))).ToHashSet();
+        var cited = findings.SelectMany(f => f.CitedIds).ToHashSet(StringComparer.Ordinal);
         for (int f = 0; f < findings.Count; f++)
         {
             var finding = findings[f];
             if (finding.Facts.Count == 0 && finding.Notes.Count == 0 && finding.Relations.Count == 0 && !cited.Contains(finding.Id))
-                yield return $"findings[{f}] has no facts, relations or notes, and no note cites it.";
+                yield return $"findings[{f}] has no facts, relations or notes, and no note or fact cites it.";
         }
     }
 
-    static IEnumerable<string> NoteCitationErrors(IReadOnlyList<DraftFinding> findings)
+    // A cite may name any finding, whatever its target; the cited finding lends its record and is graded by its source.
+    static IEnumerable<string> CiteErrors(IReadOnlyList<DraftFinding> findings, CitableFindings citable)
+    {
+        foreach (var (owner, cite, path, onFact) in Cites(findings))
+        {
+            if (onFact && cite.Finding == owner.Id)
+                yield return $"{path}.finding \"{cite.Finding}\" is the fact's own finding, which the fact already cites at its quay; a fact's cites name other findings.";
+            else if (citable.Cited(owner, cite) is not { } cited)
+                yield return $"{path}.finding \"{cite.Finding}\" is not a finding of this draft, nor a finding file beside it ({cite.Finding}.json).";
+            else if (QuayError(cited, cite.Quay, null, null, $"{path}.quay") is { } error)
+                yield return error;
+        }
+    }
+
+    // Every cite of the draft, on a note or on a fact, with the finding that wrote it and its path.
+    static IEnumerable<(DraftFinding Owner, DraftCite Cite, string Path, bool OnFact)> Cites(IReadOnlyList<DraftFinding> findings)
     {
         for (int f = 0; f < findings.Count; f++)
+        {
             for (int n = 0; n < findings[f].Notes.Count; n++)
                 for (int c = 0; c < findings[f].Notes[n].Cites.Count; c++)
-                {
-                    var cite = findings[f].Notes[n].Cites[c];
-                    string path = $"findings[{f}].notes[{n}].cites[{c}]";
-                    var cited = cite.Finding is null ? findings[f] : findings.FirstOrDefault(x => x.Id == cite.Finding);
-                    if (cited is null)
-                        yield return $"{path}.finding \"{cite.Finding}\" is not a finding of this draft.";
-                    else if ((cited.Target.Xref, cited.Target.Card) != (findings[f].Target.Xref, findings[f].Target.Card))
-                        yield return $"{path}.finding \"{cite.Finding}\" is aimed at a different target, so it lands in another item; a note cites findings of its own item.";
-                    else if (QuayError(cited, cite.Quay, null, null, $"{path}.quay") is { } error)
-                        yield return error;
-                }
+                    yield return (findings[f], findings[f].Notes[n].Cites[c], $"findings[{f}].notes[{n}].cites[{c}]", false);
+            for (int i = 0; i < findings[f].Facts.Count; i++)
+                for (int c = 0; c < findings[f].Facts[i].Cites.Count; c++)
+                    yield return (findings[f], findings[f].Facts[i].Cites[c], $"findings[{f}].facts[{i}].cites[{c}]", true);
+        }
     }
 
     static IEnumerable<string> NewRecordErrors(IReadOnlyList<DraftFinding> findings, bool complete)
@@ -262,7 +272,7 @@ internal static class DraftChecks
     }
 
     // A citation quotes the record: an excerpt must be the finding's extract, or part of it, word for word.
-    static IEnumerable<string> ExcerptErrors(IReadOnlyList<DraftFinding> findings)
+    static IEnumerable<string> ExcerptErrors(IReadOnlyList<DraftFinding> findings, CitableFindings citable)
     {
         for (int f = 0; f < findings.Count; f++)
         {
@@ -272,49 +282,47 @@ internal static class DraftChecks
                 if (NotQuoted(finding.Facts[i].Excerpt, finding)) yield return $"{path}.facts[{i}].excerpt is not part of the finding's extract; an excerpt quotes the extract word for word.";
             for (int r = 0; r < finding.Relations.Count; r++)
                 if (NotQuoted(finding.Relations[r].Excerpt, finding)) yield return $"{path}.relations[{r}].excerpt is not part of the finding's extract; an excerpt quotes the extract word for word.";
-            for (int n = 0; n < finding.Notes.Count; n++)
-                for (int c = 0; c < finding.Notes[n].Cites.Count; c++)
-                {
-                    var cite = finding.Notes[n].Cites[c];
-                    var cited = cite.Finding is null ? finding : findings.FirstOrDefault(x => x.Id == cite.Finding);
-                    if (cited is not null && NotQuoted(cite.Excerpt, cited))
-                        yield return $"{path}.notes[{n}].cites[{c}].excerpt is not part of the extract of finding \"{cited.Id}\"; an excerpt quotes the extract word for word.";
-                }
         }
+        foreach (var (owner, cite, path, _) in Cites(findings))
+            if (citable.Cited(owner, cite) is { } cited && NotQuoted(cite.Excerpt, cited))
+                yield return $"{path}.excerpt is not part of the extract of finding \"{cited.Id}\"; an excerpt quotes the extract word for word.";
     }
 
     static bool NotQuoted(string? excerpt, DraftFinding finding) =>
         excerpt is not null && !finding.Extract.Contains(excerpt, StringComparison.Ordinal);
 
-    // The same quoted text becomes one citation, which carries one QUAY.
-    static IEnumerable<string> GradeErrors(IReadOnlyList<DraftFinding> findings)
+    // The same quoted text becomes one citation, which carries one QUAY. A finding that is only cited grades its text by its
+    // own claims; a conflict is reported on the drafted claim, never on the cited finding, which is checked on its own.
+    static IEnumerable<string> GradeErrors(IReadOnlyList<DraftFinding> findings, CitableFindings citable)
     {
-        var claims = new List<(string Finding, string Text, int Quay, string Path)>();
+        var claims = new List<(string Finding, string Text, int Quay, string Path, bool Drafted)>();
+        foreach (var cited in citable.CitedOnly)
+            foreach (var (text, quay, path) in OwnClaims(cited, $"finding \"{cited.Id}\""))
+                claims.Add((cited.Id, text, quay, path, false));
         for (int f = 0; f < findings.Count; f++)
-        {
-            var finding = findings[f];
-            string path = $"findings[{f}]";
-            for (int i = 0; i < finding.Facts.Count; i++)
-                if (finding.Facts[i].Withdraw is null)
-                    claims.Add((finding.Id, finding.Facts[i].Excerpt ?? finding.Extract, finding.Facts[i].Quay, $"{path}.facts[{i}]"));
-            for (int r = 0; r < finding.Relations.Count; r++)
-                if (!finding.Relations[r].IsRemoval)
-                    claims.Add((finding.Id, finding.Relations[r].Excerpt ?? finding.Extract, finding.Relations[r].Quay, $"{path}.relations[{r}]"));
-            for (int n = 0; n < finding.Notes.Count; n++)
-                for (int c = 0; c < finding.Notes[n].Cites.Count; c++)
-                {
-                    var cite = finding.Notes[n].Cites[c];
-                    var cited = cite.Finding is null ? finding : findings.FirstOrDefault(x => x.Id == cite.Finding);
-                    if (cited is not null) claims.Add((cited.Id, cite.Excerpt ?? cited.Extract, cite.Quay, $"{path}.notes[{n}].cites[{c}]"));
-                }
-        }
+            foreach (var (text, quay, path) in OwnClaims(findings[f], $"findings[{f}]"))
+                claims.Add((findings[f].Id, text, quay, path, true));
+        foreach (var (owner, cite, path, _) in Cites(findings))
+            if (citable.Cited(owner, cite) is { } cited)
+                claims.Add((cited.Id, cite.Excerpt ?? cited.Extract, cite.Quay, path, true));
 
         foreach (var quoted in claims.GroupBy(c => (c.Finding, c.Text)))
         {
             var first = quoted.First();
-            foreach (var other in quoted.Where(c => c.Quay != first.Quay))
+            foreach (var other in quoted.Where(c => c.Quay != first.Quay && c.Drafted))
                 yield return $"{other.Path}.quay is {other.Quay}, but {first.Path} cites the same text of finding \"{first.Finding}\" at {first.Quay}; one quoted text carries one grade, so give the differently graded claim its own excerpt.";
         }
+    }
+
+    // The text each of a finding's own facts and relations quotes, with its grade.
+    static IEnumerable<(string Text, int Quay, string Path)> OwnClaims(DraftFinding finding, string path)
+    {
+        for (int i = 0; i < finding.Facts.Count; i++)
+            if (finding.Facts[i].Withdraw is null)
+                yield return (finding.Facts[i].Excerpt ?? finding.Extract, finding.Facts[i].Quay, $"{path}.facts[{i}]");
+        for (int r = 0; r < finding.Relations.Count; r++)
+            if (!finding.Relations[r].IsRemoval)
+                yield return (finding.Relations[r].Excerpt ?? finding.Extract, finding.Relations[r].Quay, $"{path}.relations[{r}]");
     }
 
     static bool AnyFamilyRef(IReadOnlyList<DraftFinding> findings, string family) =>

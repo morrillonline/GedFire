@@ -259,7 +259,7 @@ public static class ChangesetDialect
         new("finding", "One findings-table entry: the evidence a reviewer weighs.",
         [
             Str("id", "The finding's id, which ops name in their findings.", required: true),
-            new("item", DialectType.Integer, "The item the finding was drafted into."),
+            new("item", DialectType.Integer, "The item the finding was drafted into; absent for a finding that is only cited, not drafted."),
             Str("extract", "The verbatim extract."),
             Obj("source", "findingSource", "The source the extract is from."),
             Objs("claims", "claim", "What the finding asserts, each graded."),

@@ -619,6 +619,7 @@ public class ApplyOpTests : ApplyTestBase
         Assert.Null(indi.FirstChild("BIRT"));
         var note = indi.ChildrenByTag("NOTE").Single();
         Assert.Equal("@S00001@", note.FirstChild("SOUR")!.Value);
+        Assert.Equal("Prior citation(s) on the birth superseded by a correction and retained here.", note.FullValue());
     }
 
     [Fact]

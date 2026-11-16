@@ -21,15 +21,21 @@ internal sealed class SourcePlan
     static (string, string) KeyOf(DraftFinding finding) =>
         (SourceTitles.Identity(SourceTitles.Collection(finding.Source.Name)), (finding.Source.Author ?? "").ToLowerInvariant());
 
-    static HashSet<string> CitedFindings(IReadOnlyList<DraftFinding> findings) =>
-        [.. findings.Where(f => f.Facts.Any(x => x.Withdraw is null) || f.Relations.Any(r => !r.IsRemoval)).Select(f => f.Id)
-            .Concat(findings.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => c.Finding ?? f.Id))))];
+    static HashSet<string> CitedFindings(IReadOnlyList<DraftFinding> drafted) =>
+        [.. drafted.Where(CitesItself).Select(f => f.Id).Concat(drafted.SelectMany(f => f.CitedIds))];
 
-    public static SourcePlan Build(IReadOnlyList<DraftFinding> findings, ISourceCatalog catalog, List<DraftDecision> decisions)
+    static bool CitesItself(DraftFinding finding) =>
+        finding.Facts.Any(x => x.Withdraw is null) || finding.Relations.Any(r => !r.IsRemoval)
+        || finding.Notes.Any(n => n.Cites.Any(c => c.Finding is null || c.Finding == finding.Id));
+
+    /// <param name="drafted">The findings drafted into items.</param>
+    /// <param name="citedOnly">Findings the drafted ones cite but that are not drafted; they get a source only when cited.</param>
+    public static SourcePlan Build(
+        IReadOnlyList<DraftFinding> drafted, IReadOnlyList<DraftFinding> citedOnly, ISourceCatalog catalog, List<DraftDecision> decisions)
     {
         var plan = new SourcePlan();
-        var cited = CitedFindings(findings);
-        foreach (var collection in findings.Where(f => cited.Contains(f.Id)).GroupBy(KeyOf))
+        var cited = CitedFindings(drafted);
+        foreach (var collection in drafted.Concat(citedOnly).Where(f => cited.Contains(f.Id)).GroupBy(KeyOf))
         {
             var members = collection.ToList();
             var titles = members.GroupBy(m => SourceTitles.Identity(m.Source.Name), (_, g) => g.ToList()).ToList();

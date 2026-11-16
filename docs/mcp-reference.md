@@ -347,13 +347,13 @@ drafting, so a harvest is checked before correlation settles its gaps:
 - Cited notes. A note with `purpose: "biography"` needs at least one entry in
   `cites`; with none, or an empty array, it is refused as `notes[0] is a
   biography note with no cites`.
-- Cross-finding cites. A note's `cites[].finding` is resolved against the
-  other findings checked with it (the other `findingPaths` files, or the other
-  `findings` entries) and, when one file is checked alone, against the file
-  `<id>.json` beside it. The cited finding must aim at the same target, and an
-  `excerpt` must be in its `extract` word for word. A cited id found nowhere
-  stays an error. An error of the cited finding alone is reported when that
-  finding is checked, not against the note that cites it.
+- Cross-finding cites. A note's or fact's `cites[].finding` is resolved
+  against the other findings checked with it (the other `findingPaths` files,
+  or the other `findings` entries) and against the file `<id>.json` beside
+  the citing file. The cited finding may aim at any target. An `excerpt` must
+  be in its `extract` word for word. A cited id found nowhere stays an error.
+  The cited finding is not drafted with the one that cites it, and an error
+  of its own is reported when that finding is checked, not against the cite.
 
 Two checks are about completeness rather than validity: a person declared
 in `people` that no relation links to the tree, and a finding with no facts,
@@ -391,11 +391,12 @@ that hold these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-Current versions: `finding` 3.2 (a parent relation takes `notDuplicateOf`;
+Current versions: `finding` 3.3 (a fact takes `cites`, and a cite may name a
+finding of any target; 3.2 let a parent relation take `notDuplicateOf`;
 3.1 let a note `withdraw` the note its `match` names; 3.0 required `cites` on
 a biography note; 2.0
-tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.2 (embeds
-`finding` 3.2; 2.0 refused unknown keys and a mismatched `draft.id`),
+tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.3 (embeds
+`finding` 3.3; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
 `persons[].xref`), `argument` 1.0, `changeset` 1.1 (`createOrUpdateParent`
 takes `notDuplicateOf`), `cards` 1.0,
@@ -489,8 +490,15 @@ assigns each fact's grade. Policy can require verification notes for low grades.
 
 The compiler maintains its own standard verification notes, one per fact. A
 fact gets a note only when its best citation, in the item or already in the
-document, is at or below the policy ceiling; the note names every record the
-fact rests on. No note is added when a note on the record already says the fact
+document, is at or below the policy ceiling, the same test the policy applies
+to each item. The note names every record the fact rests on: the document's,
+and those cited for that fact by every item of the draft, so when two items
+cite one fact from different records, neither says it rests on one record
+alone, and both write the same note, which applies once. Draft such items
+together, in one `draft_changeset` call. A note names each fact by its word
+("occupation", "residence", "birth"), never by its GEDCOM tag; a note an older
+version wrote with a tag, such as "the occu of", still counts for that fact.
+No note is added when a note on the record already says the fact
 awaits verification, however worded. Once stronger
 citations lift a named fact above the policy ceiling, it removes that fact
 from the note or deletes the note when no low-grade facts remain. It preserves
@@ -572,9 +580,22 @@ The warning requests source review, is not an error, and does not block applicat
   The reason is shown to the reviewer in the changeset's findings table.
 - A note's `match` names the exact text to rewrite. `cites` lists
   `{"finding", "quay", "excerpt"}` entries; omitting `finding` uses its own.
-  A cited finding aims at the same target and is drafted in the same batch.
   The compiler joins notes on the same record within a changeset and retains
   every finding's citations.
+- A fact's `cites` lists `{"finding", "quay", "excerpt"}` entries, each naming
+  another finding whose record also supports the fact. The fact keeps its own
+  finding's citation at its `quay` and gains one citation per entry; a cite
+  of the fact's own finding is refused.
+- A cite, on a note or a fact, may name any finding by id, whatever its target
+  or status: another finding of the draft, or with `findingPaths` a finding
+  staged as `<id>.json` beside the citing file. The cited finding lends only
+  its source, `locator` and `extract` (or the cite's `excerpt`); no facts,
+  people or relations are drafted from it. A staged finding that is not in
+  `findingPaths` appears in the changeset's findings table with no `item` and
+  no `claims`. The cite is graded against the cited finding's source and
+  information classes, and one quoted text carries one grade, including the
+  cited finding's own claims: a differently graded cite needs its own
+  `excerpt`. A cited id found nowhere is refused.
 - A note with `withdraw: "<reason>"` and `match` deletes the record's note
   with exactly that text, drafting a `deleteNote`; it takes no `text`,
   `cites`, or `purpose`. The reason is reported as a `resolved` decision. A
@@ -689,9 +710,9 @@ cure, and no proposal is written while one stands:
   A placeholder names a person only within its own changeset.
 - A verification note saying a fact rests on one record alone is refused when
   the package cites that fact, on that record, from two or more distinct
-  records (source and page). Put the findings for the fact in one item so its
-  note names every record, or draft the later changeset once the earlier one
-  is applied.
+  records (source and page). The drafter avoids this within one
+  `draft_changeset` call, so draft the findings for one fact together, or
+  draft the later changeset once the earlier one is applied.
 
 Each numbered item presents its cited findings, extracts, source and
 information classes, grades, and supplied identity arguments:
