@@ -300,7 +300,7 @@ public class CardScorerTests
         var preview = CardScorer.Preview(
             [new PointsCard("@I1@", "biography", null, null, 3)], Biography("@I2@", new BiographyCitation("@S1@", null)));
 
-        Assert.Contains("no biography note on the subject gained a citation", Assert.Single(preview.NotClosed).Reason);
+        Assert.Contains("no biography note on the subject added text or a citation", Assert.Single(preview.NotClosed).Reason);
     }
 
     [Fact]

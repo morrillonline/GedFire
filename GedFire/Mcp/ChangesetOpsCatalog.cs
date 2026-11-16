@@ -150,7 +150,8 @@ public static class ChangesetOpsCatalog
             "createOrUpdateVital for those). A note with the exact requested text → no-op; \"match\" naming an existing " +
             "note's exact text rewrites it; otherwise a new note is created. With \"purpose\": \"biography\" the note is a " +
             "person's cited biographical prose (service, occupation, migration, probate…), written as a plain note with its " +
-            "citations: a citation it gains that none of the person's cited notes carried before (same source and page) " +
+            "citations: a citation it gains that none of the person's cited notes carried before (same source and page), or " +
+            "text that matches none of the person's notes (case, whitespace and punctuation folded), " +
             "earns biography credit. Citations render the note as a cited narrative paragraph.",
             """
             { "op": "createOrUpdateNote", "record": "@I4@",

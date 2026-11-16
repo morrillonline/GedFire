@@ -147,7 +147,7 @@ public static class ChangesetDialect
             Str("text", "The note's full text. Refer to people and sources by name; text containing a record id such as @S1@ is refused.", required: true),
             Str("match", "An existing note's exact current text, to rewrite instead of creating a new one."),
             Str("mime", "\"text/plain\" (default) or \"text/html\"."),
-            Str("purpose", "\"biography\" to claim biography credit for the citations this note adds. Read from the changeset only; nothing extra is written to the file."),
+            Str("purpose", "\"biography\" to claim biography credit for the new information this note adds: a citation, or text, none of the person's notes carried. Read from the changeset only; nothing extra is written to the file."),
             Citations("They cite the note.")),
         OpShape("deleteNote",
             Xref("record", "Target person or family xref.", required: true),

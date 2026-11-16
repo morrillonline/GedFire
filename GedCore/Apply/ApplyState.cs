@@ -75,6 +75,15 @@ internal sealed class ApplyState(GedDocument doc)
         list.AddRange(citations);
     }
 
+    /// <summary>Person xref → the text of each note a biography note op wrote this run, in order.</summary>
+    public Dictionary<string, List<string>> BiographyTextsWritten { get; } = new(StringComparer.Ordinal);
+
+    public void AddBiographyText(string person, string text)
+    {
+        if (!BiographyTextsWritten.TryGetValue(person, out var list)) BiographyTextsWritten[person] = list = [];
+        list.Add(text);
+    }
+
     /// <summary>
     /// SOUR citation node → the field values (PAGE/DATA.TEXT/QUAY) written to
     /// it so far in this run. One citation per source per structure holds by

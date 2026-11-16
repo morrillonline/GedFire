@@ -91,6 +91,7 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
         {
             state.BiographyNotesWritten.Add(note);
             state.AddBiographyCitations(target.Xref!, BiographyNotes.CitationsOf(note).Where(c => !heldCitations.Contains(c)));
+            state.AddBiographyText(target.Xref!, note.FullValue());
         }
 
         var parts = new[] { action }.OfType<string>().Concat(citeChanges).ToList();

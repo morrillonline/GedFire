@@ -38,8 +38,8 @@ public sealed class SelectTargetsTool
         "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that produced no gap target. " +
         "A Biography target is a repeatable card for a man's cited biographical prose (service, occupation, migration, " +
         "probate...), offered only beside another of his cards, and open even when prose exists; nominalPoints 3 plus the enrichment difficulty bonus (birth era and region), paid " +
-        "once per person per changeset when a biography note gains a citation (source and page) none of the person's " +
-        "cited notes carried. " +
+        "once per person per changeset when a biography note adds new information: a citation (source and page) none of the person's " +
+        "cited notes carried, or text that matches none of the person's notes once case, whitespace and punctuation are folded. " +
         "New parent and New spouse require an exact date or non-empty place on an own vital event " +
         "(birth, christening/baptism, death, burial). New child requires an anchor on either spouse or " +
         "the marriage. Otherwise enrich first; suppressedCards lists the withheld cards and reasons.";
