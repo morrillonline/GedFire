@@ -20,20 +20,20 @@ public class ExtensionTagPreservationTests
         { "items": [
           { "item": 1, "target": "@I00001@", "ops": [
             { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
-              "value": "Albin H. /Test/", "match": "Allen /Test/",
-              "citation": { "source": "@S00001@", "page": "p. 1",
-                            "dataText": "name corrected", "quay": 2 } },
+              "value": "Albin H. /Test/", "match": { "value": "Allen /Test/" },
+              "citations": [{ "source": "@S00001@", "page": "p. 1",
+                            "dataText": "name corrected", "quay": 2 }] },
             { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-              "value": { "place": "Fergus Falls, Minnesota" },
-              "citation": { "source": "@S00001@", "page": "p. 1",
-                            "dataText": "birthplace refined", "quay": 2 } },
+              "place": "Fergus Falls, Minnesota",
+              "citations": [{ "source": "@S00001@", "page": "p. 1",
+                            "dataText": "birthplace refined", "quay": 2 }] },
             { "op": "createOrUpdateNote", "record": "@I00001@",
               "text": "Note added by test." } ] },
           { "item": 2, "target": "@F00001@", "ops": [
             { "op": "createOrUpdateVital", "record": "@F00001@", "fact": "MARR",
-              "value": { "place": "Minnesota" },
-              "citation": { "source": "@S00001@", "page": "p. 2",
-                            "dataText": "married in Minnesota", "quay": 2 } } ] }
+              "place": "Minnesota",
+              "citations": [{ "source": "@S00001@", "page": "p. 2",
+                            "dataText": "married in Minnesota", "quay": 2 }] } ] }
         ] }
         """;
 

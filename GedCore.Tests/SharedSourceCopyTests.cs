@@ -24,7 +24,7 @@ public class SharedSourceCopyTests : ApplyTestBase
         """{ "op": "createOrUpdateSource", "xref": "@S00002@", "title": "1850 Census, Northvale County" }""";
 
     const string CiteCensusOnAllensBirth =
-        """{ "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT", "citation": { "source": "@S00002@", "page": "p. 1" } }""";
+        """{ "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT", "citations": [{ "source": "@S00002@", "page": "p. 1" }] }""";
 
     static string Item(params string[] ops) =>
         "{ \"items\": [ { \"item\": 1, \"ops\": [ " + string.Join(", ", ops) + " ] } ] }";
@@ -95,7 +95,7 @@ public class SharedSourceCopyTests : ApplyTestBase
         WriteFile(Lines());
 
         RunExpectSuccess(Item(RetitleCensus,
-            """{ "op": "createOrUpdateCitation", "record": "@I00002@", "fact": "DEAT", "citation": { "source": "@S00002@", "page": "p. 9" } }"""));
+            """{ "op": "createOrUpdateCitation", "record": "@I00002@", "fact": "DEAT", "citations": [{ "source": "@S00002@", "page": "p. 9" }] }"""));
 
         var harvey = ReadDoc().ByXref["@I00002@"].ChildrenByTag("DEAT").Single();
         Assert.Equal(["@S00003@", "@S00004@"], CitedSources(harvey));
@@ -175,7 +175,7 @@ public class SharedSourceCopyTests : ApplyTestBase
         string source = RecordText("@S00002@");
 
         RunExpectSuccess(Item(
-            """{ "op": "createOrUpdateCitation", "record": "@I1001@", "fact": "BIRT", "citation": { "source": "@S00002@", "page": "p. 1, line 4" } }"""));
+            """{ "op": "createOrUpdateCitation", "record": "@I1001@", "fact": "BIRT", "citations": [{ "source": "@S00002@", "page": "p. 1, line 4" }] }"""));
 
         Assert.Contains("p. 1, line 4", RecordText("@I1001@"));
         for (int i = 2; i <= 350; i++)
@@ -200,7 +200,7 @@ public class SharedSourceCopyTests : ApplyTestBase
 
         var result = RunExpectSuccess(Item(
             """{ "op": "createOrUpdateSource", "xref": "@S00002@", "title": "1850 Census, Northvale County" }""",
-            """{ "op": "createOrUpdateCitation", "record": "@I1001@", "fact": "BIRT", "citation": { "source": "@S00002@", "page": "p. 1" } }"""));
+            """{ "op": "createOrUpdateCitation", "record": "@I1001@", "fact": "BIRT", "citations": [{ "source": "@S00002@", "page": "p. 1" }] }"""));
 
         Assert.Equal(1, result.Deltas["SOUR"]);
         Assert.Equal(source, RecordText("@S00002@"));

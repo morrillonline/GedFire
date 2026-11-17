@@ -66,7 +66,7 @@ public class ToolArgumentGuardTests : IDisposable
         string? error = Guard().Check("select_targets", Args("""{"people": 5, "surnames": ["A"], "surname": "B"}"""));
 
         Assert.Equal(
-            "select_targets: unrecognized parameter \"surname\". Accepted parameters: people, surnames, xrefs.",
+            "select_targets: unrecognized parameter \"surname\". Accepted parameters: people, surnames, xrefs, maxMotherAgeAtMarriage, minMarriageYears, includeSuppressed.",
             error);
     }
 

@@ -21,7 +21,7 @@ public class PlausibilityGateTests : ApplyTestBase
           "items": [
             { "item": 1, "target": "@I00001@", "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
-                "value": { "date": "1 JAN 1900" } } ] }
+                "date": "1 JAN 1900" } ] }
           ]
         }
         """;
@@ -75,7 +75,7 @@ public class PlausibilityGateTests : ApplyTestBase
               "items": [
                 { "item": 1, "target": "@I00004@", "ops": [
                   { "op": "createOrUpdateVital", "record": "@I00004@", "fact": "BIRT",
-                    "value": { "date": "1 JAN 1930" } } ] }
+                    "date": "1 JAN 1930" } ] }
               ]
             }
             """;
@@ -95,10 +95,10 @@ public class PlausibilityGateTests : ApplyTestBase
         {
           "proposal": "test",
           "items": [
-            { "item": 1, "target": "@F00001@", "ops": [
+            { "item": 1, "target": "@F00001@", "people": [ { "xref": "@NewI1@", "name": "Allan /Test/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "1931" } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@F00001@",
-                "child": { "xref": "@NewI1@", "name": "Allan /Test/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1931" } } ] } } ] }
+                "child": "@NewI1@" } ] }
           ]
         }
         """;

@@ -80,14 +80,15 @@ public class ApplyRelationshipTests : ApplyTestBase
         1 TITL Synthetic marriage register
         0 TRLR
         """;
-      var spouse = inlineSpouse
-        ? $$"""{ "xref": "@NewI1@", "name": "Casey /Synthetic/", "sex": "{{sex}}" }"""
-        : "\"@I2@\"";
+      var people = inlineSpouse
+        ? $$""", "people": [{ "xref": "@NewI1@", "name": "Casey /Synthetic/", "sex": "{{sex}}" }]"""
+        : "";
+      var spouse = inlineSpouse ? "\"@NewI1@\"" : "\"@I2@\"";
       var changeset = Changeset.Parse($$"""
-        { "items": [{ "item": 1, "ops": [
+        { "items": [{ "item": 1{{people}}, "ops": [
           { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": {{spouse}},
                 "family": "@NewF1@", "marriage": { "date": "{{year}}",
-                  "citation": { "source": "@S1@", "page": "entry 1" } } }
+                  "citations": [{ "source": "@S1@", "page": "entry 1" }] } }
         ] }] }
         """);
 
@@ -204,14 +205,14 @@ public class ApplyRelationshipTests : ApplyTestBase
     {
         WriteBaseFile();
         const string json = """
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "1951",
+                                        "citations": [{ "source": "@S00001@", "page": "p. 5",
+                                                      "dataText": "son, born 1951", "quay": 3 }] } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@F00002@",
-                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1951" },
-                                        "citation": { "source": "@S00001@", "page": "p. 5",
-                                                      "dataText": "son, born 1951", "quay": 3 } } ] },
-                "citation": { "source": "@S00001@", "page": "p. 5",
-                              "dataText": "surviving children include Junior", "quay": 3 } } ] } ] }
+                "child": "@NewI1@",
+                "familyCitations": [{ "source": "@S00001@", "page": "p. 5",
+                              "dataText": "surviving children include Junior", "quay": 3 }] } ] } ] }
             """;
 
         var result = RunExpectSuccess(json);
@@ -242,12 +243,12 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "1951" } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@F00002@",
-                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1951" } } ] },
-                "citation": { "source": "@S00001@", "page": "p. 5",
-                              "dataText": "surviving children include Junior", "quay": 3 } } ] } ] }
+                "child": "@NewI1@",
+                "familyCitations": [{ "source": "@S00001@", "page": "p. 5",
+                              "dataText": "surviving children include Junior", "quay": 3 }] } ] } ] }
             """);
 
         // No citation on the inline fact itself -- the itemized line omits
@@ -265,10 +266,10 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Kid /Test/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@NewF1@",
                 "husb": "@I00002@", "wife": "@I00004@",
-                "child": { "xref": "@NewI1@", "name": "Kid /Test/", "sex": "F" } } ] } ] }
+                "child": "@NewI1@" } ] } ] }
             """);
 
         Assert.Equal(1, result.Deltas["INDI"]);
@@ -327,12 +328,12 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Newman /Test/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateParent", "person": "@I00001@", "role": "father",
-                "parent": { "xref": "@NewI1@", "name": "Newman /Test/", "sex": "M" },
+                "parent": "@NewI1@",
                 "notDuplicateOf": ["@I00002@"],
-                "citation": { "source": "@S00001@", "page": "p. 7",
-                              "dataText": "son of Newman Test", "quay": 2 } } ] } ] }
+                "familyCitations": [{ "source": "@S00001@", "page": "p. 7",
+                              "dataText": "son of Newman Test", "quay": 2 }] } ] } ] }
             """);
 
         Assert.Equal("@I00005@", result.MintedXrefs["@NewI1@"]);
@@ -351,9 +352,9 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Newman /Test/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateParent", "person": "@I00001@", "role": "father",
-                "parent": { "xref": "@NewI1@", "name": "Newman /Test/", "sex": "M" } } ] } ] }
+                "parent": "@NewI1@" } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -366,9 +367,9 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Grandma /Test/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother",
-                "parent": { "xref": "@NewI1@", "name": "Grandma /Test/", "sex": "F" },
+                "parent": "@NewI1@",
                 "family": "@NewF1@" } ] } ] }
             """);
 
@@ -398,12 +399,12 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" }, { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "parent": "@NewI1@",
                 "family": "@NewF1@" },
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother",
-                "parent": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                "parent": "@NewI2@",
                 "family": "@NewF1@" } ] } ] }
             """);
 
@@ -433,12 +434,12 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" }, { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "parent": "@NewI1@",
                 "family": "@NewF1@" },
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother",
-                "parent": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                "parent": "@NewI2@",
                 "family": "@NewF1@" } ] } ] }
             """, dryRun: true);
 
@@ -459,13 +460,13 @@ public class ApplyRelationshipTests : ApplyTestBase
 
         var result = RunExpectSuccess("""
             { "items": [
-              { "item": 1, "ops": [
+              { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" } ], "ops": [
                 { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                  "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                  "parent": "@NewI1@",
                   "family": "@NewF1@" } ] },
-              { "item": 2, "ops": [
+              { "item": 2, "people": [ { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" } ], "ops": [
                 { "op": "createOrUpdateParent", "person": "@I00004@", "role": "mother",
-                  "parent": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                  "parent": "@NewI2@",
                   "family": "@NewF1@" } ] } ] }
             """);
 
@@ -495,9 +496,9 @@ public class ApplyRelationshipTests : ApplyTestBase
         byte[] original = WriteBaseFile();
 
         var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "parent": "@NewI1@",
                 "family": "@F00001@" } ] } ] }
             """);
 
@@ -512,12 +513,12 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" }, { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "parent": "@NewI1@",
                 "family": "@NewF1@" },
               { "op": "createOrUpdateSpouse", "person": "@NewI1@",
-                "spouse": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                "spouse": "@NewI2@",
                 "family": "@NewF1@" } ] } ] }
             """);
 
@@ -546,17 +547,17 @@ public class ApplyRelationshipTests : ApplyTestBase
         byte[] original = WriteBaseFile();
 
         var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" }, { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateParent", "person": "@I00004@", "role": "father",
-                "parent": { "xref": "@NewI1@", "name": "Cornelius /Ashworth/", "sex": "M" },
+                "parent": "@NewI1@",
                 "family": "@NewF1@",
-                "citation": { "source": "@S00001@", "page": "p. 4",
-                              "dataText": "father: Cornelius", "quay": 2 } },
+                "familyCitations": [{ "source": "@S00001@", "page": "p. 4",
+                              "dataText": "father: Cornelius", "quay": 2 }] },
               { "op": "createOrUpdateSpouse", "person": "@NewI1@",
-                "spouse": { "xref": "@NewI2@", "name": "Beatrice /Fenwick/", "sex": "F" },
+                "spouse": "@NewI2@",
                 "family": "@NewF1@",
-                "citation": { "source": "@S00001@", "page": "p. 4",
-                              "dataText": "mother: Beatrice", "quay": 2 } } ] } ] }
+                "familyCitations": [{ "source": "@S00001@", "page": "p. 4",
+                              "dataText": "mother: Beatrice", "quay": 2 }] } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -587,7 +588,7 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = RunExpectSuccess("""
-            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00002@", "spouse": "@I00003@", "family": "@F00001@",
                 "marriage": { "date": "1922", "citations": [ { "source": "@S00001@", "page": "marriage", "quay": 2 } ] },
                 "familyCitations": [ { "source": "@S00001@", "page": "household", "quay": 2 } ] } ] } ] }
@@ -604,7 +605,7 @@ public class ApplyRelationshipTests : ApplyTestBase
         WriteBaseFile();
 
         var result = RunExpectSuccess("""
-            { "schemaVersion": "1.0", "items": [ { "item": 1,
+            { "items": [ { "item": 1,
               "people": [ { "xref": "@NewI1@", "name": "Ada /Quill/", "sex": "F",
                             "facts": [ { "fact": "BIRT", "date": "1930", "citations": [ { "source": "@S00001@", "page": "p. 3", "quay": 2 } ] } ] } ],
               "ops": [

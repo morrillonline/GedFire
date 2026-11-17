@@ -25,7 +25,7 @@ public class RecordLevelCitationTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@F00001@",
-                "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "matches Harvey Test exactly" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1", "dataText": "matches Harvey Test exactly" }] } ] } ] }
             """);
 
         Assert.Equal("matches Harvey Test exactly", FamilyCitationOf(ReadDoc()));
@@ -39,7 +39,7 @@ public class RecordLevelCitationTests : ApplyTestBase
         const string json = """
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@F00001@",
-                "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "matches Harvey Test exactly" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1", "dataText": "matches Harvey Test exactly" }] } ] } ] }
             """;
         RunExpectSuccess(json);
         byte[] afterFirst = ReadBytes();
@@ -58,7 +58,7 @@ public class RecordLevelCitationTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@F00001@",
-                "citation": { "source": "@S00001@", "page": "p. 9", "dataText": "family listed" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 9", "dataText": "family listed" }] } ] } ] }
             """);
 
         var citation = ReadDoc().ByXref["@F00001@"].ChildrenByTag("SOUR").Single();
@@ -72,12 +72,12 @@ public class RecordLevelCitationTests : ApplyTestBase
         WriteBaseFile();
 
         RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@NewF1@", "husb": "@I00002@",
-                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M" },
-                "citation": { "source": "@S00001@", "page": "a", "dataText": "child of Harvey", "quay": 2 } },
+                "child": "@NewI1@",
+                "familyCitations": [{ "source": "@S00001@", "page": "a", "dataText": "child of Harvey", "quay": 2 }] },
               { "op": "createOrUpdateCitation", "record": "@NewF1@",
-                "citation": { "source": "@S00001@", "page": "a", "dataText": "child of Harvey", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "a", "dataText": "child of Harvey", "quay": 2 }] } ] } ] }
             """);
 
         var family = ReadDoc().ByXref["@F00004@"];
@@ -93,7 +93,7 @@ public class RecordLevelCitationTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@",
-                "citation": { "source": "@S00001@", "page": "p. 1" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1" }] } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -108,7 +108,7 @@ public class RecordLevelCitationTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@F00001@", "match": { "date": "1900" },
-                "citation": { "source": "@S00001@", "page": "p. 1" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1" }] } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -123,7 +123,7 @@ public class RecordLevelCitationTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@F00001@",
-                "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "still names @I00003@" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1", "dataText": "still names @I00003@" }] } ] } ] }
             """);
 
         Assert.False(result.Success);

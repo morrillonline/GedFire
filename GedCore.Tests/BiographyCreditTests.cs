@@ -159,7 +159,7 @@ public class BiographyCreditTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 1", "quay": 1 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1", "quay": 1 }] } ] } ] }
             """);
 
         var result = RunExpectSuccess($$"""
@@ -167,8 +167,8 @@ public class BiographyCreditTests : ApplyTestBase
               { "op": "createOrUpdateNote", "record": "@I00001@", "text": "{{Service}}", "purpose": "biography",
                 "citations": [ {{PensionFile}} ] },
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" }, "replacedCitations": "moveToNote",
-                "citation": { "source": "@S00002@", "page": "Birth affidavit", "quay": 2 } } ] } ] }
+                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota", "replacedCitations": "moveToNote",
+                "citations": [{ "source": "@S00002@", "page": "Birth affidavit", "quay": 2 }] } ] } ] }
             """);
 
         var notes = ReadDoc().ByXref["@I00001@"].ChildrenByTag("NOTE").ToList();

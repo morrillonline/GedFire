@@ -23,7 +23,7 @@ public class SourceReuseTests : ApplyTestBase
             { "op": "createOrUpdateSource", "xref": "@NewS1@", "title": "{{title}}", "auth": "{{author}}"{{extra}} } ] } ],
           "items": [ { "item": 1, "ops": [
             { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-              "citation": { "source": "@NewS1@", "page": "p. 7" } } ] } ] }
+              "citations": [{ "source": "@NewS1@", "page": "p. 7" }] } ] } ] }
         """;
 
     string SourceText(string xref) =>
@@ -91,9 +91,9 @@ public class SourceReuseTests : ApplyTestBase
                 { "xref": "@NewS2@", "ops": [ { "op": "createOrUpdateSource", "xref": "@NewS2@", "title": "pension file 4417", "auth": "US Pension Bureau" } ] } ],
               "items": [ { "item": 1, "ops": [
                 { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                  "citation": { "source": "@NewS1@", "page": "a" } },
+                  "citations": [{ "source": "@NewS1@", "page": "a" }] },
                 { "op": "createOrUpdateCitation", "record": "@I00003@", "fact": "CENS", "match": { "date": "1930" },
-                  "citation": { "source": "@NewS2@", "page": "b" } } ] } ] }
+                  "citations": [{ "source": "@NewS2@", "page": "b" }] } ] } ] }
             """);
 
         Assert.Equal(result.MintedXrefs["@NewS1@"], result.MintedXrefs["@NewS2@"]);

@@ -5,10 +5,12 @@ namespace GedCore.Tests;
 
 public class TreeChangesTests : ApplyTestBase
 {
-    TreeChanges DryRunChanges(string opsJson)
+    const string Ruth = """{ "xref": "@NewI1@", "name": "Ruth /Test/", "sex": "F" }""";
+
+    TreeChanges DryRunChanges(string opsJson, string people = "")
     {
         WriteBaseFile();
-        var result = Run($$"""{ "items": [ { "item": 1, "ops": [ {{opsJson}} ] } ] }""", dryRun: true);
+        var result = Run($$"""{ "items": [ { "item": 1, "people": [ {{people}} ], "ops": [ {{opsJson}} ] } ] }""", dryRun: true);
         Assert.True(result.Success, string.Join("; ", result.Errors));
         return result.Changes;
     }
@@ -18,7 +20,7 @@ public class TreeChangesTests : ApplyTestBase
     {
         var changes = DryRunChanges("""
             { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "DEAT",
-              "value": { "date": "3 MAR 1950", "place": "Duluth, Minnesota" } }
+              "date": "3 MAR 1950", "place": "Duluth, Minnesota" }
             """);
 
         var write = Assert.Single(changes.Facts);
@@ -30,7 +32,7 @@ public class TreeChangesTests : ApplyTestBase
     {
         var changes = DryRunChanges("""
             { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-              "citation": { "source": "@S00001@", "page": "p. 1", "quay": 2 } }
+              "citations": [{ "source": "@S00001@", "page": "p. 1", "quay": 2 }] }
             """);
 
         var write = Assert.Single(changes.Facts);
@@ -46,7 +48,7 @@ public class TreeChangesTests : ApplyTestBase
     {
         var changes = DryRunChanges("""
             { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-              "value": { "date": "1928", "place": "Minnesota" } }
+              "date": "1928", "place": "Minnesota" }
             """);
 
         Assert.Empty(changes.Facts);
@@ -57,7 +59,7 @@ public class TreeChangesTests : ApplyTestBase
     {
         var changes = DryRunChanges("""
             { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-              "value": { "date": "1928", "place": "Duluth, Minnesota" } }
+              "date": "1928", "place": "Duluth, Minnesota" }
             """);
 
         Assert.Equal("Duluth, Minnesota", Assert.Single(changes.Facts).Place);
@@ -78,8 +80,8 @@ public class TreeChangesTests : ApplyTestBase
     {
         var changes = DryRunChanges("""
             { "op": "createOrUpdateChild", "family": "@F00001@",
-              "child": { "xref": "@NewI1@", "name": "Ruth /Test/", "sex": "F" } }
-            """);
+              "child": "@NewI1@" }
+            """, Ruth);
 
         var family = changes.Families["@F00001@"];
         Assert.Single(family.AddedChildren);
@@ -93,8 +95,8 @@ public class TreeChangesTests : ApplyTestBase
     {
         var changes = DryRunChanges("""
             { "op": "createOrUpdateChild", "family": "@F00001@",
-              "child": { "xref": "@NewI1@", "name": "Ruth /Test/", "sex": "F" } }
-            """);
+              "child": "@NewI1@" }
+            """, Ruth);
 
         var created = Assert.Single(changes.Names);
         Assert.Null(created.Value.Before);
@@ -121,7 +123,7 @@ public class TreeChangesTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "1928", "place": "Duluth, Minnesota" } } ] } ] }
+                "date": "1928", "place": "Duluth, Minnesota" } ] } ] }
             """, dryRun: true);
 
         var write = Assert.Single(result.Changes.Facts);
@@ -135,14 +137,14 @@ public class TreeChangesTests : ApplyTestBase
     {
         var write = Assert.Single(DryRunChanges("""
             { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "DEAT",
-              "value": { "date": "3 MAR 1950", "place": "Duluth, Minnesota" } }
+              "date": "3 MAR 1950", "place": "Duluth, Minnesota" }
             """).Facts);
 
         Assert.Equal(2, write.Improvements);
     }
 
     static string BirthDate(string date) =>
-        $$"""{ "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT", "value": { "date": "{{date}}", "place": "Minnesota" } }""";
+        $$"""{ "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT", "date": "{{date}}", "place": "Minnesota" }""";
 
     [Fact]
     public void AMoreSpecificBirthDate_IsARefinedDate()
@@ -169,8 +171,8 @@ public class TreeChangesTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "1928", "place": "Duluth, St. Louis, Minnesota" },
-                "citation": { "source": "@S00001@", "page": "p. 2", "quay": 2 } } ] } ] }
+                "date": "1928", "place": "Duluth, St. Louis, Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "p. 2", "quay": 2 }] } ] } ] }
             """, dryRun: true);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -192,7 +194,7 @@ public class TreeChangesTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "BEF 27 SEP 1796", "place": "Canada" } } ] } ] }
+                "date": "BEF 27 SEP 1796", "place": "Canada" } ] } ] }
             """, dryRun: true);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));

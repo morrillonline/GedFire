@@ -71,7 +71,7 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         AddVerificationNotes(drafted, newPeople, decisions);
 
         var items = new JsonArray([.. drafted.Select(d => (JsonNode)d.Item)]);
-        var changeset = new JsonObject { ["schemaVersion"] = ChangesetDialect.SchemaVersion };
+        var changeset = new JsonObject();
         if (sources.NewSources.Count > 0) changeset["newSources"] = sources.NewSources;
         changeset["items"] = items;
         changeset["findings"] = evidence;

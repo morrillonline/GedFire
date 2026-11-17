@@ -21,17 +21,17 @@ public class ApplyMergeTests : ApplyTestBase
     {
         WriteBaseFile();
         RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Duplicate /Person/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "1846",
+                                        "citations": [{ "source": "@S00001@", "page": "a",
+                                                      "dataText": "born 1846", "quay": 1 }] } ] }, { "xref": "@NewI2@", "name": "Duplicate /Twin/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "1849",
+                                        "citations": [{ "source": "@S00001@", "page": "b",
+                                                      "dataText": "born abt 1849", "quay": 1 }] } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@NewF1@", "husb": "@I00002@",
-                "child": { "xref": "@NewI1@", "name": "Duplicate /Person/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1846" },
-                                        "citation": { "source": "@S00001@", "page": "a",
-                                                      "dataText": "born 1846", "quay": 1 } } ] } },
+                "child": "@NewI1@" },
               { "op": "createOrUpdateChild", "family": "@NewF2@", "husb": "@I00002@",
-                "child": { "xref": "@NewI2@", "name": "Duplicate /Twin/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1849" },
-                                        "citation": { "source": "@S00001@", "page": "b",
-                                                      "dataText": "born abt 1849", "quay": 1 } } ] } } ] } ] }
+                "child": "@NewI2@" } ] } ] }
             """);
     }
 
@@ -43,8 +43,8 @@ public class ApplyMergeTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00006@", "fact": "DEAT",
-                "value": { "date": "1900" },
-                "citation": { "source": "@S00001@", "page": "c", "dataText": "died 1900", "quay": 1 } } ] } ] }
+                "date": "1900",
+                "citations": [{ "source": "@S00001@", "page": "c", "dataText": "died 1900", "quay": 1 }] } ] } ] }
             """);
 
         var result = RunExpectSuccess("""
@@ -114,9 +114,9 @@ public class ApplyMergeTests : ApplyTestBase
                 { "op": "createOrUpdateSource", "xref": "@NewS1@", "title": "Death record" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "mergePerson", "survivor": "@I00005@", "duplicate": "@I00006@",
-                "facts": [ { "fact": "BIRT", "keep": "value", "value": { "date": "14 JUL 1846" },
-                             "citation": { "source": "@NewS1@", "page": "p1",
-                                           "dataText": "age at death implies 1846", "quay": 2 } },
+                "facts": [ { "fact": "BIRT", "keep": "value", "date": "14 JUL 1846",
+                             "citations": [{ "source": "@NewS1@", "page": "p1",
+                                           "dataText": "age at death implies 1846", "quay": 2 }] },
                            { "fact": "NAME", "keep": "survivor" } ] } ] } ] }
             """);
 

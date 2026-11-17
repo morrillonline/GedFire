@@ -41,7 +41,7 @@ public class RelativeDuplicateCheckTests
     static IReadOnlyList<string> Check(string name, string op)
     {
         var changeset = Changeset.Parse($$"""
-            { "schemaVersion": "1.1", "items": [ { "item": 1,
+            { "items": [ { "item": 1,
               "people": [ { "xref": "@NewI1@", "name": "{{name}}" } ],
               "ops": [ {{op}} ] } ] }
             """);
@@ -87,7 +87,7 @@ public class RelativeDuplicateCheckTests
     [Fact]
     public void AnExistingPersonLinkedAsARelative_IsNotChecked() =>
         Assert.Empty(RelativeDuplicateCheck.Check(
-            Changeset.Parse("""{ "schemaVersion": "1.1", "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateChild", "family": "@F2@", "child": "@I4@" } ] } ] }""")
+            Changeset.Parse("""{ "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateChild", "family": "@F2@", "child": "@I4@" } ] } ] }""")
                 .Items[0].Ops,
             Tree));
 }

@@ -73,16 +73,16 @@ public class ChangesetPolicyTests
     public void BannedPhrase_InACitationPage_IsReported() =>
         Assert.Single(Load(Phrases).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" },
-                 "citation": { "source": "@S1@", "page": "p. 4, not added", "quay": 3 } }
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
+                 "citations": [{ "source": "@S1@", "page": "p. 4, not added", "quay": 3 }] }
             """)));
 
     [Fact]
     public void BannedPhrase_InAVerbatimExtract_IsNotProse() =>
         Assert.Empty(Load(Phrases).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" },
-                 "citation": { "source": "@S1@", "page": "p. 4", "dataText": "was not added to the roll", "quay": 3 } }
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
+                 "citations": [{ "source": "@S1@", "page": "p. 4", "dataText": "was not added to the roll", "quay": 3 }] }
             """)));
 
     [Fact]
@@ -105,8 +105,8 @@ public class ChangesetPolicyTests
     {
         var violations = Load(Verification).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" },
-                 "citation": { "source": "@S1@", "quay": 1 } }
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
+                 "citations": [{ "source": "@S1@", "quay": 1 }] }
             """));
 
         Assert.Contains("BIRT on @I1@", Assert.Single(violations));
@@ -116,8 +116,8 @@ public class ChangesetPolicyTests
     public void LowQuayFact_WithANoteOnTheSameRecord_Passes() =>
         Assert.Empty(Load(Verification).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" },
-              "citation": { "source": "@S1@", "quay": 1 } },
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
+              "citations": [{ "source": "@S1@", "quay": 1 }] },
             { "op": "createOrUpdateNote", "record": "@I1@", "text": "Needs independent verification: the birth rests on one index." }
             """)));
 
@@ -125,14 +125,14 @@ public class ChangesetPolicyTests
     public void LowQuayFact_WithANoteOnAnotherRecord_IsReported() =>
         Assert.Single(Load(Verification).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" },
-              "citation": { "source": "@S1@", "quay": 1 } },
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
+              "citations": [{ "source": "@S1@", "quay": 1 }] },
             { "op": "createOrUpdateNote", "record": "@I2@", "text": "Needs independent verification: something else." }
             """)));
 
     const string LowBirth = """
-        { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" },
-          "citation": { "source": "@S1@", "quay": 1 } }
+        { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
+          "citations": [{ "source": "@S1@", "quay": 1 }] }
         """;
 
     static DocumentHistory Holding(string lines) => new(Ged70.Ged70Parser.Parse($"""
@@ -203,15 +203,15 @@ public class ChangesetPolicyTests
     public void HighQuayFact_NeedsNoNote() =>
         Assert.Empty(Load(Verification).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" },
-                 "citation": { "source": "@S1@", "quay": 3 } }
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
+                 "citations": [{ "source": "@S1@", "quay": 3 }] }
             """)));
 
     [Fact]
     public void LowQuayCitation_BesideAStrongerOneOnTheSameFact_NeedsNoNote() =>
         Assert.Empty(Load(Verification).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1900" },
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900",
                  "citations": [ { "source": "@S1@", "quay": 1 }, { "source": "@S2@", "quay": 2 } ] }
             """)));
 
@@ -219,29 +219,15 @@ public class ChangesetPolicyTests
     public void LowQuayCitation_BesideAnUngradedOne_IsReported() =>
         Assert.Single(Load(Verification).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1900" },
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900",
                  "citations": [ { "source": "@S1@", "quay": 1 }, { "source": "@S2@" } ] }
             """)));
-
-    [Fact]
-    public void LowQuayInlineChildFact_IsNamedByANoteMentioningTheGivenName()
-    {
-        string op = """
-            { "op": "createOrUpdateChild", "family": "@F1@",
-              "child": { "xref": "@NewI1@", "name": "Ruth /Test/", "facts": [
-                { "fact": "BIRT", "value": { "date": "1900" }, "citation": { "source": "@S1@", "quay": 0 } } ] } }
-            """;
-        string note = """, { "op": "createOrUpdateNote", "record": "@F1@", "text": "Needs independent verification: Ruth's birth is from one index." }""";
-
-        Assert.Single(Load(Verification).Check(Changeset(op)));
-        Assert.Empty(Load(Verification).Check(Changeset(op + note)));
-    }
 
     [Fact]
     public void LowQuayFactOfAPersonDeclaredInPeople_IsNamedByANoteMentioningTheGivenName()
     {
         static string Item(string note) => $$"""
-            { "schemaVersion": "1.0", "items": [ { "item": 1,
+            { "items": [ { "item": 1,
               "people": [ { "xref": "@NewI1@", "name": "Ruth /Test/", "facts": [
                 { "fact": "BIRT", "date": "1900", "citations": [ { "source": "@S1@", "quay": 0 } ] } ] } ],
               "ops": [ { "op": "createOrUpdateChild", "family": "@F1@", "child": "@NewI1@" }{{note}} ] } ] }
@@ -257,7 +243,7 @@ public class ChangesetPolicyTests
     {
         string op = """
             { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": "@I2@", "family": "@F1@",
-              "marriage": { "date": "1900", "citation": { "source": "@S1@", "quay": 1 } } }
+              "marriage": { "date": "1900", "citations": [{ "source": "@S1@", "quay": 1 }] } }
             """;
         string note = """, { "op": "createOrUpdateNote", "record": "@F1@", "text": "Needs independent verification: the marriage rests on one index." }""";
 
@@ -272,8 +258,8 @@ public class ChangesetPolicyTests
     {
         var violations = Load(DeathEvidence).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1900", "place": "Salem" },
-                 "citation": { "source": "@S1@", "dataText": "Interred at Salem Cemetery", "quay": 2 } }
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900", "place": "Salem",
+                 "citations": [{ "source": "@S1@", "dataText": "Interred at Salem Cemetery", "quay": 2 }] }
             """));
 
         Assert.Contains("DEAT place \"Salem\"", Assert.Single(violations));
@@ -291,23 +277,23 @@ public class ChangesetPolicyTests
     public void DeathPlace_WithADeathExtract_Passes() =>
         Assert.Empty(Load(DeathEvidence).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1900", "place": "Salem" },
-                 "citation": { "source": "@S1@", "dataText": "He died at Salem", "quay": 2 } }
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900", "place": "Salem",
+                 "citations": [{ "source": "@S1@", "dataText": "He died at Salem", "quay": 2 }] }
             """)));
 
     [Fact]
     public void DeathDateWithoutAPlace_NeedsNoEvidence() =>
         Assert.Empty(Load(DeathEvidence).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1900" },
-                 "citation": { "source": "@S1@", "dataText": "Interred", "quay": 2 } }
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900",
+                 "citations": [{ "source": "@S1@", "dataText": "Interred", "quay": 2 }] }
             """)));
 
     [Fact]
     public void BurialPlace_IsNotSubjectToTheDeathPlaceRule() =>
         Assert.Empty(Load(DeathEvidence).Check(Changeset(
             """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BURI", "value": { "place": "Salem" },
-                 "citation": { "source": "@S1@", "dataText": "Interred", "quay": 2 } }
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BURI", "place": "Salem",
+                 "citations": [{ "source": "@S1@", "dataText": "Interred", "quay": 2 }] }
             """)));
 }

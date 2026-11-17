@@ -20,13 +20,13 @@ public class SpecificityLossAdvisoryTests : ApplyTestBase
         return WriteFile(lines);
     }
 
-    private static string BirthChangeset(string valueJson) => $$"""
+    private static string BirthChangeset(string payloadJson) => $$"""
         {
           "proposal": "test",
           "items": [
             { "item": 1, "target": "@I00001@", "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": {{valueJson}} } ] }
+                {{payloadJson}} } ] }
           ]
         }
         """;
@@ -35,7 +35,9 @@ public class SpecificityLossAdvisoryTests : ApplyTestBase
     public void DryRun_PlaceReplacedWithSuffixOfHeldHierarchy_SurfacesGen201Warning()
     {
         WriteFileWithSpecificBirth();
-        var result = Run(BirthChangeset("""{ "place": "Canada" }"""), dryRun: true);
+        var result = Run(BirthChangeset("""
+            "place": "Canada"
+            """), dryRun: true);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
         var finding = Assert.Single(result.NewDiagnostics.Where(d => d.Code == "GEN201"));
@@ -53,7 +55,9 @@ public class SpecificityLossAdvisoryTests : ApplyTestBase
     public void RealApply_DateReplacedWithItsYear_WarnsButStillApplies()
     {
         WriteFileWithSpecificBirth();
-        var result = Run(BirthChangeset("""{ "date": "1874" }"""));
+        var result = Run(BirthChangeset("""
+            "date": "1874"
+            """));
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
         var finding = Assert.Single(result.NewDiagnostics.Where(d => d.Code == "GEN201"));
@@ -67,7 +71,9 @@ public class SpecificityLossAdvisoryTests : ApplyTestBase
     public void LossyDateAndPlaceInOneOp_RaiseOneAdvisoryEach()
     {
         WriteFileWithSpecificBirth();
-        var result = Run(BirthChangeset("""{ "date": "NOV 1874", "place": "Nova Scotia, Canada" }"""), dryRun: true);
+        var result = Run(BirthChangeset("""
+            "date": "NOV 1874", "place": "Nova Scotia, Canada"
+            """), dryRun: true);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
         Assert.Equal(2, result.NewDiagnostics.Count(d => d.Code == "GEN201"));
@@ -77,7 +83,9 @@ public class SpecificityLossAdvisoryTests : ApplyTestBase
     public void ConflictingReplacement_IsNotFlagged()
     {
         WriteFileWithSpecificBirth();
-        var result = Run(BirthChangeset("""{ "date": "04 DEC 1874", "place": "Boston, Massachusetts" }"""), dryRun: true);
+        var result = Run(BirthChangeset("""
+            "date": "04 DEC 1874", "place": "Boston, Massachusetts"
+            """), dryRun: true);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
         Assert.DoesNotContain(result.NewDiagnostics, d => d.Code == "GEN201");
@@ -87,7 +95,9 @@ public class SpecificityLossAdvisoryTests : ApplyTestBase
     public void MoreDetailedReplacement_IsNotFlagged()
     {
         WriteBaseFile();   // Allen holds BIRT 1928, Minnesota
-        var result = Run(BirthChangeset("""{ "date": "05 NOV 1928", "place": "Duluth, St. Louis, Minnesota" }"""), dryRun: true);
+        var result = Run(BirthChangeset("""
+            "date": "05 NOV 1928", "place": "Duluth, St. Louis, Minnesota"
+            """), dryRun: true);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
         Assert.DoesNotContain(result.NewDiagnostics, d => d.Code == "GEN201");
@@ -97,7 +107,9 @@ public class SpecificityLossAdvisoryTests : ApplyTestBase
     public void ReRunOfAnAppliedLossyChangeset_NoOpsWithoutAdvisory()
     {
         WriteFileWithSpecificBirth();
-        var changeset = BirthChangeset("""{ "date": "1874" }""");
+        var changeset = BirthChangeset("""
+            "date": "1874"
+            """);
         RunExpectSuccess(changeset);
         var reRun = Run(changeset, dryRun: true);
 

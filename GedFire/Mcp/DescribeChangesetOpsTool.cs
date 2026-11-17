@@ -19,7 +19,7 @@ public sealed class DescribeChangesetOpsTool
 
     public const string Description =
         "Return the changeset contract that validate_changeset and apply_changeset both consume and draft_changeset " +
-        "writes: the envelope (schemaVersion/proposal/newSources/items/findings), every structure an op or the " +
+        "writes: the envelope (proposal/newSources/items/findings), every structure an op or the " +
         "envelope holds (citation, people entry, marriage, fact match…), and every op in the dialect (createOrUpdate/" +
         "delete x Vital|Spouse|Child|Parent|Source|Citation|Note|Media, plus mergePerson), each with its required and " +
         "optional fields and one worked example. Generated from the same table as the published changeset schema " +
@@ -48,11 +48,10 @@ public sealed class DescribeChangesetOpsTool
               "additionalProperties": false,
               "description": "The changeset file's own wrapper, independent of any op.",
               "properties": {
-                "schemaVersion": { "type": "string", "description": "The contract version a changeset written today names in its schemaVersion." },
                 "description": { "type": "string" },
                 "example": { "description": "One complete, valid changeset file." }
               },
-              "required": ["schemaVersion", "description", "example"]
+              "required": ["description", "example"]
             },
             "structures": {
               "type": "array",

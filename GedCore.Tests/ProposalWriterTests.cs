@@ -13,12 +13,12 @@ public class ProposalWriterTests
         """;
 
     const string DeathOp = """
-        { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1 JAN 1900", "place": "Salem" },
-          "citation": { "source": "@S1@", "page": "Memorial #1", "dataText": "Died 1 Jan 1900.", "quay": 2 }, "findings": ["F-1"] }
+        { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1 JAN 1900", "place": "Salem",
+          "citations": [{ "source": "@S1@", "page": "Memorial #1", "dataText": "Died 1 Jan 1900.", "quay": 2 }], "findings": ["F-1"] }
         """;
 
-    static string Changeset(string ops = DeathOp, string findings = Finding) => $$"""
-        { "items": [ { "item": 1, "target": "@I1@ Gladys enrich-death", "ops": [ {{ops}} ] } ], "findings": [ {{findings}} ] }
+    static string Changeset(string ops = DeathOp, string findings = Finding, string people = "") => $$"""
+        { "items": [ { "item": 1, "target": "@I1@ Gladys enrich-death", "people": [ {{people}} ], "ops": [ {{ops}} ] } ], "findings": [ {{findings}} ] }
         """;
 
     static ProposalChangeset Presented(string name = "a.changes.json", string? json = null, string sha = "abc123") =>
@@ -96,18 +96,18 @@ public class ProposalWriterTests
     public void ADescribedOp_ReadsAsProse()
     {
         string ops = """
-            { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": { "xref": "@NewI1@", "name": "Hiram /Giedd/" }, "family": "@NewF1@" },
+            { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": "@NewI1@", "family": "@NewF1@" },
             { "op": "createOrUpdateChild", "family": "@F1@", "child": "@I3@" },
             { "op": "createOrUpdateParent", "person": "@I3@", "role": "father", "parent": "@I2@" },
             { "op": "createOrUpdateCitation", "record": "@I1@", "fact": "BIRT", "match": { "date": "1870" } },
             { "op": "createOrUpdateNote", "record": "@I1@", "match": "old", "text": "new" },
             { "op": "deleteChild", "family": "@F1@", "child": "@I4@" },
             { "op": "deleteParent", "person": "@I3@", "role": "mother" },
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "mode": "add", "value": { "date": "1900" } },
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "mode": "add", "date": "1900" },
             { "op": "createOrUpdateVital", "record": "@I1@", "fact": "NAME", "value": "Ruth /Giedd/" }
             """;
 
-        string markdown = Write(Presented(json: Changeset(ops)));
+        string markdown = Write(Presented(json: Changeset(ops, people: """{ "xref": "@NewI1@", "name": "Hiram /Giedd/" }""")));
 
         Assert.Contains("Link @I1@ to spouse Hiram /Giedd/ (@NewI1@) in @NewF1@", markdown);
         Assert.Contains("Add child @I3@ to @F1@", markdown);

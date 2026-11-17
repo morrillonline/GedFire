@@ -56,8 +56,8 @@ public class PostApplyGateTests : ApplyTestBase
           "items": [
             { "item": 1, "target": "@I00001@", "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
-                "value": { "date": "5 MAY 1999", "place": "Minnesota" },
-                "citation": { "source": "@I00002@", "page": "p. 1", "quay": 2 } } ] }
+                "date": "5 MAY 1999", "place": "Minnesota",
+                "citations": [{ "source": "@I00002@", "page": "p. 1", "quay": 2 }] } ] }
           ]
         }
         """;
@@ -98,9 +98,9 @@ public class PostApplyGateTests : ApplyTestBase
           "items": [
             { "item": 1, "target": "@I00001@", "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
-                "value": "Albin H. /Test/", "match": "Allen /Test/",
-                "citation": { "source": "@S00001@", "page": "p. 1",
-                              "dataText": "Albin H. Test", "quay": 2 } } ] }
+                "value": "Albin H. /Test/", "match": { "value": "Allen /Test/" },
+                "citations": [{ "source": "@S00001@", "page": "p. 1",
+                              "dataText": "Albin H. Test", "quay": 2 }] } ] }
           ]
         }
         """;
@@ -142,8 +142,8 @@ public class PostApplyGateTests : ApplyTestBase
           "items": [
             { "item": 1, "target": "@I00001@", "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
-                "value": { "date": "5 MAY 1999", "place": "Minnesota" },
-                "citation": { "source": "@I00002@", "page": "p. 1", "quay": 2 } } ] }
+                "date": "5 MAY 1999", "place": "Minnesota",
+                "citations": [{ "source": "@I00002@", "page": "p. 1", "quay": 2 }] } ] }
           ]
         }
         """;
@@ -180,9 +180,9 @@ public class PostApplyGateTests : ApplyTestBase
           "items": [
             { "item": 1, "target": "@I00001@", "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
-                "value": "Albin H. /Test/", "match": "Allen /Test/",
-                "citation": { "source": "@S00001@", "page": "p. 1",
-                              "dataText": "Albin H. Test", "quay": 2 } } ] }
+                "value": "Albin H. /Test/", "match": { "value": "Allen /Test/" },
+                "citations": [{ "source": "@S00001@", "page": "p. 1",
+                              "dataText": "Albin H. Test", "quay": 2 }] } ] }
           ]
         }
         """);
@@ -216,9 +216,9 @@ public class PostApplyGateTests : ApplyTestBase
           "items": [
             { "item": 1, "target": "@I00001@", "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
-                "value": "Albin H. /Test/", "match": "Allen /Test/",
-                "citation": { "source": "@S00001@", "page": "p. 1",
-                              "dataText": "Albin H. Test", "quay": 2 } } ] }
+                "value": "Albin H. /Test/", "match": { "value": "Allen /Test/" },
+                "citations": [{ "source": "@S00001@", "page": "p. 1",
+                              "dataText": "Albin H. Test", "quay": 2 }] } ] }
           ]
         }
         """;

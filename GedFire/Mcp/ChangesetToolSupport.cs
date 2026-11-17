@@ -34,8 +34,7 @@ static class ChangesetToolSupport
 {
     /// <summary>
     /// Runs a changeset against the document. A changeset the contract refuses fails the result with the contract's
-    /// errors, the same for both tools, before anything else is done; the contract's warnings about legacy shapes are
-    /// carried on every result. A <paramref name="policy"/> violation always fails the
+    /// errors, the same for both tools, before anything else is done. A <paramref name="policy"/> violation always fails the
     /// result; a mutating run is refused before anything is applied, while a dry run still reports
     /// the document's own errors beside the violations so the author sees every problem at once.
     /// A dry run is made against the document as it stands after <paramref name="after"/>.
@@ -48,7 +47,7 @@ static class ChangesetToolSupport
         if (!ChangesetFile.TryRead(changesetPath, out var file, out string? fileError))
             return CallToolResults.Error(fileError!);
         if (file!.Reading.Changeset is null)
-            return Respond(new ChangesetResult(false, [], [.. file.Reading.Errors], [], [], []) { Warnings = [.. file.Reading.Warnings] }, [], report);
+            return Respond(new ChangesetResult(false, [], [.. file.Reading.Errors], [], [], []), [], report);
         if (!ChangesetRequest.TrySelect(file, items, out var loaded, out string? itemsError))
             return CallToolResults.Error(itemsError!);
         var request = loaded!;
@@ -57,7 +56,7 @@ static class ChangesetToolSupport
         var violations = policy?.Check(request.Json, request.ItemNumbers.ToHashSet(),
             PolicyDocument(() => (dryRun ? after : PriorChangesets.None).DocumentAfter(absoluteGedcomPath, cancellationToken))) ?? [];
         if (violations.Count > 0 && !dryRun)
-            return Respond(new ChangesetResult(false, [], [.. violations], [], [], []) { Warnings = [.. request.Warnings] }, request.ItemNumbers, report);
+            return Respond(new ChangesetResult(false, [], [.. violations], [], [], []), request.ItemNumbers, report);
 
         ApplyResult result;
         try
@@ -69,7 +68,7 @@ static class ChangesetToolSupport
             return CallToolResults.Error($"Could not open '{absoluteGedcomPath}': {ex.Message}");
         }
 
-        var mapped = Map(result, violations) with { Warnings = [.. request.Warnings] };
+        var mapped = Map(result, violations);
         if (cards is not null) mapped = mapped with { PointsPreview = CardScorer.Preview(cards, result.Changes) };
         return Respond(mapped, request.ItemNumbers, report);
     }

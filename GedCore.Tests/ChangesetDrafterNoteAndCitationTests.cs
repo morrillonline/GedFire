@@ -158,7 +158,7 @@ public class ChangesetDrafterNoteAndCitationTests
         var cited = Assert.Single(table, f => f.GetProperty("id").GetString() == "F-2");
         Assert.False(cited.TryGetProperty("item", out _));
         Assert.False(cited.TryGetProperty("claims", out _));
-        Assert.Empty(Changeset.Read(result.Changeset!.ToJsonString()).Warnings);
+        Assert.Empty(Changeset.Read(result.Changeset!.ToJsonString()).Errors);
         using var document = JsonDocument.Parse(result.Changeset!.ToJsonString());
         Assert.True(SchemaCatalogTests.Compile(GedFire.Schemas.SchemaCatalog.Changeset).Evaluate(document.RootElement).IsValid);
         AssertApplies(result);

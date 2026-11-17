@@ -39,22 +39,22 @@ public sealed class Changeset
 
     /// <summary>
     /// Checks <paramref name="json"/> against the changeset contract (see <see cref="ChangesetContract"/>) and reads it
-    /// when it has no errors. Warnings name the legacy shapes it was read from.
+    /// when it has no errors.
     /// </summary>
     public static ChangesetReading Read(string json)
     {
         JsonDocument document;
         try { document = JsonDocument.Parse(json); }
-        catch (JsonException ex) { return new ChangesetReading(null, [$"not valid JSON: {ex.Message}"], []); }
+        catch (JsonException ex) { return new ChangesetReading(null, [$"not valid JSON: {ex.Message}"]); }
 
         using (document)
         {
             var report = ChangesetContract.Check(document.RootElement);
-            if (!report.IsValid) return new ChangesetReading(null, report.Errors, report.Warnings);
-            try { return new ChangesetReading(Build(document.RootElement), [], report.Warnings); }
+            if (!report.IsValid) return new ChangesetReading(null, report.Errors);
+            try { return new ChangesetReading(Build(document.RootElement), []); }
             catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
             {
-                return new ChangesetReading(null, [ex.Message], report.Warnings);
+                return new ChangesetReading(null, [ex.Message]);
             }
         }
     }
@@ -142,8 +142,8 @@ public sealed class Changeset
             : NoPeople;
 }
 
-/// <summary>A changeset read against the contract: the changeset when it has no errors, and the warnings either way.</summary>
-public sealed record ChangesetReading(Changeset? Changeset, IReadOnlyList<string> Errors, IReadOnlyList<string> Warnings);
+/// <summary>A changeset read against the contract: the changeset when it has no errors.</summary>
+public sealed record ChangesetReading(Changeset? Changeset, IReadOnlyList<string> Errors);
 
 /// <summary>One <c>newSources[]</c> entry: the xref its ops define, keyed separately
 /// from the ops themselves so <see cref="ChangesetApplier"/> can tell which citations

@@ -14,8 +14,8 @@ public sealed record ChangesetOpDescriptor(
 /// <summary>One structure an op or the envelope holds (a citation, a people entry…), with its fields.</summary>
 public sealed record ChangesetStructure(string Name, string Description, IReadOnlyList<ChangesetOpField> Fields);
 
-/// <summary>The changeset file's own envelope (schemaVersion/proposal/newSources/items/findings), independent of any op.</summary>
-public sealed record ChangesetEnvelope(string SchemaVersion, string Description, JsonElement Example);
+/// <summary>The changeset file's own envelope (proposal/newSources/items/findings), independent of any op.</summary>
+public sealed record ChangesetEnvelope(string Description, JsonElement Example);
 
 public sealed record DescribeChangesetOpsResult(
     ChangesetEnvelope Envelope, IReadOnlyList<ChangesetStructure> Structures, IReadOnlyList<ChangesetOpDescriptor> Ops);
@@ -33,9 +33,7 @@ public static class ChangesetOpsCatalog
     static JsonElement Ex(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     public static readonly ChangesetEnvelope Envelope = new(
-        ChangesetDialect.SchemaVersion,
-        "The whole changeset file's shape, independent of any one op (structure \"changeset\"). \"schemaVersion\" names " +
-        "the contract version the file is written to; a major version GedFire does not read is refused. Every object " +
+        "The whole changeset file's shape, independent of any one op (structure \"changeset\"). Every object " +
         "takes only the fields listed for it. \"proposal\" is an optional free-text label. \"newSources\" groups are " +
         "optional: each names the xref its ops define; a group is applied unconditionally unless some item in the " +
         "changeset cites its xref, in which case it applies only when a selected item (per the \"items\" argument) " +
@@ -50,7 +48,6 @@ public static class ChangesetOpsCatalog
                 "finding with draft_changeset.",
         Ex($$"""
             {
-              "schemaVersion": "{{ChangesetDialect.SchemaVersion}}",
               "proposal": "mercy-whitfield-death-record",
               "newSources": [
                 { "xref": "@NewSource1@", "ops": [

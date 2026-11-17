@@ -21,7 +21,7 @@ public sealed class DescribeSchemasTool
         "findings entry), finding-file (the file findingPaths and validate_finding read: draft, argument, draftGaps, " +
         "record and the caller's meta), record (match_record's persons, relationships and event), argument (a " +
         "finding's identity argument), changeset (the file validate_changeset and apply_changeset read and " +
-        "draft_changeset writes; its schemaVersion names this schema's version), cards (validate_changeset's cardsPath " +
+        "draft_changeset writes), cards (validate_changeset's cardsPath " +
         "file), changeset-report (the reportPath file of validate_changeset and apply_changeset) and draft-report (the " +
         "reportPath file of draft_changeset). Each carries its $id and x-schemaVersion: a new optional field or enum value " +
         "bumps the minor version; a removal, rename, new required field or tighter constraint bumps the major. " +

@@ -114,8 +114,8 @@ public class ApplyFileLockingTests : IDisposable
         var changeset = Changeset.Parse("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I09999@", "fact": "DEAT",
-                "value": { "date": "1900" },
-                "citation": { "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 } } ] } ] }
+                "date": "1900",
+                "citations": [{ "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 }] } ] } ] }
             """);
 
         var result = ChangesetApplier.Run(path, changeset, [1], dryRun: false);
@@ -132,9 +132,9 @@ public class ApplyFileLockingTests : IDisposable
     {
         string path = WriteFile();
         var changeset = Changeset.Parse("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "New /Wife/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00001@",
-                "spouse": { "xref": "@NewI1@", "name": "New /Wife/", "sex": "F" },
+                "spouse": "@NewI1@",
                 "family": "@NewF1@" } ] } ] }
             """);
 

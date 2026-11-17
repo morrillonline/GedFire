@@ -33,29 +33,32 @@ public class ApplyCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task ALegacyChangeset_IsAppliedWithEachWarningOnStandardError()
+    public async Task ACanonicalChangeset_IsAppliedSilently()
     {
         string ged = WriteGed();
 
         var result = await Apply("""
-            { "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" } } ] } ] }
+            { "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900" } ] } ] }
             """, ged);
 
         Assert.Equal(0, result.Exit);
-        Assert.Contains("warning: items[0].ops[0].value: an object value is the old event form", result.Error);
+        Assert.Equal("", result.Error);
         Assert.Contains("2 DATE 1900", File.ReadAllText(ged));
     }
 
-    [Fact]
-    public async Task AChangesetTheContractRefuses_FailsWithoutTouchingTheFile()
+    [Theory]
+    [InlineData("""{ "schemaVersion": "1.1", "items": [] }""", "schemaVersion: unknown field")]
+    [InlineData("""{ "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "value": { "date": "1900" } } ] } ] }""",
+        "items[0].ops[0].value: an object value is not read")]
+    public async Task AChangesetTheContractRefuses_FailsWithoutTouchingTheFile(string changeset, string error)
     {
         string ged = WriteGed();
         byte[] before = File.ReadAllBytes(ged);
 
-        var result = await Apply("""{ "schemaVersion": "2.0", "items": [] }""", ged);
+        var result = await Apply(changeset, ged);
 
         Assert.Equal(1, result.Exit);
-        Assert.Contains("schemaVersion: version 2.0 is not supported", result.Error);
+        Assert.Contains(error, result.Error);
         Assert.Equal(before, File.ReadAllBytes(ged));
     }
 }

@@ -198,6 +198,8 @@ historical person who might bear that name.
 - `kin`: parents, siblings, spouses with marriage details, and children.
 - `gaps`: the same targets `select_targets` reports for the person, including
   a man's Biography card when he has another card.
+- `suppressedCards`: the cards `select_targets` would withhold for the person,
+  with the same reasons.
 - `possibleDuplicateOf`: up to three scored candidates, plus the full count.
 - `plausibility`: standing issues against the person or their families.
 - `notes`: person and family note texts.
@@ -252,16 +254,35 @@ in `xrefsWithoutGaps` and sets `draw.seed` to null. An unknown xref is an error.
   born before it by the child's birth date, or, when the child has no usable
   birth date, enumerated in the child's own census before it. A child with
   neither signal keeps the card.
+- New-child cards are also withheld for a couple who almost certainly had no
+  children together, judged on every reading of the dates (`ABT`, `CAL` and
+  `EST` read as two years either side; `BET`, `BEF` and `AFT` as their bounds):
+  - the wife's youngest possible age at the marriage is at least
+    `maxMotherAgeAtMarriage` (default 50); or
+  - the marriage's longest possible length, to the first of either spouse's
+    death or burial or a divorce, is under `minMarriageYears` (default 1; 0
+    turns the rule off).
+
+  The card is never withheld by this rule when the marriage date is unknown,
+  when the wife's birth date is unknown (for the age test), or when a child of
+  either spouse may have been born after the marriage.
 - `suppressedCards` lists `{xref, name, cardType, reason}` for otherwise eligible
-  cards withheld by this gate, once per childless family for New child. These
+  cards withheld by these gates, once per childless family for New child. These
   use the same subject xref, name, and card-type labels as the withheld card.
   Personal reasons are `bare-bones subject — enrich first`; family reasons are
-  `bare-bones family (both spouses and marriage lack anchors) — enrich first`
-  or `the wife's known children were all born before this marriage`.
+  `bare-bones family (both spouses and marriage lack anchors) — enrich first`,
+  `the wife's known children were all born before this marriage`, or a reason
+  naming the rule and its values, such as `wife aged about 64 at marriage, at
+  least 61 (born ABT 1878, married 17 MAR 1942), at or past
+  maxMotherAgeAtMarriage 50` or `marriage lasted at most 6 months (married
+  17 MAR 1942, wife died 17 SEP 1942), under minMarriageYears 1`.
   The list is empty when nothing was suppressed and is excluded from
   `totalCandidates`. Enrich-person cards, points, privacy, died-young, and surname
   rules are unchanged. No state is kept: landing an anchor restores relationship
   cards on the next selection, without restricting extra-credit collection.
+- With `xrefs`, `includeSuppressed: true` draws every withheld card, so the
+  owner can force one; `suppressedCards` is then empty. It is an error without
+  `xrefs`.
 - Duplicate hints use the GEN301 plausibility test. Results include up to
   three candidates plus `possibleDuplicateCount`; duplicates do not prevent a draw.
 - An `Unknown` name part needs an agreeing parent or spouse name for duplicate
@@ -399,9 +420,10 @@ a biography note; 2.0
 tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.3 (embeds
 `finding` 3.3; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
-`persons[].xref`), `argument` 1.0, `changeset` 1.1 (`createOrUpdateParent`
-takes `notDuplicateOf`), `cards` 1.0,
-`changeset-report` 1.0 and `draft-report` 1.0. A schema
+`persons[].xref`), `argument` 1.0, `changeset` 2.0 (refuses every legacy shape,
+including the `schemaVersion` key; 1.1 let `createOrUpdateParent` take
+`notDuplicateOf`), `cards` 1.0, `changeset-report` 2.0 (drops `warnings`) and
+`draft-report` 2.0 (embeds `changeset` 2.0). A schema
 document states structure only. `validate_finding` is the full check. In its default
 strict mode, ajv rejects the `x-schemaVersion` annotation. Register it with
 `ajv.addKeyword("x-schemaVersion")`, or pass `--strict=false` to `ajv-cli`.
@@ -813,9 +835,10 @@ A changeset has one strict, versioned shape: the `changeset` schema
 both are generated from the table the validator reads, so they cannot drift.
 `draft_changeset` writes only this form.
 
-- `schemaVersion` names the contract version the file is written to, now
-  `"1.1"`. `validate_changeset` and `apply_changeset` refuse a major version
-  they do not read.
+- A changeset carries no version. The published schema is versioned instead
+  (`x-schemaVersion`, now 2.0). A `schemaVersion` key left by an earlier
+  release is refused as an unknown field; draft such a changeset again with
+  `draft_changeset`.
 - Every object takes only the fields the contract defines: the envelope,
   items, ops, and every nested object (`marriage`, `people` entries, facts,
   citations, `newSources`, the findings table).
@@ -834,21 +857,22 @@ both are generated from the table the validator reads, so they cannot drift.
   (`{xref, name, sex?, facts?}`). An item that names a new person declares it,
   even when another item creates it first.
 
-Changesets written before the contract still validate and apply exactly as
-before. Each legacy shape is reported in `warnings`, by path, for example
-`items[0].ops[0].citation: use citations, an array, for every citation`:
-a singular `citation`, a relationship op's `citation`/`citations`, an object
-`value`, a string `match`, an inline person object, a placeholder its item does
-not declare, a field the contract does not define, a `null` optional field, a
-value on an event or a date on a text fact, a date given as an attribute's value,
-and a missing `schemaVersion`. A shape that cannot be read is an error, and both tools refuse
-it identically: a field of the wrong type, a missing required field, an unknown
-op, `citation` beside `citations`, an object `value` beside `date` or `place`,
-an unsupported `schemaVersion`, and, in the new syntax, a `people` entry no op
-names, a `people` entry with a real xref, or one person declared twice. A later
-release raises the `changeset` major version and refuses every warning. To
-bring a legacy changeset to the contract, redraft it from its finding with
-`draft_changeset`.
+Every changeset tool refuses anything else, identically, as an error naming the
+full path and the fix; nothing is read leniently and results carry no warnings:
+
+- a singular `citation` (`items[0].ops[2].citation: use "citations", an array`),
+  `citation` beside `citations`, a non-array `citations`, or a relationship op's
+  `citation`/`citations` (use `familyCitations`);
+- a field the contract does not define, anywhere: envelope, item, op, or a
+  nested `marriage`, person, citation or `newSources` entry
+  (`items[0].ops[0].citatons: unknown field; …`), and a `null` optional field;
+- an object `value`, a `value` on an event, a `date` or `place` on a text fact
+  such as NAME, a date given as an attribute's value, and the same in `match`;
+  a string `match`;
+- an inline person object in `spouse`, `child` or `parent`, a placeholder its
+  item's `people` does not declare, a `people` entry no op names, a `people`
+  entry with a real xref, and one person declared twice;
+- a field of the wrong type, a missing required field, and an unknown op.
 
 ## Changeset application
 

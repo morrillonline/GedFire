@@ -121,7 +121,7 @@ public class SchemaCatalogTests
         string json = ChangesetFixtures.Read(name);
         using var document = JsonDocument.Parse(json);
 
-        Assert.Empty(GedCore.Apply.Changeset.Read(json).Warnings);
+        Assert.Empty(GedCore.Apply.Changeset.Read(json).Errors);
         Assert.True(Changeset.Evaluate(document.RootElement).IsValid);
     }
 
@@ -134,22 +134,20 @@ public class SchemaCatalogTests
     public void TheChangesetSchemaRefusesWhatTheContractReports(string member)
     {
         string json = $$"""
-            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900", {{member}} } ] } ] }
             """;
         using var document = JsonDocument.Parse(json);
 
         var reading = GedCore.Apply.Changeset.Read(json);
-        Assert.NotEmpty(reading.Errors.Concat(reading.Warnings));
+        Assert.NotEmpty(reading.Errors);
         Assert.False(Changeset.Evaluate(document.RootElement).IsValid);
     }
 
-    [Theory]
-    [InlineData("\"schemaVersion\": \"2.0\",")]
-    [InlineData("")]
-    public void TheChangesetSchemaRequiresTheSupportedMajorVersion(string version)
+    [Fact]
+    public void TheChangesetSchemaRefusesASchemaVersion()
     {
-        using var document = JsonDocument.Parse($$"""{ {{version}} "items": [] }""");
+        using var document = JsonDocument.Parse("""{ "schemaVersion": "2.0", "items": [] }""");
 
         Assert.False(Changeset.Evaluate(document.RootElement).IsValid);
     }
