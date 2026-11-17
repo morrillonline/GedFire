@@ -30,8 +30,8 @@ public sealed record DialectShape(string Name, string Description, IReadOnlyList
 /// </summary>
 public static class ChangesetDialect
 {
-    public const string SchemaVersion = "1.1";
-    public const int SupportedMajor = 1;
+    /// <summary>The published changeset schema's version (its x-schemaVersion); changeset files do not carry it.</summary>
+    public const string SchemaVersion = "2.0";
 
     /// <summary>The shape name an op array names: each element is the op its "op" field names.</summary>
     public const string Op = "op";
@@ -181,7 +181,6 @@ public static class ChangesetDialect
     [
         new(Envelope, "A changeset: numbered items of ops, the new sources they cite, and the findings they rest on.",
         [
-            new("schemaVersion", DialectType.String, $"The changeset contract version the file is written to, \"{SchemaVersion}\". A major version GedFire does not read is refused.") { Pattern = @"^\d+\.\d+$" },
             Str("proposal", "A free-text label for the proposal."),
             Objs("newSources", "sourceGroup", "Sources the items cite, each group keyed by the xref its ops define. A group some item cites is applied only when a selected item cites it."),
             Objs("items", "item", "The numbered items validate_changeset and apply_changeset select from.", required: true),

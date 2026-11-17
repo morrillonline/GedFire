@@ -14,8 +14,8 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 1",
-                              "dataText": "born 1928 per old source", "quay": 1 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1",
+                              "dataText": "born 1928 per old source", "quay": 1 }] } ] } ] }
             """);
     }
 
@@ -46,9 +46,9 @@ public class ApplyOpTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
-                "citation": { "source": "@S00001@", "page": "p. 1",
-                              "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
+                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "p. 1",
+                              "dataText": "born April 2, 1928", "quay": 2 }] } ] } ] }
             """);
 
         var birt = ReadDoc().ByXref["@I00001@"].FirstChild("BIRT")!;
@@ -66,9 +66,9 @@ public class ApplyOpTests : ApplyTestBase
         const string json = """
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "1928", "place": "Minnesota" },
-                "citation": { "source": "@S00001@", "page": "p. 1",
-                              "dataText": "born 1928", "quay": 2 } } ] } ] }
+                "date": "1928", "place": "Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "p. 1",
+                              "dataText": "born 1928", "quay": 2 }] } ] } ] }
             """;
 
         var first = RunExpectSuccess(json);   // value equal, citation newly attached
@@ -88,9 +88,9 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00003@", "fact": "CENS",
-                "match": { "date": "1940" }, "value": { "place": "Fergus Falls, Minnesota" },
-                "citation": { "source": "@S00001@", "page": "ED 26-3",
-                              "dataText": "Nellie, Fergus Falls", "quay": 2 } } ] } ] }
+                "match": { "date": "1940" }, "place": "Fergus Falls, Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "ED 26-3",
+                              "dataText": "Nellie, Fergus Falls", "quay": 2 }] } ] } ] }
             """);
 
         var census = ReadDoc().ByXref["@I00003@"].ChildrenByTag("CENS").ToList();
@@ -114,9 +114,9 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS",
-                "value": { "date": "1900", "place": "Otter Tail Co., Minnesota" },
-                "citation": { "source": "@S00001@", "page": "1900 ED 5",
-                              "dataText": "Harvey, 1900", "quay": 2 } } ] } ] }
+                "date": "1900", "place": "Otter Tail Co., Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "1900 ED 5",
+                              "dataText": "Harvey, 1900", "quay": 2 }] } ] } ] }
             """);
         byte[] afterFirst = ReadBytes();
 
@@ -124,9 +124,9 @@ public class ApplyOpTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS",
-                "value": { "date": "1910", "place": "Grant Co., Minnesota" },
-                "citation": { "source": "@S00001@", "page": "1910 ED 9",
-                              "dataText": "Harvey, 1910", "quay": 2 } } ] } ] }
+                "date": "1910", "place": "Grant Co., Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "1910 ED 9",
+                              "dataText": "Harvey, 1910", "quay": 2 }] } ] } ] }
             """, dryRun: true);
 
         Assert.False(result.Success);
@@ -146,17 +146,17 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS",
-                "value": { "date": "1900", "place": "Otter Tail Co., Minnesota" },
-                "citation": { "source": "@S00001@", "page": "1900 ED 5",
-                              "dataText": "Harvey, 1900", "quay": 2 } } ] } ] }
+                "date": "1900", "place": "Otter Tail Co., Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "1900 ED 5",
+                              "dataText": "Harvey, 1900", "quay": 2 }] } ] } ] }
             """);
 
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
-                "value": { "date": "1910", "place": "Grant Co., Minnesota" },
-                "citation": { "source": "@S00001@", "page": "1910 ED 9",
-                              "dataText": "Harvey, 1910", "quay": 2 } } ] } ] }
+                "date": "1910", "place": "Grant Co., Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "1910 ED 9",
+                              "dataText": "Harvey, 1910", "quay": 2 }] } ] } ] }
             """);
 
         var census = ReadDoc().ByXref["@I00002@"].ChildrenByTag("CENS").ToList();
@@ -178,9 +178,9 @@ public class ApplyOpTests : ApplyTestBase
         const string add = """
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
-                "value": { "date": "1910", "place": "Grant Co., Minnesota" },
-                "citation": { "source": "@S00001@", "page": "1910 ED 9",
-                              "dataText": "Harvey, 1910", "quay": 2 } } ] } ] }
+                "date": "1910", "place": "Grant Co., Minnesota",
+                "citations": [{ "source": "@S00001@", "page": "1910 ED 9",
+                              "dataText": "Harvey, 1910", "quay": 2 }] } ] } ] }
             """;
         RunExpectSuccess(add);
         byte[] afterFirst = ReadBytes();
@@ -198,16 +198,16 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
-                "value": { "date": "1910", "place": "Maine" } },
+                "date": "1910", "place": "Maine" },
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
-                "value": { "date": "1920", "place": "Maine" } } ] } ] }
+                "date": "1920", "place": "Maine" } ] } ] }
             """);
 
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
-                "value": { "date": "1900", "place": "Maine" },
-                "citation": { "source": "@S00001@", "page": "1900 ED 5", "dataText": "Harvey, 1900", "quay": 1 } } ] } ] }
+                "date": "1900", "place": "Maine",
+                "citations": [{ "source": "@S00001@", "page": "1900 ED 5", "dataText": "Harvey, 1900", "quay": 1 }] } ] } ] }
             """);
 
         Assert.Equal(["1900", "1910", "1920"],
@@ -221,15 +221,15 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
-                "value": { "date": "1900", "place": "Maine" },
-                "citation": { "source": "@S00001@", "page": "1900 ED 5", "dataText": "Harvey, 1900", "quay": 1 } } ] } ] }
+                "date": "1900", "place": "Maine",
+                "citations": [{ "source": "@S00001@", "page": "1900 ED 5", "dataText": "Harvey, 1900", "quay": 1 }] } ] } ] }
             """);
 
         var second = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "CENS", "mode": "add",
-                "value": { "date": "1900", "place": "Maine" },
-                "citation": { "source": "@S00001@", "page": "1900 ED 6", "dataText": "Harvey Test, 1900", "quay": 1 } } ] } ] }
+                "date": "1900", "place": "Maine",
+                "citations": [{ "source": "@S00001@", "page": "1900 ED 6", "dataText": "Harvey Test, 1900", "quay": 1 }] } ] } ] }
             """);
 
         var census = Assert.Single(ReadDoc().ByXref["@I00002@"].ChildrenByTag("CENS"));
@@ -247,9 +247,9 @@ public class ApplyOpTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00003@", "fact": "CENS", "mode": "add",
-                "match": { "date": "1940" }, "value": { "date": "1950", "place": "Iowa" },
-                "citation": { "source": "@S00001@", "page": "1950 ED 1",
-                              "dataText": "Nellie, 1950", "quay": 2 } } ] } ] }
+                "match": { "date": "1940" }, "date": "1950", "place": "Iowa",
+                "citations": [{ "source": "@S00001@", "page": "1950 ED 1",
+                              "dataText": "Nellie, 1950", "quay": 2 }] } ] } ] }
             """, dryRun: true);
 
         Assert.False(result.Success);
@@ -263,9 +263,9 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "DEAT",
-                "value": { "date": "5 OCT 1954" },
-                "citation": { "source": "@S00001@", "page": "p. 9",
-                              "dataText": "died Oct 5 1954", "quay": 2 } } ] } ] }
+                "date": "5 OCT 1954",
+                "citations": [{ "source": "@S00001@", "page": "p. 9",
+                              "dataText": "died Oct 5 1954", "quay": 2 }] } ] } ] }
             """);
 
         // the burial-place enrichment: add the missing PLAC, date untouched
@@ -275,9 +275,9 @@ public class ApplyOpTests : ApplyTestBase
                   "title": "memorial" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "DEAT",
-                "value": { "place": "Benton Harbor, Berrien Co., Michigan" },
-                "citation": { "source": "@NewS1@", "page": "memorial",
-                              "dataText": "Burial: Crystal Springs Cemetery", "quay": 3 } } ] } ] }
+                "place": "Benton Harbor, Berrien Co., Michigan",
+                "citations": [{ "source": "@NewS1@", "page": "memorial",
+                              "dataText": "Burial: Crystal Springs Cemetery", "quay": 3 }] } ] } ] }
             """);
 
         var deat = ReadDoc().ByXref["@I00002@"].FirstChild("DEAT")!;
@@ -299,8 +299,8 @@ public class ApplyOpTests : ApplyTestBase
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
                 "value": "Albin H. /Test/",
                 "substructures": [ { "tag": "NICK", "value": "Babe" } ],
-                "citation": { "source": "@S00001@", "page": "p. 1",
-                              "dataText": "Albin H. Test", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1",
+                              "dataText": "Albin H. Test", "quay": 2 }] } ] } ] }
             """);
 
         var name = ReadDoc().ByXref["@I00001@"].FirstChild("NAME")!;
@@ -320,9 +320,9 @@ public class ApplyOpTests : ApplyTestBase
                   "title": "New source" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
-                "citation": { "source": "@NewS1@", "page": "p. 1",
-                              "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
+                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota",
+                "citations": [{ "source": "@NewS1@", "page": "p. 1",
+                              "dataText": "born April 2, 1928", "quay": 2 }] } ] } ] }
             """);
 
         var sources = ReadDoc().ByXref["@I00001@"].FirstChild("BIRT")!
@@ -342,7 +342,7 @@ public class ApplyOpTests : ApplyTestBase
         var result = RunExpectSuccess($$"""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "2 APR 1928" },
+                "date": "2 APR 1928",
                 "replacedCitations": "{{mode}}" } ] } ] }
             """);
 
@@ -357,7 +357,7 @@ public class ApplyOpTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "2 APR 1928" } } ] } ] }
+                "date": "2 APR 1928" } ] } ] }
             """);
 
         Assert.DoesNotContain(result.Log, line => line.Contains("replacedCitations="));
@@ -374,10 +374,10 @@ public class ApplyOpTests : ApplyTestBase
                   "title": "New source" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
+                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota",
                 "replacedCitations": "drop",
-                "citation": { "source": "@NewS1@", "page": "p. 1",
-                              "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@NewS1@", "page": "p. 1",
+                              "dataText": "born April 2, 1928", "quay": 2 }] } ] } ] }
             """);
 
         var indi = ReadDoc().ByXref["@I00001@"];
@@ -398,10 +398,10 @@ public class ApplyOpTests : ApplyTestBase
                   "title": "New source" } ] } ],
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
+                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota",
                 "replacedCitations": "moveToNote",
-                "citation": { "source": "@NewS1@", "page": "p. 1",
-                              "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@NewS1@", "page": "p. 1",
+                              "dataText": "born April 2, 1928", "quay": 2 }] } ] } ] }
             """);
 
         var indi = ReadDoc().ByXref["@I00001@"];
@@ -436,10 +436,10 @@ public class ApplyOpTests : ApplyTestBase
               { "op": "createOrUpdateNote", "record": "@I00001@",
                 "text": "Birth date refined; prior citation retained below." },
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
+                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota",
                 "replacedCitations": "moveToNote",
-                "citation": { "source": "@NewS1@", "page": "p. 1",
-                              "dataText": "born April 2, 1928", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@NewS1@", "page": "p. 1",
+                              "dataText": "born April 2, 1928", "quay": 2 }] } ] } ] }
             """);
 
         var notes = ReadDoc().ByXref["@I00001@"].ChildrenByTag("NOTE").ToList();
@@ -461,8 +461,8 @@ public class ApplyOpTests : ApplyTestBase
               "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateNote", "record": "@I00001@",
                 "text": "Adopted his maternal surname in adulthood.",
-                "citation": { "source": "@NewS1@", "page": "1942 draft",
-                              "dataText": "Allen also known as Allen Other", "quay": 3 } } ] } ] }
+                "citations": [{ "source": "@NewS1@", "page": "1942 draft",
+                              "dataText": "Allen also known as Allen Other", "quay": 3 }] } ] } ] }
             """;
         var result = RunExpectSuccess(changeset);
 
@@ -527,8 +527,8 @@ public class ApplyOpTests : ApplyTestBase
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateNote", "record": "@I00001@",
                 "text": "First paragraph.\n\nSecond paragraph.",
-                "citation": { "source": "@S00001@", "page": "p. 7",
-                              "dataText": "biographical detail", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 7",
+                              "dataText": "biographical detail", "quay": 2 }] } ] } ] }
             """);
 
         var note = ReadDoc().ByXref["@I00001@"].ChildrenByTag("NOTE").Single();
@@ -556,7 +556,7 @@ public class ApplyOpTests : ApplyTestBase
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateNote", "record": "@I00001@", "mime": "text/html",
                 "text": "Named after <i>The Odyssey</i>.",
-                "citation": { "source": "@S00001@", "page": "p. 7", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 7", "quay": 2 }] } ] } ] }
             """);
 
         var note = ReadDoc().ByXref["@I00001@"].ChildrenByTag("NOTE").Single();
@@ -719,8 +719,8 @@ public class ApplyOpTests : ApplyTestBase
         const string json = """
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 2",
-                              "dataText": "born 1928", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 2",
+                              "dataText": "born 1928", "quay": 2 }] } ] } ] }
             """;
 
         RunExpectSuccess(json);
@@ -738,15 +738,15 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 2",
-                              "dataText": "born 1928", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 2",
+                              "dataText": "born 1928", "quay": 2 }] } ] } ] }
             """);
 
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 3, corrected",
-                              "dataText": "born 1928", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 3, corrected",
+                              "dataText": "born 1928", "quay": 2 }] } ] } ] }
             """);
 
         var citations = ReadDoc().ByXref["@I00001@"].FirstChild("BIRT")!
@@ -789,8 +789,8 @@ public class ApplyOpTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 2",
-                              "dataText": "line one\nline two", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 2",
+                              "dataText": "line one\nline two", "quay": 2 }] } ] } ] }
             """, dryRun: true);
 
         Assert.False(result.Success);
@@ -807,8 +807,8 @@ public class ApplyOpTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 2\r\np. 3",
-                              "dataText": "born 1928", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 2\r\np. 3",
+                              "dataText": "born 1928", "quay": 2 }] } ] } ] }
             """, dryRun: true);
 
         Assert.False(result.Success);
@@ -829,11 +829,11 @@ public class ApplyOpTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 2",
-                              "dataText": "father: born 1928", "quay": 2 } },
+                "citations": [{ "source": "@S00001@", "page": "p. 2",
+                              "dataText": "father: born 1928", "quay": 2 }] },
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 2",
-                              "dataText": "mother: born 1929", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 2",
+                              "dataText": "mother: born 1929", "quay": 2 }] } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -855,11 +855,11 @@ public class ApplyOpTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 2",
-                              "dataText": "born 1928", "quay": 2 } },
+                "citations": [{ "source": "@S00001@", "page": "p. 2",
+                              "dataText": "born 1928", "quay": 2 }] },
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citation": { "source": "@S00001@", "page": "p. 2",
-                              "dataText": "born 1928", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 2",
+                              "dataText": "born 1928", "quay": 2 }] } ] } ] }
             """);
 
         Assert.Single(ReadDoc().ByXref["@I00001@"].FirstChild("BIRT")!.ChildrenByTag("SOUR"));
@@ -936,8 +936,8 @@ public class ApplyOpTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@F00001@", "fact": "MARR",
-                "value": { "date": "MAY 1877" },
-                "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "m.", "quay": 2 } } ] } ] }
+                "date": "MAY 1877",
+                "citations": [{ "source": "@S00001@", "page": "p. 1", "dataText": "m.", "quay": 2 }] } ] } ] }
             """);
 
         Assert.Contains(result.Log, l => l == "createOrUpdateVital MARR on @F00001@: created; cited @S00001@ (p. 1)");
@@ -951,7 +951,7 @@ public class ApplyOpTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "DEAT",
-                "value": { "date": "1950" } } ] } ] }
+                "date": "1950" } ] } ] }
             """);
 
         Assert.Contains(result.Log, l => l == "createOrUpdateVital DEAT on @I00002@: created");
@@ -980,7 +980,7 @@ public class ApplyOpTests : ApplyTestBase
         WriteBaseFile();
 
         RunExpectSuccess("""
-            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "EVEN", "mode": "add", "date": "1 JAN 1900",
                 "substructures": [ { "tag": "TYPE", "value": "Pension" } ] } ] } ] }
             """);
@@ -996,7 +996,7 @@ public class ApplyOpTests : ApplyTestBase
         WriteBaseFile();
 
         RunExpectSuccess("""
-            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "OCCU", "mode": "add",
                 "value": "Farmer", "date": "1850", "place": "Maine" } ] } ] }
             """);
@@ -1012,13 +1012,13 @@ public class ApplyOpTests : ApplyTestBase
     {
         WriteBaseFile();
         RunExpectSuccess("""
-            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "OCCU", "mode": "add", "value": "Farmer" },
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "OCCU", "mode": "add", "value": "Miller" } ] } ] }
             """);
 
         RunExpectSuccess("""
-            { "schemaVersion": "1.0", "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00002@", "fact": "OCCU", "match": { "value": "Miller" }, "date": "1860" } ] } ] }
             """);
 

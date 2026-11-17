@@ -26,8 +26,8 @@ public sealed class ApplyChangesetTool
         "deltas, no newly created source left uncited), and only then write the file -- there is no window " +
         "where a bad state exists on disk. Call validate_changeset first with the same arguments to preview " +
         "without writing. Refuses to run at all when this server was started with --read-only, and refuses a " +
-        "changeset that violates the server's policy file. A changeset the changeset contract cannot read is refused with " +
-        "the same errors validate_changeset gives; legacy shapes it still reads are listed in warnings. Pass reportPath to write the full result JSON to a " +
+        "changeset that violates the server's policy file. A changeset the changeset contract refuses is refused with " +
+        "the same errors validate_changeset gives. Pass reportPath to write the full result JSON to a " +
         "file a script can read; the response is then only a digest of its counts, unless verbose is true.";
 
     public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithReportJson;

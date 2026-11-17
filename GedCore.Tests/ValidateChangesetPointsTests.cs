@@ -48,8 +48,8 @@ public class ValidateChangesetPointsTests : IDisposable
     const string DeathChangeset = """
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
-            "value": { "date": "1 JAN 1900", "place": "Salem" },
-            "citation": { "source": "@S00001@", "page": "p. 1", "quay": 1 } } ] } ] }
+            "date": "1 JAN 1900", "place": "Salem",
+            "citations": [{ "source": "@S00001@", "page": "p. 1", "quay": 1 }] } ] } ] }
         """;
 
     // ---- points preview ----
@@ -88,7 +88,7 @@ public class ValidateChangesetPointsTests : IDisposable
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateNote", "record": "@I00001@", "purpose": "biography",
                 "text": "Allen kept a dry-goods store in Salem from 1890.",
-                "citation": { "source": "@S00001@", "page": "Business directory, 1890", "quay": 2 } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "Business directory, 1890", "quay": 2 }] } ] } ] }
             """);
 
         var result = await tool.HandleAsync(changeset, "all", cards, CancellationToken.None);
@@ -121,7 +121,7 @@ public class ValidateChangesetPointsTests : IDisposable
         string changeset = """
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME", "value": "Alan /Test/" },
-              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT", "value": { "date": "1 JAN 1900" } } ] } ] }
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT", "date": "1 JAN 1900" } ] } ] }
             """;
 
         var result = await tool.HandleAsync(WriteChangeset(changeset), "all", cards, CancellationToken.None);

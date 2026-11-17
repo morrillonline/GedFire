@@ -126,6 +126,55 @@ internal static partial class Specificity
             ? (earliest, latest)
             : null;
 
+    /// <summary>
+    /// The earliest and latest days any reading of a Gregorian date admits; a missing end is unbounded (BEF, AFT, FROM, TO).
+    /// A soft date (ABT, CAL, EST) reads as <paramref name="softYears"/> years either side. Null when the date cannot be read.
+    /// </summary>
+    public static (DateOnly? Earliest, DateOnly? Latest)? Bounds(string date, int softYears)
+    {
+        string[] tokens = Normalize(date).Split(' ');
+        if (tokens.Any(t => t is "JULIAN" or "HEBREW" or "FRENCH_R" || t.StartsWith("@#", StringComparison.Ordinal))) return null;
+        tokens = [.. tokens.Where(t => t != "GREGORIAN")];
+        if (tokens.Length == 0) return null;
+        string head = ShortQualifiers.GetValueOrDefault(tokens[0], tokens[0]);
+        switch (head)
+        {
+            case "ABT" or "CAL" or "EST":
+                return Span(string.Join(' ', tokens.Skip(1))) is var (first, last) && first.Year > softYears && last.Year <= 9999 - softYears
+                    ? (first.AddYears(-softYears), last.AddYears(softYears))
+                    : null;
+            case "BET" or "FROM" or "BEF" or "AFT" or "TO":
+                return BoundedBounds(head, tokens);
+            default:
+                return Span(string.Join(' ', tokens)) is var (earliest, latest) ? (earliest, latest) : null;
+        }
+    }
+
+    static (DateOnly? Earliest, DateOnly? Latest)? BoundedBounds(string head, string[] tokens)
+    {
+        string closer = head == "BET" ? "AND" : "TO";
+        int split = head is "BET" or "FROM" ? Array.IndexOf(tokens, closer) : -1;
+        string from = string.Join(' ', split < 0 ? tokens[1..] : tokens[1..split]);
+        string? to = split < 0 ? null : string.Join(' ', tokens[(split + 1)..]);
+
+        var lower = head is "BEF" or "TO" ? null : Span(from);
+        var upper = head switch
+        {
+            "BEF" or "TO" => Span(from),
+            "BET" or "FROM" when to is not null => Span(to),
+            _ => null,
+        };
+        if (head is "BET" && (lower is null || upper is null)) return null;
+        if (lower is null && upper is null) return null;
+        return (lower?.First, upper?.Last);
+    }
+
+    // The first and last days a plain date stands for: its day, its whole month, or its whole year.
+    static (DateOnly First, DateOnly Last)? Span(string date) =>
+        Parse(date) is { } parsed && DayOf(parsed, last: false) is { } first && DayOf(parsed, last: true) is { } last
+            ? (first, last)
+            : null;
+
     static DateOnly? DayOf(Parsed date, bool last)
     {
         if (!int.TryParse(date.Year.Split('/')[0], out int year) || year is < 1 or > 9999) return null;

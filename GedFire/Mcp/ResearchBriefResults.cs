@@ -25,6 +25,9 @@ public sealed record ResearchBrief
     /// <summary>Exactly the targets select_targets would report for this person, duplicates not annotated here.</summary>
     public required IReadOnlyList<SelectionTarget> Gaps { get; init; }
 
+    /// <summary>The cards select_targets would withhold for this person, with the same reasons.</summary>
+    public required IReadOnlyList<SuppressedCard> SuppressedCards { get; init; }
+
     /// <summary>Up to three best GEN301 duplicate candidates, as select_targets computes them.</summary>
     public required IReadOnlyList<PossibleDuplicateEntry> PossibleDuplicateOf { get; init; }
 

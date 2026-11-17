@@ -12,21 +12,14 @@ public sealed record Citation(string Source, string? Page, string? DataText, int
     // SwappedFrom is set only by ApplyState.ResolveCitations when a shared
     // source was copied for this item: the original source this citation
     // replaces on the structures it is applied to.
-    /// <summary>The citations of the fact an object writes: "citations", or the legacy singular "citation".</summary>
-    internal static IReadOnlyList<Citation> ReadAll(JsonElement el)
-    {
-        if (el.TryGetProperty("citations", out var many))
-            return [.. many.EnumerateArray().Select(ReadOne)];
-        if (el.TryGetProperty("citation", out var one))
-            return [ReadOne(one)];
-        return [];
-    }
+    /// <summary>The citations of the fact an object writes.</summary>
+    internal static IReadOnlyList<Citation> ReadAll(JsonElement el) => ReadArray(el, "citations");
 
-    /// <summary>A relationship op's citations of the family record: "familyCitations", or the legacy op-level citation keys.</summary>
-    internal static IReadOnlyList<Citation> ReadFamily(JsonElement el) =>
-        el.TryGetProperty("familyCitations", out var family)
-            ? [.. family.EnumerateArray().Select(ReadOne)]
-            : ReadAll(el);
+    /// <summary>A relationship op's citations of the family record.</summary>
+    internal static IReadOnlyList<Citation> ReadFamily(JsonElement el) => ReadArray(el, "familyCitations");
+
+    static IReadOnlyList<Citation> ReadArray(JsonElement el, string name) =>
+        el.TryGetProperty(name, out var many) ? [.. many.EnumerateArray().Select(ReadOne)] : [];
 
     internal static Citation ReadOne(JsonElement el) => new(
         el.GetProperty("source").GetString()!,
@@ -42,21 +35,11 @@ public sealed record Citation(string Source, string? Page, string? DataText, int
 /// </summary>
 public sealed record EventValue(string? Text, string? Date, string? Place)
 {
-    /// <summary>
-    /// The value, date and place fields of a fact-writing object; null when it gives none. A legacy
-    /// object "value" carries the date and place inside it.
-    /// </summary>
+    /// <summary>The value, date and place fields of a fact-writing object; null when it gives none.</summary>
     internal static EventValue? ReadFact(JsonElement el)
     {
-        string? date = JsonRead.Str(el, "date"), place = JsonRead.Str(el, "place");
-        if (!el.TryGetProperty("value", out var v) || v.ValueKind == JsonValueKind.Null)
-            return date is null && place is null ? null : new EventValue(null, date, place);
-        return v.ValueKind switch
-        {
-            JsonValueKind.String => new EventValue(v.GetString(), date, place),
-            JsonValueKind.Object => new EventValue(null, JsonRead.Str(v, "date"), JsonRead.Str(v, "place")),
-            _ => throw new JsonException("unsupported value kind for 'value'"),
-        };
+        string? text = JsonRead.Str(el, "value"), date = JsonRead.Str(el, "date"), place = JsonRead.Str(el, "place");
+        return text is null && date is null && place is null ? null : new EventValue(text, date, place);
     }
 }
 
@@ -68,18 +51,11 @@ public sealed record EventValue(string? Text, string? Date, string? Place)
 /// </summary>
 public sealed record FactMatch(string? Text, string? Date, string? Place)
 {
-    /// <summary>The "match" object {value?, date?, place?}, or the legacy bare string naming the payload.</summary>
-    internal static FactMatch? Read(JsonElement el, string name)
-    {
-        if (!el.TryGetProperty(name, out var v)) return null;
-        return v.ValueKind switch
-        {
-            JsonValueKind.String => new FactMatch(v.GetString(), null, null),
-            JsonValueKind.Object => new FactMatch(
-                JsonRead.Str(v, "value"), JsonRead.Str(v, "date"), JsonRead.Str(v, "place")),
-            _ => throw new JsonException($"unsupported value kind for '{name}'"),
-        };
-    }
+    /// <summary>The "match" object {value?, date?, place?}.</summary>
+    internal static FactMatch? Read(JsonElement el, string name) =>
+        el.TryGetProperty(name, out var v)
+            ? new FactMatch(JsonRead.Str(v, "value"), JsonRead.Str(v, "date"), JsonRead.Str(v, "place"))
+            : null;
 }
 
 public sealed record SubStructure(string Tag, string Value)
@@ -107,28 +83,21 @@ public sealed record InlineFact(string Fact, EventValue? Value, IReadOnlyList<Ci
 
 /// <summary>
 /// A person named by a relationship op: either a link to an existing INDI
-/// or a description of a new person to create ("name" present; explicit new
-/// xref required so changesets stay reviewable and xref numbering stays
-/// conventional). A new person is declared in its item's "people" and named
-/// by xref; the legacy form describes it inline in the op.
+/// or a new person to create ("name" present; explicit new xref required so
+/// changesets stay reviewable and xref numbering stays conventional). A new
+/// person is declared in its item's "people" and named by xref.
 /// </summary>
 public sealed record PersonRef(string Xref, string? Name, string? Sex, IReadOnlyList<InlineFact> Facts)
 {
     public bool IsInline => Name is not null;
 
-    /// <summary>The person a field names: its item's declaration of that xref, a bare link, or a legacy inline object.</summary>
-    internal static PersonRef? Read(JsonElement el, string name, IReadOnlyDictionary<string, PersonRef> people)
-    {
-        if (!el.TryGetProperty(name, out var v)) return null;
-        return v.ValueKind switch
-        {
-            JsonValueKind.String => people.GetValueOrDefault(v.GetString()!) ?? new PersonRef(v.GetString()!, null, null, []),
-            JsonValueKind.Object => Declared(v),
-            _ => throw new JsonException($"unsupported value kind for '{name}'"),
-        };
-    }
+    /// <summary>The person a field names: its item's declaration of that xref, or a link to an existing person.</summary>
+    internal static PersonRef? Read(JsonElement el, string name, IReadOnlyDictionary<string, PersonRef> people) =>
+        JsonRead.Str(el, name) is { } xref
+            ? people.GetValueOrDefault(xref) ?? new PersonRef(xref, null, null, [])
+            : null;
 
-    /// <summary>One "people" entry, or a legacy inline person: {xref, name, sex?, facts?}.</summary>
+    /// <summary>One "people" entry: {xref, name, sex?, facts?}.</summary>
     internal static PersonRef Declared(JsonElement v) => new(
         v.GetProperty("xref").GetString()!,
         JsonRead.Str(v, "name"),

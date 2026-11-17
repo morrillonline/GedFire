@@ -215,14 +215,13 @@ changeset adds instances of the same tag, and a spouse relation between people
 who are already partners lands on their existing family. Fix the findings and
 draft again when validation exposes a defect.
 
-Changesets follow GedFire's versioned changeset contract (`gedfire schema
-changeset`; `describe_changeset_ops` is the readable guide). Each names its
-`schemaVersion`; `citations` is always an array; a relationship op cites the
-family in `familyCitations`; a fact gives `value`, or `date` and `place`, as
-its tag requires; and new people are declared once in the item's `people`.
-Validation still reads changesets written before the contract and lists each
-legacy shape as a warning; redraft such a changeset from its finding with
-`draft_changeset`.
+Changesets follow GedFire's changeset contract (`gedfire schema changeset`;
+`describe_changeset_ops` is the readable guide). `citations` is always an
+array; a relationship op cites the family in `familyCitations`; a fact gives
+`value`, or `date` and `place`, as its tag requires; and new people are
+declared once in the item's `people`. Validation and apply refuse anything
+else, naming the path and the fix; redraft such a changeset from its finding
+with `draft_changeset`.
 
 Findings saved to disk follow GedFire's versioned finding-file schema
 (`gedfire schema finding-file`). It holds the draft entry, the identity argument,

@@ -64,23 +64,13 @@ internal sealed class LowQuayNoteRule(int maxQuay, string notePrefix) : IPolicyR
                     yield return new Owner($"{OpJson.String(op, "fact") ?? "fact"} on {record}", Xref: record, Tag: OpJson.String(op, "fact"));
                 break;
             case "createOrUpdateSpouse":
-                foreach (var owner in InlineFacts(op, "spouse")) yield return owner;
                 if (OpJson.Property(op, "marriage") is { } marriage && LowGrade(marriage))
                     yield return new Owner($"marriage (family {OpJson.String(op, "family")})", Marriage: true);
-                break;
-            case "createOrUpdateChild":
-                foreach (var owner in InlineFacts(op, "child")) yield return owner;
-                break;
-            case "createOrUpdateParent":
-                foreach (var owner in InlineFacts(op, "parent")) yield return owner;
                 break;
         }
     }
 
-    // A new person's facts: declared in the item's people, or described inline by a legacy op.
-    IEnumerable<Owner> InlineFacts(JsonElement op, string key) =>
-        OpJson.Property(op, key) is { ValueKind: JsonValueKind.Object } person ? PersonFacts(person) : [];
-
+    // A new person's facts, declared in the item's people.
     IEnumerable<Owner> PersonFacts(JsonElement person)
     {
         if (OpJson.Property(person, "facts") is not { ValueKind: JsonValueKind.Array } facts) yield break;
@@ -103,8 +93,6 @@ internal sealed class LowQuayNoteRule(int maxQuay, string notePrefix) : IPolicyR
     static int? HeldBest(JsonElement op, string record, IRecordHistory document) =>
         OpJson.String(op, "fact") is { } tag
             ? HeldFacts.BestQuay(document, record, tag,
-                OpJson.String(OpJson.Property(op, "match") ?? default, "date")
-                ?? OpJson.String(op, "date")
-                ?? OpJson.String(OpJson.Property(op, "value") ?? default, "date"))
+                OpJson.String(OpJson.Property(op, "match") ?? default, "date") ?? OpJson.String(op, "date"))
             : null;
 }

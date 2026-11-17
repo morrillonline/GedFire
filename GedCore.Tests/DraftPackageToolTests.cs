@@ -137,7 +137,7 @@ public class DraftPackageToolTests : IDisposable
     {
         string good = await Drafted("good.changes.json", Finding("F-1", "@I1@", "DEAT", "26 Mar 2013"));
         string missingPerson = Write("bad.changes.json", """
-            { "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I99@", "fact": "DEAT", "value": { "date": "1900" }, "findings": ["F-9"] } ] } ],
+            { "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I99@", "fact": "DEAT", "date": "1900", "findings": ["F-9"] } ] } ],
               "findings": [ { "id": "F-9", "item": 1, "extract": "x", "source": { "name": "S", "locator": "p", "class": "derivative", "information": "primary" }, "claims": [] } ] }
             """);
 
@@ -156,7 +156,7 @@ public class DraftPackageToolTests : IDisposable
     public async Task AChangesetThatCarriesNoFindings_IsNotPresented()
     {
         string bare = Write("bare.changes.json", """
-            { "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "value": { "date": "1900" } } ] } ] }
+            { "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900" } ] } ] }
             """);
 
         var structured = Structured(await Call([bare]));

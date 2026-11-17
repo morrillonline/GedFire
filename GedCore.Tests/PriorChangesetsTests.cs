@@ -23,14 +23,14 @@ public class PriorChangesetsTests : IDisposable
     // Another approved package: two census facts on Allen.
     const string TwoCensuses = """
         { "items": [ { "item": 1, "ops": [
-          { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "mode": "add", "value": { "date": "1910", "place": "Maine" } },
-          { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "mode": "add", "value": { "date": "1920", "place": "Maine" } } ] } ] }
+          { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "mode": "add", "date": "1910", "place": "Maine" },
+          { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "mode": "add", "date": "1920", "place": "Maine" } ] } ] }
         """;
 
     // A census drafted while Allen had none: a plain upsert, as drafts were written before repeatable facts were added.
     const string PlainCensus = """
         { "items": [ { "item": 1, "ops": [
-          { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "value": { "date": "1900", "place": "Maine" } } ] } ] }
+          { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "date": "1900", "place": "Maine" } ] } ] }
         """;
 
     string Write(string name, string text)

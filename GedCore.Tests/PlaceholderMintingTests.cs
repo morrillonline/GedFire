@@ -6,8 +6,8 @@ namespace GedCore.Tests;
 /// <summary>
 /// Dedicated coverage for the @New&lt;token&gt;@ placeholder mechanism itself:
 /// syntax enforcement at every creation position, the changeset-wide kind
-/// registry, forward-reference rejection, cross-occurrence identity-conflict
-/// detection, and the one static-unrulable collision. The existing
+/// registry, forward-reference rejection, one declaration per new person,
+/// and the one static-unrulable collision. The existing
 /// Apply*Tests/ProposalStyleChangesetTests suites already exercise the
 /// mechanism end-to-end through realistic changesets (and prove xref values
 /// mint deterministically); this file isolates the mechanism's own
@@ -20,18 +20,18 @@ public class PlaceholderMintingTests : ApplyTestBase
     // -------------------------------------------------------------------
 
     [Fact]
-    public void PersonCreation_WithRealLookingUnusedXref_FailsValidation()
+    public void PersonCreation_WithRealLookingUnusedXref_IsRefusedByTheContract()
     {
         WriteBaseFile();
-        var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+        var ex = Assert.Throws<System.Text.Json.JsonException>(() => Run("""
+            { "items": [ { "item": 1, "people": [ { "xref": "@I09999@", "name": "New /Wife/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00002@",
-                "spouse": { "xref": "@I09999@", "name": "New /Wife/", "sex": "F" },
+                "spouse": "@I09999@",
                 "family": "@NewF1@" } ] } ] }
-            """, dryRun: true);
+            """, dryRun: true));
 
-        Assert.False(result.Success);
-        Assert.Contains(result.Errors, e => e.Contains("@I09999@") && e.Contains("not a placeholder"));
+        Assert.Contains("items[0].people[0].xref: people declares new people", ex.Message);
+        Assert.Contains("not @I09999@", ex.Message);
     }
 
     [Fact]
@@ -39,9 +39,9 @@ public class PlaceholderMintingTests : ApplyTestBase
     {
         WriteBaseFile();
         var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "New /Wife/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00002@",
-                "spouse": { "xref": "@NewI1@", "name": "New /Wife/", "sex": "F" },
+                "spouse": "@NewI1@",
                 "family": "@F09999@" } ] } ] }
             """, dryRun: true);
 
@@ -89,9 +89,9 @@ public class PlaceholderMintingTests : ApplyTestBase
         var result = Run("""
             { "newSources": [ { "xref": "@New1@", "ops": [
                 { "op": "createOrUpdateSource", "xref": "@New1@", "title": "Confused source" } ] } ],
-              "items": [ { "item": 1, "ops": [
+              "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "New /Wife/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00002@",
-                "spouse": { "xref": "@New1@", "name": "New /Wife/", "sex": "F" },
+                "spouse": "@New1@",
                 "family": "@New2@" } ] } ] }
             """, dryRun: true);
 
@@ -107,9 +107,9 @@ public class PlaceholderMintingTests : ApplyTestBase
         // @New1@ is fixed as a Family by the first op's family field, then a
         // later op tries to use the same token as a person reference.
         var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New2@", "name": "Kid /Test/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New1@", "husb": "@I00002@",
-                "child": { "xref": "@New2@", "name": "Kid /Test/", "sex": "M" } },
+                "child": "@New2@" },
               { "op": "createOrUpdateSpouse", "person": "@New1@",
                 "spouse": "@I00004@" } ] } ] }
             """, dryRun: true);
@@ -127,10 +127,10 @@ public class PlaceholderMintingTests : ApplyTestBase
     {
         WriteBaseFile();
         var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "New /Wife/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateNote", "record": "@New1@", "text": "too early" },
               { "op": "createOrUpdateSpouse", "person": "@I00002@",
-                "spouse": { "xref": "@New1@", "name": "New /Wife/", "sex": "F" },
+                "spouse": "@New1@",
                 "family": "@New2@" } ] } ] }
             """, dryRun: true);
 
@@ -152,59 +152,54 @@ public class PlaceholderMintingTests : ApplyTestBase
     }
 
     // -------------------------------------------------------------------
-    // Cross-occurrence inline-identity conflicts (person only)
+    // One declaration per new person
     // -------------------------------------------------------------------
 
     [Fact]
-    public void SamePersonPlaceholder_ConflictingNameAcrossOccurrences_FailsValidation()
+    public void SamePersonPlaceholder_DeclaredTwice_IsRefusedByTheContract()
     {
         WriteBaseFile();
-        // @New1@ is first created as "First /Name/" via createOrUpdateChild,
-        // then a later op in the same changeset supplies a different inline
-        // name for the same token.
-        var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+        var ex = Assert.Throws<System.Text.Json.JsonException>(() => Run("""
+            { "items": [ { "item": 1, "people": [
+                { "xref": "@New1@", "name": "First /Name/", "sex": "M" },
+                { "xref": "@New1@", "name": "Different /Name/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00002@",
-                "child": { "xref": "@New1@", "name": "First /Name/", "sex": "M" } },
-              { "op": "createOrUpdateSpouse", "person": "@I00004@",
-                "spouse": { "xref": "@New1@", "name": "Different /Name/", "sex": "M" },
-                "family": "@New3@" } ] } ] }
+                "child": "@New1@" } ] } ] }
+            """, dryRun: true));
+
+        Assert.Contains("items[0].people[1].xref: @New1@ is declared more than once", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("Different /Name/", "M", "conflicting name")]
+    [InlineData("First /Name/", "F", "conflicting sex")]
+    public void SamePersonPlaceholder_DeclaredDifferentlyInTwoItems_FailsValidation(string name, string sex, string expected)
+    {
+        WriteBaseFile();
+        var result = Run($$"""
+            { "items": [
+              { "item": 1, "people": [ { "xref": "@New1@", "name": "First /Name/", "sex": "M" } ], "ops": [
+                { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00002@", "child": "@New1@" } ] },
+              { "item": 2, "people": [ { "xref": "@New1@", "name": "{{name}}", "sex": "{{sex}}" } ], "ops": [
+                { "op": "createOrUpdateSpouse", "person": "@I00004@", "spouse": "@New1@", "family": "@New3@" } ] } ] }
             """, dryRun: true);
 
         Assert.False(result.Success);
-        Assert.Contains(result.Errors, e => e.Contains("@New1@") && e.Contains("conflicting name"));
+        Assert.Contains(result.Errors, e => e.Contains("@New1@") && e.Contains(expected));
     }
 
     [Fact]
-    public void SamePersonPlaceholder_ConflictingSexAcrossOccurrences_FailsValidation()
+    public void SamePersonPlaceholder_NamedByTwoOps_IsMintedOnce()
     {
         WriteBaseFile();
-        var result = Run("""
-            { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00002@",
-                "child": { "xref": "@New1@", "name": "Same /Name/", "sex": "M" } },
-              { "op": "createOrUpdateSpouse", "person": "@I00004@",
-                "spouse": { "xref": "@New1@", "name": "Same /Name/", "sex": "F" },
-                "family": "@New3@" } ] } ] }
-            """, dryRun: true);
-
-        Assert.False(result.Success);
-        Assert.Contains(result.Errors, e => e.Contains("@New1@") && e.Contains("conflicting sex"));
-    }
-
-    [Fact]
-    public void SamePersonPlaceholder_CompatibleRepeatedInlineEvidence_Succeeds()
-    {
-        WriteBaseFile();
-        // Same name and sex supplied twice for the same token: compatible,
-        // not a conflict. Both occurrences (the creating child op and the
-        // later spouse reference) resolve to one real person, minted once.
+        // Both occurrences (the creating child op and the later spouse
+        // reference) resolve to one real person, minted once.
         var result = RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Repeat /Name/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00002@",
-                "child": { "xref": "@New1@", "name": "Repeat /Name/", "sex": "M" } },
+                "child": "@New1@" },
               { "op": "createOrUpdateSpouse", "person": "@I00004@",
-                "spouse": { "xref": "@New1@", "name": "Repeat /Name/", "sex": "M" },
+                "spouse": "@New1@",
                 "family": "@New3@" } ] } ] }
             """);
 
@@ -239,9 +234,9 @@ public class PlaceholderMintingTests : ApplyTestBase
         var bytes = output.ToArray();
 
         var changeset = Changeset.Parse("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "New /Wife/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00002@",
-                "spouse": { "xref": "@New1@", "name": "New /Wife/", "sex": "F" },
+                "spouse": "@New1@",
                 "family": "@NewFam1@" } ] } ] }
             """);
         var result = ChangesetApplier.Run(bytes, changeset, [1], dryRun: false);
@@ -265,8 +260,8 @@ public class PlaceholderMintingTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@F00002@", "fact": "MARR",
-                "value": { "date": "12 JUN 1922" },
-                "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 } } ] } ] }
+                "date": "12 JUN 1922",
+                "citations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }] } ] } ] }
             """);
 
         var result = Run("""
@@ -274,7 +269,7 @@ public class PlaceholderMintingTests : ApplyTestBase
               { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00004@",
                 "family": "@NewF1@",
                 "marriage": { "date": "12 JUN 1922",
-                              "citation": { "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 } } } ] } ] }
+                              "citations": [{ "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 }] } } ] } ] }
             """, dryRun: true);
 
         Assert.False(result.Success);
@@ -288,8 +283,8 @@ public class PlaceholderMintingTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@F00002@", "fact": "MARR",
-                "value": { "date": "12 JUN 1922" },
-                "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 } } ] } ] }
+                "date": "12 JUN 1922",
+                "citations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }] } ] } ] }
             """);
 
         var result = RunExpectSuccess("""
@@ -297,7 +292,7 @@ public class PlaceholderMintingTests : ApplyTestBase
               { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00004@",
                 "family": "@NewF1@",
                 "marriage": { "date": "13 JUN 1930",
-                              "citation": { "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 } } } ] } ] }
+                              "citations": [{ "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 }] } } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -314,8 +309,8 @@ public class PlaceholderMintingTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@F00002@", "fact": "MARR",
-                "value": { "date": "12 JUN 1922" },
-                "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 } } ] } ] }
+                "date": "12 JUN 1922",
+                "citations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }] } ] } ] }
             """);
 
         var result = RunExpectSuccess("""
@@ -323,7 +318,7 @@ public class PlaceholderMintingTests : ApplyTestBase
               { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00004@",
                 "family": "@F00002@",
                 "marriage": { "date": "12 JUN 1922",
-                              "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 } } } ] } ] }
+                              "citations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }] } } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -336,8 +331,8 @@ public class PlaceholderMintingTests : ApplyTestBase
         RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@F00002@", "fact": "MARR",
-                "value": { "date": "1922" },
-                "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 } } ] } ] }
+                "date": "1922",
+                "citations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }] } ] } ] }
             """);
 
         // Both this new marriage's date AND the existing one are year-only —
@@ -348,7 +343,7 @@ public class PlaceholderMintingTests : ApplyTestBase
               { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00004@",
                 "family": "@NewF1@",
                 "marriage": { "date": "1922",
-                              "citation": { "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 } } } ] } ] }
+                              "citations": [{ "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 }] } } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -361,16 +356,16 @@ public class PlaceholderMintingTests : ApplyTestBase
         // same pair within the same changeset, on the same exact date.
         WriteBaseFile();
         var result = Run("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "First /Wife/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00002@",
-                "spouse": { "xref": "@NewI1@", "name": "First /Wife/", "sex": "F" },
+                "spouse": "@NewI1@",
                 "family": "@NewF1@",
                 "marriage": { "date": "1 JAN 1900",
-                              "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 } } },
+                              "citations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }] } },
               { "op": "createOrUpdateSpouse", "person": "@NewI1@", "spouse": "@I00002@",
                 "family": "@NewF2@",
                 "marriage": { "date": "1 JAN 1900",
-                              "citation": { "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 } } } ] } ] }
+                              "citations": [{ "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 }] } } ] } ] }
             """, dryRun: true);
 
         Assert.False(result.Success);
@@ -400,9 +395,9 @@ public class PlaceholderMintingTests : ApplyTestBase
         var bytes = output.ToArray();
 
         var changeset = Changeset.Parse("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "New /Wife/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00002@",
-                "spouse": { "xref": "@New1@", "name": "New /Wife/", "sex": "F" },
+                "spouse": "@New1@",
                 "family": "@NewFam1@" } ] } ] }
             """);
         var result = ChangesetApplier.Run(bytes, changeset, [1], dryRun: false);

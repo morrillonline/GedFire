@@ -148,6 +148,39 @@ public class ResearchBriefBuilderTests
     }
 
     [Fact]
+    public void SuppressedCards_GiveTheSameReasonSelectTargetsWould()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME John /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 PLAC Boone County, Iowa
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Mary /Smith/
+            1 SEX F
+            1 BIRT
+            2 DATE ABT 1878
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            1 MARR
+            2 DATE 17 MAR 1942
+            """;
+        var snapshot = Snapshot(ged);
+        var expected = new List<SuppressedCard>();
+        GapDetector.DetectForPeople([snapshot.Model.Individuals["@I1@"]], expected);
+
+        var brief = Build(snapshot);
+
+        Assert.Equal(expected, brief.SuppressedCards);
+        Assert.StartsWith("wife aged about 64 at marriage", Assert.Single(brief.SuppressedCards, c => c.CardType == "New child").Reason);
+        Assert.DoesNotContain(brief.Gaps, t => t.CardType == "New child");
+    }
+
+    [Fact]
     public void Duplicates_ListTheTwinWithScore_AsSelectTargetsComputesThem()
     {
         var brief = Build(Snapshot());

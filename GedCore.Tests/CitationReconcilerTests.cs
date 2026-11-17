@@ -243,10 +243,10 @@ public class CitationReconcilerTests : ApplyTestBase
         WriteFile(LinesWithFamilyCitation("@F00002@", "p89 n25", "Edward's register entry"));
 
         var result = RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@F00002@",
-                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M" },
-                "citation": { "source": "@S00001@", "page": "p91 n12", "dataText": "Junior's register entry", "quay": 2 } } ] } ] }
+                "child": "@NewI1@",
+                "familyCitations": [{ "source": "@S00001@", "page": "p91 n12", "dataText": "Junior's register entry", "quay": 2 }] } ] } ] }
             """);
 
         var citations = FamilyCitations("@F00002@");
@@ -265,7 +265,7 @@ public class CitationReconcilerTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00004@", "family": "@F00002@",
-                "citations": [ { "source": "@S00001@", "page": "p91 n12", "dataText": "the couple's register entry", "quay": 2 } ] } ] } ] }
+                "familyCitations": [ { "source": "@S00001@", "page": "p91 n12", "dataText": "the couple's register entry", "quay": 2 } ] } ] } ] }
             """);
 
         var citations = FamilyCitations("@F00002@");
@@ -282,7 +282,7 @@ public class CitationReconcilerTests : ApplyTestBase
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateParent", "person": "@I00001@", "role": "father", "parent": "@I00002@",
-                "citation": { "source": "@S00001@", "page": "p91 n12", "dataText": "son of Harvey", "quay": 2 } } ] } ] }
+                "familyCitations": [{ "source": "@S00001@", "page": "p91 n12", "dataText": "son of Harvey", "quay": 2 }] } ] } ] }
             """);
 
         var citations = FamilyCitations("@F00001@");
@@ -297,10 +297,10 @@ public class CitationReconcilerTests : ApplyTestBase
         WriteFile(LinesWithFamilyCitation("@F00002@", "p89 n25", "Edward's register entry"));
 
         RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@F00002@",
-                "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M" },
-                "citation": { "source": "@S00001@", "page": "p89 n25", "quay": 2 } } ] } ] }
+                "child": "@NewI1@",
+                "familyCitations": [{ "source": "@S00001@", "page": "p89 n25", "quay": 2 }] } ] } ] }
             """);
 
         var citation = Assert.Single(FamilyCitations("@F00002@"));

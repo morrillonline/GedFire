@@ -9,10 +9,10 @@ namespace GedCore.Tests;
 /// </summary>
 public class ProseXrefGuardTests : ApplyTestBase
 {
-    private ApplyResult RunOps(string ops)
+    private ApplyResult RunOps(string ops, string people = "")
     {
         WriteBaseFile();
-        return Run($$"""{ "items": [ { "item": 1, "ops": [ {{ops}} ] } ] }""");
+        return Run($$"""{ "items": [ { "item": 1, "people": [ {{people}} ], "ops": [ {{ops}} ] } ] }""");
     }
 
     private static string Citation(string page = "p. 1", string dataText = "extract") =>
@@ -58,7 +58,7 @@ public class ProseXrefGuardTests : ApplyTestBase
     {
         var result = RunOps($$"""
             { "op": "createOrUpdateVital", "record": "@F00001@", "fact": "MARR",
-              "value": { "date": "1922" }, "citation": {{Citation(dataText: "see @I00002@")}} }
+              "date": "1922", "citations": [{{Citation(dataText: "see @I00002@")}}] }
             """);
 
         AssertRefused(result, "@I00002@", "dataText");
@@ -69,20 +69,20 @@ public class ProseXrefGuardTests : ApplyTestBase
     {
         var result = RunOps($$"""
             { "op": "createOrUpdateVital", "record": "@F00001@", "fact": "MARR",
-              "value": { "date": "1922" }, "citation": {{Citation(page: "@S00001@ p. 4")}} }
+              "date": "1922", "citations": [{{Citation(page: "@S00001@ p. 4")}}] }
             """);
 
         AssertRefused(result, "@S00001@", "page");
     }
 
     [Fact]
-    public void InlinePersonFactCitation_WithAnInternalId_IsRefused()
+    public void DeclaredPersonFactCitation_WithAnInternalId_IsRefused()
     {
-        var result = RunOps($$"""
-            { "op": "createOrUpdateChild", "family": "@F00002@",
-              "child": { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
-                         "facts": [ { "fact": "BIRT", "value": { "date": "1951" },
-                                      "citation": {{Citation(dataText: "child of @I00001@")}} } ] } }
+        var result = RunOps("""
+            { "op": "createOrUpdateChild", "family": "@F00002@", "child": "@NewI1@" }
+            """, $$"""
+            { "xref": "@NewI1@", "name": "Junior /Test/", "sex": "M",
+              "facts": [ { "fact": "BIRT", "date": "1951", "citations": [{{Citation(dataText: "child of @I00001@")}}] } ] }
             """);
 
         AssertRefused(result, "@I00001@", "dataText");
@@ -105,7 +105,7 @@ public class ProseXrefGuardTests : ApplyTestBase
     {
         var result = RunOps($$"""
             { "op": "createOrUpdateSpouse", "person": "@I00002@", "spouse": "@I00003@", "family": "@F00001@",
-              "note": "Same family as @F00002@", "citation": {{Citation()}} }
+              "note": "Same family as @F00002@", "familyCitations": [{{Citation()}}] }
             """);
 
         AssertRefused(result, "@F00002@", "note");
@@ -116,7 +116,7 @@ public class ProseXrefGuardTests : ApplyTestBase
     {
         var result = RunOps($$"""
             { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
-              "value": "Allen /Test/ called @I00002@", "citation": {{Citation()}} }
+              "value": "Allen /Test/ called @I00002@", "citations": [{{Citation()}}] }
             """);
 
         AssertRefused(result, "@I00002@", "value");

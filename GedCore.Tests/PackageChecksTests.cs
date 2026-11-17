@@ -18,7 +18,7 @@ public class PackageChecksTests
             new PackageOptions(sameNamePeople, Prefix));
 
     static string Changeset(string ops, string people = "[]", string newSources = "[]", int item = 1) => $$"""
-        { "schemaVersion": "1.1", "newSources": {{newSources}},
+        { "newSources": {{newSources}},
           "items": [ { "item": {{item}}, "people": {{people}}, "ops": [ {{ops}} ] } ] }
         """;
 

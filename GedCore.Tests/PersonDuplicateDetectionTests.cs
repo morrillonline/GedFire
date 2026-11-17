@@ -63,11 +63,11 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         // parent, or PersonDuplicateDetector's own-parent exclusion would
         // suppress the very match this test exists to verify.
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "12 MAR 1841",
+                                        "place": "Gorham, Maine" } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@",
-                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "12 MAR 1841",
-                                        "place": "Gorham, Maine" } } ] } } ] } ] }
+                "child": "@New1@" } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -79,9 +79,9 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
     public void WhollyUnrelatedName_NeverClearsTheRecallGate_Succeeds()
     {
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Zzqxvw /Bbdfgh/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00001@",
-                "child": { "xref": "@New1@", "name": "Zzqxvw /Bbdfgh/", "sex": "M" } } ] } ] }
+                "child": "@New1@" } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -93,10 +93,10 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         // Same name, but a birth year 60 years off is real, distinguishing
         // evidence -- not the same Frederick Morrill.
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "1901" } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00001@",
-                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1901" } } ] } } ] } ] }
+                "child": "@New1@" } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -121,9 +121,9 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         Ged70.Ged70Formatter.Write(document, output);
 
         var changeset = Apply.Changeset.Parse("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00001@",
-                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" } } ] } ] }
+                "child": "@New1@" } ] } ] }
             """);
         var result = Apply.ChangesetApplier.Run(output.ToArray(), changeset, [1], dryRun: true);
 
@@ -142,11 +142,11 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         // gives a birth year 60 years off the real Frederick's -- gathered
         // before any verdict, this must not create a false duplicate.
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00001@",
-                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" } },
+                "child": "@New1@" },
               { "op": "createOrUpdateVital", "record": "@New1@", "fact": "BIRT",
-                "value": { "date": "1901" } } ] } ] }
+                "date": "1901" } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -158,11 +158,11 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         // No husb/wife seed here -- see the note in
         // ExactNameAndBirthMatch_AgainstRealPerson_IsRejectedAsADuplicate.
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@",
-                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" } },
+                "child": "@New1@" },
               { "op": "createOrUpdateVital", "record": "@New1@", "fact": "BIRT",
-                "value": { "date": "12 MAR 1841", "place": "Gorham, Maine" } } ] } ] }
+                "date": "12 MAR 1841", "place": "Gorham, Maine" } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -181,9 +181,9 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         // marrying the SAME Sarah Blake the real Frederick already married
         // is exactly the kind of relational evidence that confirms identity.
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00002@",
-                "spouse": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M" },
+                "spouse": "@New1@",
                 "family": "@New2@" } ] } ] }
             """);
 
@@ -199,12 +199,12 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         var document = string.Join("\r\n", RichFixtureLines)
           .Replace("Frederick /Morrill/", "Frederick /____/");
         var birth = includeBirth
-          ? """, "facts": [{ "fact": "BIRT", "value": { "date": "12 MAR 1841", "place": "Gorham, Maine" } }]"""
+          ? """, "facts": [{ "fact": "BIRT", "date": "12 MAR 1841", "place": "Gorham, Maine" }]"""
           : "";
         var changeset = Apply.Changeset.Parse($$"""
-          { "items": [{ "item": 1, "ops": [
+          { "items": [{ "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M"{{birth}} } ], "ops": [
             { "op": "createOrUpdateSpouse", "person": "@I00002@",
-            "spouse": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M"{{birth}} },
+            "spouse": "@New1@",
             "family": "@New2@" } ] }] }
           """);
 
@@ -265,9 +265,9 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
           ? "\"husb\": \"@I3@\""
           : "\"wife\": \"@I2@\"";
         var changeset = Apply.Changeset.Parse($$"""
-          { "items": [ { "item": 1, "ops": [
+          { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/" } ], "ops": [
             { "op": "createOrUpdateChild", "family": "@New2@", {{roleProperties}},
-            "child": { "xref": "@New1@", "name": "Frederick /Morrill/" } } ] } ] }
+            "child": "@New1@" } ] } ] }
           """);
 
         return Apply.ChangesetApplier.Run(output.ToArray(), changeset, [1], dryRun: true);
@@ -282,12 +282,12 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
     public void ConflictingBirthYearAcrossOccurrences_FailsValidation()
     {
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Someone /Else/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "1900" } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00001@",
-                "child": { "xref": "@New1@", "name": "Someone /Else/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1900" } } ] } },
+                "child": "@New1@" },
               { "op": "createOrUpdateVital", "record": "@New1@", "fact": "BIRT",
-                "value": { "date": "1905" } } ] } ] }
+                "date": "1905" } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -309,7 +309,7 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
               { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00002@",
                 "family": "@New1@",
                 "marriage": { "date": "1 JAN 1900",
-                              "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 } } } ] } ] }
+                              "citations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }] } } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -341,30 +341,26 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         // FIRST op's placeholder (a provisional candidate), not itself.
         const string op1 = """
             { "op": "createOrUpdateChild", "family": "@New2@", "husb": "@I00001@",
-              "child": {
-                "xref": "@New1@", "name": "Wholly /Newperson/", "sex": "M",
-                "facts": [
-                  { "fact": "BIRT", "value": { "date": "1955" },
-                    "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 } }
-                ]
-              },
-              "citation": { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }
+              "child": "@New1@",
+              "familyCitations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }]
             }
             """;
         const string op2 = """
             { "op": "createOrUpdateChild", "family": "@New4@", "husb": "@I00001@",
-              "child": {
-                "xref": "@New3@", "name": "Wholly /Newperson/", "sex": "M",
-                "facts": [
-                  { "fact": "BIRT", "value": { "date": "1955" },
-                    "citation": { "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 } }
-                ]
-              },
-              "citation": { "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 }
+              "child": "@New3@",
+              "familyCitations": [{ "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 }]
             }
             """;
+        const string people = """
+            { "xref": "@New1@", "name": "Wholly /Newperson/", "sex": "M",
+              "facts": [ { "fact": "BIRT", "date": "1955",
+                           "citations": [{ "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 }] } ] },
+            { "xref": "@New3@", "name": "Wholly /Newperson/", "sex": "M",
+              "facts": [ { "fact": "BIRT", "date": "1955",
+                           "citations": [{ "source": "@S00001@", "page": "b", "dataText": "y", "quay": 1 }] } ] }
+            """;
         var result = RunAgainstRichFixture($$"""
-            { "items": [ { "item": 1, "ops": [ {{op1}}, {{op2}} ] } ] }
+            { "items": [ { "item": 1, "people": [ {{people}} ], "ops": [ {{op1}}, {{op2}} ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -385,11 +381,11 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         // against being the same person, regardless of how well the name and
         // birth data otherwise line up.
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "F",
+                           "facts": [ { "fact": "BIRT", "date": "12 MAR 1841",
+                                        "place": "Gorham, Maine" } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@",
-                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "F",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "12 MAR 1841",
-                                        "place": "Gorham, Maine" } } ] } } ] } ] }
+                "child": "@New1@" } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -416,9 +412,9 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         Ged70.Ged70Formatter.Write(document, output);
 
         var changeset = Apply.Changeset.Parse("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Charley /Wilson/", "sex": "M" } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@",
-                "child": { "xref": "@New1@", "name": "Charley /Wilson/", "sex": "M" } } ] } ] }
+                "child": "@New1@" } ] } ] }
             """);
         var result = Apply.ChangesetApplier.Run(output.ToArray(), changeset, [1], dryRun: true);
 
@@ -433,11 +429,11 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
         // never be his own child's duplicate, so he must never be
         // considered a candidate for this token at all, regardless of score.
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "12 MAR 1841",
+                                        "place": "Gorham, Maine" } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@F00001@",
-                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "12 MAR 1841",
-                                        "place": "Gorham, Maine" } } ] } } ] } ] }
+                "child": "@New1@" } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -453,11 +449,11 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
     public void NotDuplicateOf_AcknowledgingTheMatchedXref_AllowsTheCreation()
     {
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "12 MAR 1841",
+                                        "place": "Gorham, Maine" } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New2@", "notDuplicateOf": ["@I00001@"],
-                "child": { "xref": "@New1@", "name": "Frederick /Morrill/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "12 MAR 1841",
-                                        "place": "Gorham, Maine" } } ] } } ] } ] }
+                "child": "@New1@" } ] } ] }
             """);
 
         Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -469,9 +465,9 @@ public class PersonDuplicateDetectionTests : ApplyTestBase
     public void NotDuplicateOf_NamingAnUnknownXref_FailsValidation()
     {
         var result = RunAgainstRichFixture("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New1@", "name": "Nobody /Real/", "sex": "F" } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00001@", "notDuplicateOf": ["@I99999@"],
-                "spouse": { "xref": "@New1@", "name": "Nobody /Real/", "sex": "F" },
+                "spouse": "@New1@",
                 "family": "@New2@" } ] } ] }
             """);
 

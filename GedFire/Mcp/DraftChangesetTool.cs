@@ -54,7 +54,7 @@ public sealed class DraftChangesetTool
         "(BEF, AFT, BET) narrow one another into one range. " +
         "Findings aimed at the same target become one item. Returns the changeset, a " +
         "decisions list (what was reused, minted, merged, or left open for you), and errors; the changeset follows the " +
-        "changeset contract (describe_schemas, changeset): it names its schemaVersion, gives every citation in a " +
+        "changeset contract (describe_schemas, changeset): it gives every citation in a " +
         "citations array (familyCitations on a relationship op), and declares each new person once in its item's people. " +
         "It also carries a " +
         "findings table (each finding's extract, source, classes, grades and identity argument, carried unchanged) and each op names the findings it rests on, " +

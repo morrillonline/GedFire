@@ -98,7 +98,7 @@ public class DraftChangesetToolTests : IDisposable
         File.WriteAllText(path, document);
         string changesetPath = Path.Combine(_dir, "spouse.json");
         File.WriteAllText(changesetPath, """
-            { "schemaVersion": "1.0", "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Hiram J /Giedd/", "sex": "M" } ],
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "Hiram J /Giedd/", "sex": "M" } ],
               "ops": [ { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": "@NewI1@", "family": "@NewF1@" } ] } ] }
             """);
 
@@ -668,11 +668,33 @@ public class DraftChangesetToolTests : IDisposable
         var result = await Tool().HandleAsync(Arg(RichFindings), Arg(null), default, CancellationToken.None);
 
         var changeset = Structured(result).GetProperty("changeset");
-        Assert.Equal(GedCore.Contract.ChangesetDialect.SchemaVersion, changeset.GetProperty("schemaVersion").GetString());
-        Assert.Empty(GedCore.Apply.Changeset.Read(changeset.GetRawText()).Warnings);
+        Assert.False(changeset.TryGetProperty("schemaVersion", out _));
+        Assert.Empty(GedCore.Apply.Changeset.Read(changeset.GetRawText()).Errors);
         var evaluation = SchemaCatalogTests.Compile(GedFire.Schemas.SchemaCatalog.Changeset)
             .Evaluate(changeset, new Json.Schema.EvaluationOptions { OutputFormat = Json.Schema.OutputFormat.List });
         Assert.True(evaluation.IsValid, string.Join("\n", (evaluation.Details ?? []).Where(d => d.Errors is not null)
             .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation} {d.EvaluationPath}: {e.Value}"))));
+    }
+
+    [Fact]
+    public async Task TheDraftedChangeset_PassesTheChangesetSchema_AndValidatesAndAppliesClean()
+    {
+        string path = Path.Combine(_dir, "drafted.ged");
+        File.WriteAllText(path, Ged);
+        var result = await new DraftChangesetTool(DocumentSession.Open(path), new ToolGate())
+            .HandleAsync(Arg(Findings), Arg(null), default, CancellationToken.None);
+        var changeset = Structured(result).GetProperty("changeset");
+        string changesetPath = Path.Combine(_dir, "drafted.json");
+        File.WriteAllText(changesetPath, changeset.GetRawText());
+
+        Assert.True(SchemaCatalogTests.Compile(GedFire.Schemas.SchemaCatalog.Changeset).Evaluate(changeset).IsValid);
+        var validated = Structured(await new ValidateChangesetTool(path, new ToolGate()).HandleAsync(changesetPath, "all", CancellationToken.None));
+        var applied = Structured(await new ApplyChangesetTool(path, new ToolGate(), readOnly: false).HandleAsync(changesetPath, "all", CancellationToken.None));
+        foreach (var run in new[] { validated, applied })
+        {
+            Assert.True(run.GetProperty("success").GetBoolean(), string.Join("; ", run.GetProperty("errors").EnumerateArray()));
+            Assert.Empty(run.GetProperty("errors").EnumerateArray());
+            Assert.False(run.TryGetProperty("warnings", out _));
+        }
     }
 }

@@ -26,7 +26,7 @@ public class NoteCitationTests : ApplyTestBase
         var result = RunExpectSuccess($$"""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "note": "{{NoteText}}",
-                "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "matches Harvey Test exactly" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1", "dataText": "matches Harvey Test exactly" }] } ] } ] }
             """);
 
         var citation = Note(ReadDoc()).ChildrenByTag("SOUR").Single();
@@ -41,7 +41,7 @@ public class NoteCitationTests : ApplyTestBase
         string json = $$"""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "note": "{{NoteText}}",
-                "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "matches Harvey Test exactly" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1", "dataText": "matches Harvey Test exactly" }] } ] } ] }
             """;
         RunExpectSuccess(json);
         byte[] afterFirst = ReadBytes();
@@ -60,7 +60,7 @@ public class NoteCitationTests : ApplyTestBase
         var result = Run($$"""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "note": "{{NoteText}}",
-                "citation": { "source": "@S00001@", "page": "p. 1", "dataText": "see @I00003@" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1", "dataText": "see @I00003@" }] } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -75,7 +75,7 @@ public class NoteCitationTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "note": "No such note.",
-                "citation": { "source": "@S00001@", "page": "p. 1" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1" }] } ] } ] }
             """);
 
         Assert.False(result.Success);
@@ -90,7 +90,7 @@ public class NoteCitationTests : ApplyTestBase
         var result = Run($$"""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT", "note": "{{NoteText}}",
-                "citation": { "source": "@S00001@", "page": "p. 1" } } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 1" }] } ] } ] }
             """);
 
         Assert.False(result.Success);

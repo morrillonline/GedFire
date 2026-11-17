@@ -3,17 +3,16 @@ using GedCore.Apply;
 
 namespace GedCore.Contract;
 
-/// <summary>What the contract check found: errors that refuse the changeset, and warnings about legacy shapes.</summary>
-public sealed record ContractReport(IReadOnlyList<string> Errors, IReadOnlyList<string> Warnings)
+/// <summary>What the contract check found: every fault that refuses the changeset, by path.</summary>
+public sealed record ContractReport(IReadOnlyList<string> Errors)
 {
     public bool IsValid => Errors.Count == 0;
 }
 
 /// <summary>
-/// Checks a changeset against <see cref="ChangesetDialect"/>, naming the path of every fault. A shape the reader cannot
-/// read, an unsupported version, or a fault in the canonical form is an error. A legacy shape (a singular citation, a
-/// relationship op's citations, an object value, a string match, an inline person, a field the dialect does not
-/// define) is still read, and is reported as a warning until the contract is enforced.
+/// Checks a changeset against <see cref="ChangesetDialect"/>, naming the path and the fix of every fault. Anything the
+/// dialect does not define is refused: an unknown field, a singular citation, an
+/// object value, a payload the fact's tag does not take, an inline person, and an undeclared or unnamed new person.
 /// </summary>
 public static class ChangesetContract
 {
@@ -23,16 +22,15 @@ public static class ChangesetContract
     {
         var check = new Run();
         check.Envelope(root);
-        return new ContractReport(check.Errors, check.Warnings);
+        return new ContractReport(check.Errors);
     }
 
-    /// <summary>The fact payload fields an object gives, with an object value read as the legacy event form.</summary>
+    /// <summary>The fact payload fields an object gives.</summary>
     sealed record PayloadFields(string? Value, bool HasDate, bool HasPlace);
 
     sealed class Run
     {
         public List<string> Errors { get; } = [];
-        public List<string> Warnings { get; } = [];
 
         public void Envelope(JsonElement root)
         {
@@ -41,30 +39,7 @@ public static class ChangesetContract
                 Errors.Add("a changeset must be a JSON object");
                 return;
             }
-            if (!VersionSupported(root)) return;
             Shape(root, ChangesetDialect.Shape(ChangesetDialect.Envelope), "");
-        }
-
-        bool VersionSupported(JsonElement root)
-        {
-            if (!root.TryGetProperty("schemaVersion", out var version))
-            {
-                Warnings.Add($"schemaVersion: missing; a changeset names the contract version it is written to, \"{ChangesetDialect.SchemaVersion}\"");
-                return true;
-            }
-            string? text = version.ValueKind == JsonValueKind.String ? version.GetString() : null;
-            string[] parts = text?.Split('.') ?? [];
-            if (parts.Length != 2 || !parts.All(p => p.Length > 0 && p.All(char.IsAsciiDigit)))
-            {
-                Errors.Add($"schemaVersion: must be a \"<major>.<minor>\" string such as \"{ChangesetDialect.SchemaVersion}\"");
-                return false;
-            }
-            if (int.Parse(parts[0]) != ChangesetDialect.SupportedMajor)
-            {
-                Errors.Add($"schemaVersion: version {text} is not supported; this GedFire reads changeset version {ChangesetDialect.SupportedMajor}.x");
-                return false;
-            }
-            return true;
         }
 
         void Shape(JsonElement node, DialectShape shape, string path)
@@ -75,26 +50,46 @@ public static class ChangesetContract
                 return;
             }
 
-            var handled = new HashSet<string>(StringComparer.Ordinal);
-            Legacy(node, shape, path, handled);
-            foreach (var property in node.EnumerateObject().Where(p => !handled.Contains(p.Name)))
+            foreach (var property in node.EnumerateObject())
             {
                 string at = Join(path, property.Name);
-                if (shape.Field(property.Name) is { } field) Value(property.Value, field, at);
-                else Warnings.Add($"{at}: unknown field; {Describe(shape)} takes {string.Join(", ", shape.Fields.Select(f => f.Name))}");
+                if (shape.Field(property.Name) is not { } field) Errors.Add(UnknownField(shape, property.Name, at));
+                else if (MisshapenValue(shape, field, property.Value) is { } fix) Errors.Add($"{at}: {fix}");
+                else Value(property.Value, field, at);
             }
-            foreach (var field in shape.Fields.Where(f => f.Required && !node.TryGetProperty(f.Name, out _) && !SatisfiedByLegacy(f, handled)))
+            foreach (var field in shape.Fields.Where(f => f.Required && !node.TryGetProperty(f.Name, out _)))
                 Errors.Add($"{Label(path)}: required field \"{field.Name}\" is missing");
 
             Semantics(node, shape, path);
             if (shape.Name == "item") People(node, path);
         }
 
+        // R1 and R2: a field the shape does not define, with the right key when it is a known misspelling of one.
+        static string UnknownField(DialectShape shape, string name, string at)
+        {
+            if (name is "citation" && shape.Field("citations") is not null)
+                return $"{at}: use \"citations\", an array";
+            if (name is "citation" or "citations" && shape.Field("familyCitations") is not null)
+                return $"{at}: use \"familyCitations\", an array; a relationship op's own citations cite the family record";
+            return $"{at}: unknown field; {Describe(shape)} takes {string.Join(", ", shape.Fields.Select(f => f.Name))}";
+        }
+
+        // R3 and R4: the object forms a string field once took, refused with the form that replaces them.
+        static string? MisshapenValue(DialectShape shape, DialectField field, JsonElement value)
+        {
+            if (value.ValueKind != JsonValueKind.Object || field.Type != DialectType.String) return null;
+            if (field.Name == "value" && shape.Field("date") is not null)
+                return "an object value is not read; give date and place as fields beside value";
+            if (PersonFields.Contains(field.Name) && IsRelationshipOp(shape))
+                return "an inline person is not read; declare the person in the item's people and give only its xref here";
+            return null;
+        }
+
         void Value(JsonElement value, DialectField field, string path)
         {
-            if (value.ValueKind == JsonValueKind.Null && Nullable(field))
+            if (value.ValueKind == JsonValueKind.Null && !field.Required)
             {
-                Warnings.Add($"{path}: null; omit the field instead");
+                Errors.Add($"{path}: null; omit the field instead");
                 return;
             }
             switch (field.Type)
@@ -149,104 +144,10 @@ public static class ChangesetContract
             Shape(op, shape, path);
         }
 
-        // The legacy shapes the reader still accepts: each is read, warned about, and kept out of the unknown-field check.
-        void Legacy(JsonElement node, DialectShape shape, string path, HashSet<string> handled)
-        {
-            if (shape.Field("familyCitations") is not null) RelationshipCitations(node, shape, path, handled);
-            else if (shape.Field("citations") is not null) SingularCitation(node, path, handled);
-            if (shape.Field("value") is { Type: DialectType.String } && shape.Field("date") is not null) ObjectValue(node, path, handled);
-            if (shape.Field("match") is { Shape: "factMatch" }) StringMatch(node, path, handled);
-            foreach (string field in PersonFields)
-                if (shape.Name.StartsWith("createOrUpdate", StringComparison.Ordinal) && shape.Field(field) is not null)
-                    InlinePerson(node, field, path, handled);
-        }
-
-        void SingularCitation(JsonElement node, string path, HashSet<string> handled)
-        {
-            if (!node.TryGetProperty("citation", out var citation)) return;
-            handled.Add("citation");
-            if (node.TryGetProperty("citations", out _))
-            {
-                Errors.Add($"{Label(path)}: carries both citation and citations; give every citation in citations");
-                return;
-            }
-            Warnings.Add($"{Join(path, "citation")}: use citations, an array, for every citation");
-            Shape(citation, ChangesetDialect.Shape("citation"), Join(path, "citation"));
-        }
-
-        void RelationshipCitations(JsonElement node, DialectShape shape, string path, HashSet<string> handled)
-        {
-            string[] given = [.. new[] { "citation", "citations" }.Where(k => node.TryGetProperty(k, out _))];
-            if (given.Length == 0) return;
-            handled.UnionWith(given);
-            if (given.Length > 1 || node.TryGetProperty("familyCitations", out _))
-            {
-                string keys = string.Join(" and ", node.TryGetProperty("familyCitations", out _) ? ["familyCitations", .. given] : given);
-                Errors.Add($"{Label(path)}: carries {keys}; give the family record's citations in familyCitations only");
-                return;
-            }
-            string at = Join(path, given[0]);
-            Warnings.Add($"{at}: on {shape.Name} the op-level citations cite the family record; rename it familyCitations, an array");
-            var citation = ChangesetDialect.Shape("citation");
-            var value = node.GetProperty(given[0]);
-            if (given[0] == "citation") Shape(value, citation, at);
-            else if (value.ValueKind != JsonValueKind.Array) Errors.Add($"{at}: must be an array");
-            else foreach (var (element, i) in value.EnumerateArray().Select((e, i) => (e, i))) Shape(element, citation, $"{at}[{i}]");
-        }
-
-        void ObjectValue(JsonElement node, string path, HashSet<string> handled)
-        {
-            if (!node.TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.Object) return;
-            handled.Add("value");
-            string at = Join(path, "value");
-            if (Has(node, "date") || Has(node, "place"))
-            {
-                Errors.Add($"{at}: give date and place beside value, not inside it as well");
-                return;
-            }
-            Warnings.Add($"{at}: an object value is the old event form; give date and place as fields beside it");
-            foreach (var property in value.EnumerateObject())
-                if (property.Name is not ("date" or "place"))
-                    Warnings.Add($"{Join(at, property.Name)}: unknown field; an event value takes date, place");
-                else if (property.Value.ValueKind == JsonValueKind.Null)
-                    Warnings.Add($"{Join(at, property.Name)}: null; omit the field instead");
-                else if (property.Value.ValueKind != JsonValueKind.String)
-                    Errors.Add($"{Join(at, property.Name)}: must be a string");
-        }
-
-        void StringMatch(JsonElement node, string path, HashSet<string> handled)
-        {
-            if (!node.TryGetProperty("match", out var match) || match.ValueKind != JsonValueKind.String) return;
-            handled.Add("match");
-            Warnings.Add($"{Join(path, "match")}: a string match is the old form; give {{\"value\": ...}} for a text payload or {{\"date\", \"place\"}} for an event");
-        }
-
-        void InlinePerson(JsonElement node, string field, string path, HashSet<string> handled)
-        {
-            if (!node.TryGetProperty(field, out var person) || person.ValueKind != JsonValueKind.Object) return;
-            handled.Add(field);
-            string at = Join(path, field);
-            if (!person.TryGetProperty("name", out _))
-            {
-                Warnings.Add($"{at}: an object naming only an existing person; give its xref as a string");
-                if (Text(person, "xref") is null) Errors.Add($"{at}.xref: required, a string");
-                foreach (var property in person.EnumerateObject().Where(p => p.Name != "xref"))
-                    Warnings.Add($"{Join(at, property.Name)}: unknown field; a person link takes only xref");
-                return;
-            }
-            Warnings.Add($"{at}: an inline new person; declare it in the item's people and give only its xref here");
-            Shape(person, ChangesetDialect.Shape("person"), at);
-        }
-
-        // The legacy reader read a null optional scalar or string list as absent; a null object or op list it could not read.
-        static bool Nullable(DialectField field) =>
-            !field.Required && field.Type is not (DialectType.Object or DialectType.ObjectArray);
+        static bool IsRelationshipOp(DialectShape shape) => shape.Name.StartsWith("createOrUpdate", StringComparison.Ordinal);
 
         static bool Has(JsonElement node, string name) =>
             node.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null;
-
-        static bool SatisfiedByLegacy(DialectField field, HashSet<string> handled) =>
-            handled.Contains(field.Name) || field.Name == "citations" && handled.Contains("citation");
 
         // R3: the tag fixes whether a fact takes value, or date and place.
         void Semantics(JsonElement node, DialectShape shape, string path)
@@ -260,8 +161,8 @@ public static class ChangesetContract
                     PayloadRule(Text(node, "fact"), given, path);
                     break;
             }
-            if (shape.Field("match") is { Shape: "factMatch" } && node.TryGetProperty("match", out var match))
-                PayloadRule(Text(node, "fact"), MatchPayload(match), Join(path, "match"));
+            if (shape.Field("match") is { Shape: "factMatch" } && node.TryGetProperty("match", out var match) && match.ValueKind == JsonValueKind.Object)
+                PayloadRule(Text(node, "fact"), Payload(match), Join(path, "match"));
         }
 
         void PayloadRule(string? tag, PayloadFields given, string path)
@@ -269,30 +170,18 @@ public static class ChangesetContract
             switch (FactPayloads.Of(tag))
             {
                 case FactPayload.Event when given.Value is not null:
-                    Warnings.Add($"{Join(path, "value")}: {tag} is an event; give its date and place, not value");
+                    Errors.Add($"{Join(path, "value")}: {tag} is an event; give its date and place, not value");
                     break;
                 case FactPayload.Text when given.HasDate || given.HasPlace:
-                    Warnings.Add($"{Join(path, given.HasDate ? "date" : "place")}: {tag} takes a text value, not a date or place");
+                    Errors.Add($"{Join(path, given.HasDate ? "date" : "place")}: {tag} takes a text value, not a date or place");
                     break;
                 case FactPayload.Described when !given.HasDate && FactPayloads.LooksLikeMisplacedDate(tag!, given.Value):
-                    Warnings.Add($"{Join(path, "value")}: \"{given.Value}\" is a date; give it as date");
+                    Errors.Add($"{Join(path, "value")}: \"{given.Value}\" is a date; give it as date");
                     break;
             }
         }
 
-        static PayloadFields Payload(JsonElement node)
-        {
-            bool date = Has(node, "date"), place = Has(node, "place");
-            if (node.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Object)
-                return new PayloadFields(null, date || Has(value, "date"), place || Has(value, "place"));
-            return new PayloadFields(Text(node, "value"), date, place);
-        }
-
-        static PayloadFields MatchPayload(JsonElement match) => match.ValueKind == JsonValueKind.String
-            ? new PayloadFields(match.GetString(), false, false)
-            : match.ValueKind == JsonValueKind.Object
-                ? new PayloadFields(Text(match, "value"), Has(match, "date"), Has(match, "place"))
-                : new PayloadFields(null, false, false);
+        static PayloadFields Payload(JsonElement node) => new(Text(node, "value"), Has(node, "date"), Has(node, "place"));
 
         // R4: each new person an item creates is declared once in its people and named by xref in a person field.
         void People(JsonElement item, string path)
@@ -321,19 +210,10 @@ public static class ChangesetContract
                              Dictionary<string, int> declared, HashSet<string> named)
         {
             if (op.ValueKind != JsonValueKind.Object || !(Text(op, "op")?.StartsWith("createOrUpdate", StringComparison.Ordinal) ?? false)
-                || !op.TryGetProperty(field, out var person)) return;
-            string at = Join(opPath, field);
-            if (person.ValueKind == JsonValueKind.Object)
-            {
-                if (Text(person, "xref") is { } inline && declared.ContainsKey(inline))
-                    Errors.Add($"{at}: {inline} is declared in {itemPath}.people and inline here; give only its xref");
-                return;
-            }
-            if (person.ValueKind != JsonValueKind.String || !Placeholder.IsPlaceholder(person.GetString())) return;
-            string xref = person.GetString()!;
+                || Text(op, field) is not { } xref || !Placeholder.IsPlaceholder(xref)) return;
             named.Add(xref);
             if (!declared.ContainsKey(xref))
-                Warnings.Add($"{at}: {xref} is not declared in {itemPath}.people; declare each new person the item names");
+                Errors.Add($"{Join(opPath, field)}: {xref} is not declared in {itemPath}.people; declare each new person the item names");
         }
 
         static string? Text(JsonElement node, string name) =>

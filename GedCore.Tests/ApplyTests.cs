@@ -29,27 +29,27 @@ public class ApplyTests : ApplyTestBase
       "items": [
         { "item": 1, "target": "@I00001@", "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
-            "value": "Albin H. /Test/", "match": "Allen /Test/",
+            "value": "Albin H. /Test/", "match": { "value": "Allen /Test/" },
             "substructures": [ { "tag": "NICK", "value": "Babe" } ],
-            "citation": { "source": "@NewS1@", "page": "p. 1",
-                          "dataText": "Albin H. Test", "quay": 2 } },
+            "citations": [{ "source": "@NewS1@", "page": "p. 1",
+                          "dataText": "Albin H. Test", "quay": 2 }] },
           { "op": "createOrUpdateNote", "record": "@I00001@",
             "text": "Name corrected from census form." } ] },
         { "item": 2, "target": "@I00001@", "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-            "value": { "date": "2 APR 1928", "place": "Fergus Falls, Minnesota" },
-            "citation": { "source": "@NewS1@", "page": "p. 1",
-                          "dataText": "born April 2, 1928", "quay": 2 } },
+            "date": "2 APR 1928", "place": "Fergus Falls, Minnesota",
+            "citations": [{ "source": "@NewS1@", "page": "p. 1",
+                          "dataText": "born April 2, 1928", "quay": 2 }] },
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
-            "value": { "date": "9 APR 2009", "place": "Elbow Lake, Minnesota" },
-            "citation": { "source": "@NewS1@", "page": "p. 1",
-                          "dataText": "passed away April 9, 2009", "quay": 3 } } ] },
-        { "item": 3, "target": "new @NewI1@ / @NewF1@", "ops": [
+            "date": "9 APR 2009", "place": "Elbow Lake, Minnesota",
+            "citations": [{ "source": "@NewS1@", "page": "p. 1",
+                          "dataText": "passed away April 9, 2009", "quay": 3 }] } ] },
+        { "item": 3, "target": "new @NewI1@ / @NewF1@", "people": [ { "xref": "@NewI1@", "name": "Edith /Spouse/", "sex": "F",
+                        "facts": [ { "fact": "DEAT", "date": "JAN 1971",
+                                     "citations": [{ "source": "@NewS1@", "page": "p. 1",
+                                                   "dataText": "Edith died", "quay": 2 }] } ] } ], "ops": [
           { "op": "createOrUpdateSpouse", "person": "@I00001@",
-            "spouse": { "xref": "@NewI1@", "name": "Edith /Spouse/", "sex": "F",
-                        "facts": [ { "fact": "DEAT", "value": { "date": "JAN 1971" },
-                                     "citation": { "source": "@NewS1@", "page": "p. 1",
-                                                   "dataText": "Edith died", "quay": 2 } } ] },
+            "spouse": "@NewI1@",
             "family": "@NewF1@",
             "marriage": { "date": "2 JUN 1949", "place": "Underwood, Minnesota",
                           "citations": [
@@ -174,7 +174,10 @@ public class ApplyTests : ApplyTestBase
             .Replace("@NewS1@", first.MintedXrefs["@NewS1@"])
             .Replace("@NewI1@", first.MintedXrefs["@NewI1@"])
             .Replace("@NewF1@", first.MintedXrefs["@NewF1@"]);
-        var second = RunExpectSuccess(realized);
+        // The minted person now exists, so the rerun names it by xref instead of declaring it again.
+        var rerun = System.Text.Json.Nodes.JsonNode.Parse(realized)!;
+        foreach (var item in rerun["items"]!.AsArray()) item!.AsObject().Remove("people");
+        var second = RunExpectSuccess(rerun.ToJsonString());
 
         Assert.Empty(second.Deltas);
         Assert.Empty(second.MintedXrefs);
@@ -245,10 +248,10 @@ public class ApplyTests : ApplyTestBase
               "items": [
                 { "item": 1, "ops": [
                   { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Item one note.",
-                    "citation": { "source": "@NewS1@", "page": "p. 1", "dataText": "x", "quay": 2 } } ] },
+                    "citations": [{ "source": "@NewS1@", "page": "p. 1", "dataText": "x", "quay": 2 }] } ] },
                 { "item": 2, "ops": [
                   { "op": "createOrUpdateNote", "record": "@I00002@", "text": "Item two note.",
-                    "citation": { "source": "@NewS2@", "page": "p. 1", "dataText": "y", "quay": 2 } } ] } ] }
+                    "citations": [{ "source": "@NewS2@", "page": "p. 1", "dataText": "y", "quay": 2 }] } ] } ] }
             """, items: [2]);
 
         // item 1 (the only citer of @NewS1@) was excluded — its group is skipped
@@ -318,7 +321,7 @@ public class ApplyTests : ApplyTestBase
       var result = Run("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
-          "value": { "date": "1900" } } ] } ] }
+          "date": "1900" } ] } ] }
         """);
 
       Assert.True(result.Success, string.Join("; ", result.Errors));
@@ -332,62 +335,56 @@ public class ApplyTests : ApplyTestBase
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I09999@", "fact": "DEAT",
-            "value": { "date": "1900" },
-            "citation": { "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 } } ] } ] }
+            "date": "1900",
+            "citations": [{ "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 }] } ] } ] }
         """, "not in file")]
     // unknown citation source
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
-            "value": { "date": "1900" },
-            "citation": { "source": "@S09999@", "page": "x", "dataText": "y", "quay": 1 } } ] } ] }
+            "date": "1900",
+            "citations": [{ "source": "@S09999@", "page": "x", "dataText": "y", "quay": 1 }] } ] } ] }
         """, "unknown")]
     // two same-tag facts, no match selector
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I00003@", "fact": "CENS",
-            "value": { "place": "Iowa" },
-            "citation": { "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 } } ] } ] }
+            "place": "Iowa",
+            "citations": [{ "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 }] } ] } ] }
         """, "ambiguous")]
     // match selector hits nothing (and nothing satisfies the request)
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I00003@", "fact": "CENS",
-            "match": { "date": "1950" }, "value": { "place": "Iowa" },
-            "citation": { "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 } } ] } ] }
+            "match": { "date": "1950" }, "place": "Iowa",
+            "citations": [{ "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 }] } ] } ] }
         """, "matches")]
     // a citation cannot create its fact
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "DEAT",
-            "citation": { "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 } } ] } ] }
+            "citations": [{ "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 }] } ] } ] }
         """, "cannot create its fact")]
     // one source twice on one fact with the same page
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT",
-            "value": { "date": "1990" },
+            "date": "1990",
             "citations": [
               { "source": "@S00001@", "page": "a", "dataText": "x", "quay": 1 },
               { "source": "@S00001@", "page": "a", "dataText": "y", "quay": 1 } ] } ] } ] }
         """, "cited twice")]
-    // inline new spouse requires an explicit new family xref
+    // a declared new spouse requires an explicit new family xref
     [InlineData("""
-        { "items": [ { "item": 1, "ops": [
+        { "items": [ { "item": 1, "people": [ { "xref": "@NewI1@", "name": "New /Wife/", "sex": "F" } ], "ops": [
           { "op": "createOrUpdateSpouse", "person": "@I00002@",
-            "spouse": { "xref": "@NewI1@", "name": "New /Wife/", "sex": "F" } } ] } ] }
+            "spouse": "@NewI1@" } ] } ] }
         """, "supply a new family xref")]
     // two shared families, no family xref
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
           { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00004@" } ] } ] }
         """, "share 2 families")]
-    // inline xref collides with an existing person of a different name
-    [InlineData("""
-        { "items": [ { "item": 1, "ops": [
-          { "op": "createOrUpdateChild", "family": "@F00001@",
-            "child": { "xref": "@I00004@", "name": "Someone /Else/", "sex": "F" } } ] } ] }
-        """, "different name")]
     // husb/wife are creation seeds only
     [InlineData("""
         { "items": [ { "item": 1, "ops": [
@@ -432,7 +429,7 @@ public class ApplyTests : ApplyTestBase
               "items": [
                 { "item": 1, "ops": [
                   { "op": "createOrUpdateNote", "record": "@I00001@", "text": "Cited note.",
-                    "citation": { "source": "@NewS1@", "page": "p. 1", "dataText": "x", "quay": 2 } } ] },
+                    "citations": [{ "source": "@NewS1@", "page": "p. 1", "dataText": "x", "quay": 2 }] } ] },
                 { "item": 2, "ops": [
                   { "op": "deleteCitation", "record": "@I00001@", "fact": "NOTE", "source": "@NewS1@" } ] } ] }
             """, items: [1, 2]);
@@ -461,38 +458,38 @@ public class ApplyTests : ApplyTestBase
     }
 
     [Fact]
-    public void Parse_PersonRef_AcceptsBareXrefAndInlineObject()
+    public void Parse_PersonRef_ReadsALinkOrADeclaredPerson()
     {
         var cs = Changeset.Parse("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@NewI50@", "name": "New /Wife/", "sex": "F",
+                            "facts": [ { "fact": "BIRT", "date": "1930",
+                                         "citations": [{ "source": "@S00001@", "page": "x",
+                                                       "dataText": "y", "quay": 1 }] } ] } ], "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00001@", "spouse": "@I00004@" },
               { "op": "createOrUpdateSpouse", "person": "@I00001@",
-                "spouse": { "xref": "@I00050@", "name": "New /Wife/", "sex": "F",
-                            "facts": [ { "fact": "BIRT", "value": { "date": "1930" },
-                                         "citation": { "source": "@S00001@", "page": "x",
-                                                       "dataText": "y", "quay": 1 } } ] },
-                "family": "@F00050@" } ] } ] }
+                "spouse": "@NewI50@",
+                "family": "@NewF50@" } ] } ] }
             """);
 
         var link = (CreateOrUpdateSpouseOp)cs.Items[0].Ops[0];
         Assert.Equal("@I00004@", link.Spouse.Xref);
         Assert.False(link.Spouse.IsInline);
 
-        var inline = (CreateOrUpdateSpouseOp)cs.Items[0].Ops[1];
-        Assert.True(inline.Spouse.IsInline);
-        Assert.Equal("New /Wife/", inline.Spouse.Name);
-        Assert.Single(inline.Spouse.Facts);
-        Assert.Single(inline.Spouse.Facts[0].Citations);
+        var declared = (CreateOrUpdateSpouseOp)cs.Items[0].Ops[1];
+        Assert.True(declared.Spouse.IsInline);
+        Assert.Equal("New /Wife/", declared.Spouse.Name);
+        Assert.Single(declared.Spouse.Facts);
+        Assert.Single(declared.Spouse.Facts[0].Citations);
     }
 
     [Fact]
-    public void Parse_Match_AcceptsBareTextAndDatePlaceObject()
+    public void Parse_Match_ReadsATextValueOrADateAndPlace()
     {
         var cs = Changeset.Parse("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "NAME",
-                "value": "New /Name/", "match": "Old /Name/",
-                "citation": { "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 } },
+                "value": "New /Name/", "match": { "value": "Old /Name/" },
+                "citations": [{ "source": "@S00001@", "page": "x", "dataText": "y", "quay": 1 }] },
               { "op": "deleteVital", "record": "@I00003@", "fact": "CENS",
                 "match": { "date": "1940", "place": "Minnesota" } } ] } ] }
             """);

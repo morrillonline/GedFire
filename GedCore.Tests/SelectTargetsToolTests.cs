@@ -410,6 +410,91 @@ public class SelectTargetsToolTests : IDisposable
         Assert.Contains(expected, ErrorText(result));
     }
 
+    const string LateMarriageGed = """
+        0 HEAD
+        1 GEDC
+        2 VERS 5.5.1
+        0 @I1@ INDI
+        1 NAME John /Ashworth/
+        1 SEX M
+        1 BIRT
+        2 PLAC Duluth, Minnesota
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Mary /Smith/
+        1 SEX F
+        1 BIRT
+        2 DATE 1 JAN 1896
+        1 FAMS @F1@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        1 MARR
+        2 DATE 17 MAR 1942
+        """;
+
+    static List<JsonElement> Cards(CallToolResult result, string property) =>
+        [.. result.StructuredContent!.Value.GetProperty(property).EnumerateArray()
+            .Where(card => card.GetProperty("cardType").GetString() == "New child")];
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(47, true)]
+    [InlineData(46, false)]
+    public async Task MaxMotherAgeAtMarriage_SetsTheAgeAtWhichANewChildCardIsWithheld(int? maxAge, bool drawn)
+    {
+        var tool = new SelectTargetsTool(_sessions.Open(LateMarriageGed), new ToolGate());
+        var arguments = new SelectTargetsArguments
+        {
+            People = Json("5"),
+            Surnames = Json("[\"Ashworth\"]"),
+            MaxMotherAgeAtMarriage = maxAge is null ? default : Json(maxAge.Value.ToString()),
+        };
+
+        var result = await tool.HandleAsync(arguments, CancellationToken.None);
+
+        Assert.NotEqual(true, result.IsError);
+        Assert.Equal(drawn ? 1 : 0, Cards(result, "targets").Count);
+        Assert.Equal(drawn ? 0 : 1, Cards(result, "suppressedCards").Count);
+    }
+
+    [Fact]
+    public async Task IncludeSuppressed_DrawsTheWithheldCardForAnExplicitXref()
+    {
+        var tool = new SelectTargetsTool(_sessions.Open(LateMarriageGed), new ToolGate());
+        var withheld = new SelectTargetsArguments { Xrefs = Json("[\"@I1@\"]"), MaxMotherAgeAtMarriage = Json("45") };
+
+        var plain = await tool.HandleAsync(withheld, CancellationToken.None);
+        var forced = await tool.HandleAsync(withheld with { IncludeSuppressed = Json("true") }, CancellationToken.None);
+
+        Assert.Equal("wife aged 46 at marriage (born 1 JAN 1896, married 17 MAR 1942), at or past maxMotherAgeAtMarriage 45",
+            Assert.Single(Cards(plain, "suppressedCards")).GetProperty("reason").GetString());
+        Assert.Single(Cards(forced, "targets"));
+        Assert.Empty(Cards(forced, "suppressedCards"));
+    }
+
+    [Theory]
+    [InlineData("{\"includeSuppressed\":true}", "includeSuppressed needs xrefs")]
+    [InlineData("{\"maxMotherAgeAtMarriage\":\"50\"}", "maxMotherAgeAtMarriage must be an integer between 1 and 150")]
+    [InlineData("{\"minMarriageYears\":-1}", "minMarriageYears must be an integer between 0 and 100")]
+    public async Task NewChildArguments_BadValues_AreRejectedByFieldName(string extra, string expected)
+    {
+        var values = Json(extra);
+        var arguments = new SelectTargetsArguments
+        {
+            People = Json("5"),
+            Surnames = Json("[\"Ashworth\"]"),
+            IncludeSuppressed = values.TryGetProperty("includeSuppressed", out var include) ? include : default,
+            MaxMotherAgeAtMarriage = values.TryGetProperty("maxMotherAgeAtMarriage", out var maxAge) ? maxAge : default,
+            MinMarriageYears = values.TryGetProperty("minMarriageYears", out var minYears) ? minYears : default,
+        };
+
+        var result = await Tool().HandleAsync(arguments, CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains(expected, ErrorText(result));
+    }
+
     [Fact]
     public void Constructor_RejectsNullDependencies()
     {

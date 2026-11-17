@@ -26,7 +26,7 @@ public class VoidPointerTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateVital", "record": "@VOID@", "fact": "DEAT",
-                "value": { "date": "9 APR 2009" },
+                "date": "9 APR 2009",
                 "citations": [ { "source": "@S00001@" } ] } ] } ] }
             """, dryRun: true);
 
@@ -44,7 +44,7 @@ public class VoidPointerTests : ApplyTestBase
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateSpouse", "person": "@I00001@",
-                "spouse": { "xref": "@VOID@" }, "family": "@F00099@" } ] } ] }
+                "spouse": "@VOID@", "family": "@F00099@" } ] } ] }
             """, dryRun: true);
 
         Assert.False(result.Success);

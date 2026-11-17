@@ -100,17 +100,17 @@ public class ProposalStyleChangesetTests : ApplyTestBase
         // before family within each op, base fixture's existing max is
         // @I00004@/@F00003@).
         RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
+            { "items": [ { "item": 1, "people": [ { "xref": "@New2@", "name": "John Lorenzo Dow /Test/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "14 JUL 1846",
+                                        "citations": [{ "source": "@S00001@", "page": "a",
+                                                      "dataText": "born 1846", "quay": 1 }] } ] }, { "xref": "@New4@", "name": "Lorenzo D. /Test/", "sex": "M",
+                           "facts": [ { "fact": "BIRT", "date": "1849",
+                                        "citations": [{ "source": "@S00001@", "page": "b",
+                                                      "dataText": "born abt 1849", "quay": 1 }] } ] } ], "ops": [
               { "op": "createOrUpdateChild", "family": "@New1@", "husb": "@I00002@",
-                "child": { "xref": "@New2@", "name": "John Lorenzo Dow /Test/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "14 JUL 1846" },
-                                        "citation": { "source": "@S00001@", "page": "a",
-                                                      "dataText": "born 1846", "quay": 1 } } ] } },
+                "child": "@New2@" },
               { "op": "createOrUpdateChild", "family": "@New3@", "husb": "@I00002@",
-                "child": { "xref": "@New4@", "name": "Lorenzo D. /Test/", "sex": "M",
-                           "facts": [ { "fact": "BIRT", "value": { "date": "1849" },
-                                        "citation": { "source": "@S00001@", "page": "b",
-                                                      "dataText": "born abt 1849", "quay": 1 } } ] } } ] } ] }
+                "child": "@New4@" } ] } ] }
             """);
 
         var result = RunExpectSuccess(ChangesetFixtures.Load("batch-merge-with-followup-edits"));

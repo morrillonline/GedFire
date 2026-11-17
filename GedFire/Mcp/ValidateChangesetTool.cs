@@ -33,10 +33,11 @@ public sealed class ValidateChangesetTool
         "JSON to a file a script can read; the response is then only a digest of its counts, unless verbose is true. " +
         "Pass after, a list of {changesetPath, items}, to check this changeset against the document as it will stand once " +
         "those earlier changesets are applied, in order, in memory; nothing is written, and an earlier changeset that does " +
-        "not apply fails the run with its own errors. The changeset is first held to the changeset contract (describe_schemas, " +
-        "changeset): a shape it cannot read, or an unsupported schemaVersion, fails the run with errors naming each path, " +
-        "exactly as apply_changeset refuses it;         each legacy shape it still reads is listed in warnings (redraft the " +
-                "changeset from its finding with draft_changeset).";
+        "not apply fails the run with its own errors. The changeset is first held to the changeset contract, version " +
+        $"{GedCore.Contract.ChangesetDialect.SchemaVersion} (describe_schemas, changeset): an unknown " +
+        "field, a singular citation, an object value, a payload the fact's tag does not take, an inline person, or an undeclared " +
+        "or unnamed new person fails the run with errors naming each path and its fix, exactly as apply_changeset refuses it. " +
+        "A changeset written by an earlier release is drafted again with draft_changeset.";
 
     public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithCardsJson;
     public static readonly string OutputSchemaJson = ChangesetToolSchemas.OutputSchemaWithPreviewJson;

@@ -27,7 +27,9 @@ public sealed class ResearchBriefTool
         "kin (parents, siblings, spouses with marriage date and place, and children, each as a one-line " +
         "{xref, name, born, died} summary, not a full record); gaps (exactly the targets select_targets " +
         "would report for this person, in the same record shape, so the caller sees what would score, " +
-        "including a man's Biography card when he has another card); " +
+        "including a man's Biography card when he has another card); suppressedCards (the cards select_targets " +
+        "would withhold for this person, with the same reasons, such as a New child card a couple almost certainly " +
+        "could not win); " +
         "possibleDuplicateOf and possibleDuplicateCount (the same-person candidates select_targets computes, " +
         "best first); plausibility (the findings check_plausibility's rules raise about this person or their " +
         "families as the document stands — age anomalies, event-order problems); and notes (the person's " +
@@ -94,6 +96,20 @@ public sealed class ResearchBriefTool
               "items": { "type": "object" },
               "description": "Exactly the targets select_targets would report for this person, in the same record shape (duplicates are not annotated here; see possibleDuplicateOf)."
             },
+            "suppressedCards": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "xref": { "type": "string" },
+                  "name": { "type": "string" },
+                  "cardType": { "type": "string" },
+                  "reason": { "type": "string" }
+                },
+                "required": ["xref", "name", "cardType", "reason"]
+              },
+              "description": "The cards select_targets would withhold for this person, with the same reasons, e.g. a New child card for a family where the wife was past childbearing age at the marriage."
+            },
             "possibleDuplicateOf": {
               "type": "array",
               "items": {
@@ -146,7 +162,7 @@ public sealed class ResearchBriefTool
               "description": "Present only when cardType was given."
             }
           },
-          "required": ["xref", "cardType", "person", "kin", "gaps", "possibleDuplicateOf", "possibleDuplicateCount", "plausibility", "notes"],
+          "required": ["xref", "cardType", "person", "kin", "gaps", "suppressedCards", "possibleDuplicateOf", "possibleDuplicateCount", "plausibility", "notes"],
           "$defs": {
             "kinSummary": {
               "type": "object",

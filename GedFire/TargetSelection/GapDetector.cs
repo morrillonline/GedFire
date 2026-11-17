@@ -27,14 +27,15 @@ public static class GapDetector
     /// New parent, which only ever runs for an actual surname-bearer (see
     /// the check inline below).
     /// </summary>
-    public static List<SelectionTarget> Detect(GedModel model, IEnumerable<string> surnames, ICollection<SuppressedCard>? suppressedCards = null) =>
-        Detect(model, surnames, DateTime.UtcNow.Year, suppressedCards);
+    public static List<SelectionTarget> Detect(GedModel model, IEnumerable<string> surnames, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null) =>
+        Detect(model, surnames, DateTime.UtcNow.Year, suppressedCards, rules);
 
     /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
     public static List<SelectionTarget> Detect(
-        GedModel model, IEnumerable<string> surnames, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, HonestRange? honestRange = null)
+        GedModel model, IEnumerable<string> surnames, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null)
     {
-        honestRange ??= HonestRange.Default;
+        rules ??= GapRules.Default;
+        var withholding = new Withholding(suppressedCards, rules.IncludeSuppressed);
         var surnameSet = new HashSet<string>(
             surnames.Select(s => s.Trim()).Where(s => s.Length > 0),
             StringComparer.OrdinalIgnoreCase);
@@ -61,10 +62,10 @@ public static class GapDetector
             // unrelated family line. Restrict it to actual surname-bearers;
             // every other card type still applies to a married-in spouse.
             if (BearsSurname(person, surnameSet))
-                DetectNewParent(person, targets, suppressedCards);
-            DetectNewSpouse(person, targets, suppressedCards);
-            DetectNewChild(person, fam => fam.Husband != null && BearsSurname(fam.Husband, surnameSet), newChildFamiliesSeen, targets, suppressedCards);
-            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, honestRange);
+                DetectNewParent(person, targets, withholding);
+            DetectNewSpouse(person, targets, withholding);
+            DetectNewChild(person, fam => fam.Husband != null && BearsSurname(fam.Husband, surnameSet), newChildFamiliesSeen, targets, withholding, rules.NewChild);
+            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, rules.HonestRange);
         }
 
         return targets;
@@ -75,14 +76,15 @@ public static class GapDetector
     /// filter: the caller has already nominated each person, so every gap
     /// rule runs for each of them. The privacy floor still applies.
     /// </summary>
-    public static List<SelectionTarget> DetectForPeople(IEnumerable<GedIndividual> people, ICollection<SuppressedCard>? suppressedCards = null) =>
-        DetectForPeople(people, DateTime.UtcNow.Year, suppressedCards);
+    public static List<SelectionTarget> DetectForPeople(IEnumerable<GedIndividual> people, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null) =>
+        DetectForPeople(people, DateTime.UtcNow.Year, suppressedCards, rules);
 
     /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
     public static List<SelectionTarget> DetectForPeople(
-        IEnumerable<GedIndividual> people, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, HonestRange? honestRange = null)
+        IEnumerable<GedIndividual> people, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null)
     {
-        honestRange ??= HonestRange.Default;
+        rules ??= GapRules.Default;
+        var withholding = new Withholding(suppressedCards, rules.IncludeSuppressed);
         int privacyFloorYear = currentYear - PrivacyFloorYears;
         var targets = new List<SelectionTarget>();
         var newChildFamiliesSeen = new HashSet<string>();
@@ -92,10 +94,10 @@ public static class GapDetector
         {
             if (IsWithinPrivacyFloor(person, privacyFloorYear)) continue;
 
-            DetectNewParent(person, targets, suppressedCards);
-            DetectNewSpouse(person, targets, suppressedCards);
-            DetectNewChild(person, _ => true, newChildFamiliesSeen, targets, suppressedCards);
-            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, honestRange);
+            DetectNewParent(person, targets, withholding);
+            DetectNewSpouse(person, targets, withholding);
+            DetectNewChild(person, _ => true, newChildFamiliesSeen, targets, withholding, rules.NewChild);
+            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, rules.HonestRange);
         }
 
         return targets;
@@ -155,12 +157,19 @@ public static class GapDetector
         person is null || (!HasAnchor(person.Birth) && !HasAnchor(person.Death) &&
             !person.OtherEvents.Any(gedEvent => gedEvent.Tag is "CHR" or "BAPM" or "BURI" && HasAnchor(gedEvent)));
 
-    static bool SuppressBareSubject(GedIndividual person, CardType cardType, ICollection<SuppressedCard>? suppressedCards)
+    static bool SuppressBareSubject(GedIndividual person, CardType cardType, Withholding withholding) =>
+        IsBareBones(person) && withholding.Withhold(person, cardType, "bare-bones subject \u2014 enrich first");
+
+    /// <summary>Reports each withheld card, or, when the owner forces them, withholds nothing.</summary>
+    sealed class Withholding(ICollection<SuppressedCard>? reported, bool includeSuppressed)
     {
-        if (!IsBareBones(person)) return false;
-        suppressedCards?.Add(new SuppressedCard(person.Xref, DisplayName(person), cardType.Display(),
-            "bare-bones subject \u2014 enrich first"));
-        return true;
+        /// <summary>True when the card is withheld, so the caller skips it.</summary>
+        public bool Withhold(GedIndividual person, CardType cardType, string reason)
+        {
+            if (includeSuppressed) return false;
+            reported?.Add(new SuppressedCard(person.Xref, DisplayName(person), cardType.Display(), reason));
+            return true;
+        }
     }
 
     static bool BearsSurname(GedIndividual person, HashSet<string> surnames) =>
@@ -181,12 +190,12 @@ public static class GapDetector
     // New parent — person has zero or one recorded parents.
     // -------------------------------------------------------------------
 
-    static void DetectNewParent(GedIndividual person, List<SelectionTarget> targets, ICollection<SuppressedCard>? suppressedCards)
+    static void DetectNewParent(GedIndividual person, List<SelectionTarget> targets, Withholding withholding)
     {
         var fam = person.FamChild;
         int parentCount = (fam?.Husband != null ? 1 : 0) + (fam?.Wife != null ? 1 : 0);
         if (parentCount > 1) return;
-        if (SuppressBareSubject(person, CardType.NewParent, suppressedCards)) return;
+        if (SuppressBareSubject(person, CardType.NewParent, withholding)) return;
 
         var difficulty = DifficultyScore.Compute(
             EraWeightForDate(person.Birth?.Date),
@@ -207,11 +216,11 @@ public static class GapDetector
     // New spouse — no recorded spouse family, and did not die young.
     // -------------------------------------------------------------------
 
-    static void DetectNewSpouse(GedIndividual person, List<SelectionTarget> targets, ICollection<SuppressedCard>? suppressedCards)
+    static void DetectNewSpouse(GedIndividual person, List<SelectionTarget> targets, Withholding withholding)
     {
         if (person.FamSpouse.Count > 0) return;
         if (DiedYoung(person)) return;
-        if (SuppressBareSubject(person, CardType.NewSpouse, suppressedCards)) return;
+        if (SuppressBareSubject(person, CardType.NewSpouse, withholding)) return;
 
         var difficulty = DifficultyScore.Compute(
             EraWeightForDate(person.Birth?.Date),
@@ -240,24 +249,16 @@ public static class GapDetector
     // for explicitly nominated people every childless family qualifies.
     // -------------------------------------------------------------------
 
-    static void DetectNewChild(GedIndividual person, Func<GedFamily, bool> familyQualifies, HashSet<string> familiesSeen, List<SelectionTarget> targets, ICollection<SuppressedCard>? suppressedCards)
+    static void DetectNewChild(
+        GedIndividual person, Func<GedFamily, bool> familyQualifies, HashSet<string> familiesSeen, List<SelectionTarget> targets,
+        Withholding withholding, NewChildLimits limits)
     {
         foreach (var fam in person.FamSpouse)
         {
             if (fam.Children.Count > 0) continue;
             if (!familyQualifies(fam)) continue;
             if (!familiesSeen.Add(fam.Xref)) continue;
-            if (IsBareBones(fam.Husband) && IsBareBones(fam.Wife) && !HasAnchor(fam.Marriage))
-            {
-                suppressedCards?.Add(new SuppressedCard(person.Xref, DisplayName(person), CardType.NewChild.Display(),
-                    "bare-bones family (both spouses and marriage lack anchors) \u2014 enrich first"));
-                continue;
-            }
-            if (EarlierMarriageChildren.AllPredate(fam))
-            {
-                suppressedCards?.Add(new SuppressedCard(person.Xref, DisplayName(person), CardType.NewChild.Display(), EarlierMarriageChildren.Reason));
-                continue;
-            }
+            if (NewChildWithheldReason(fam, limits) is { } reason && withholding.Withhold(person, CardType.NewChild, reason)) continue;
 
             // Era/geography key off the marriage when one is recorded (this
             // is a descendancy target), else fall back to the subject's own
@@ -282,6 +283,15 @@ public static class GapDetector
                     SpouseName = spouse != null ? DisplayName(spouse) : null,
                 }));
         }
+    }
+
+    // The first rule that rules out this couple's New child card, or null when the card is open.
+    static string? NewChildWithheldReason(GedFamily fam, NewChildLimits limits)
+    {
+        if (IsBareBones(fam.Husband) && IsBareBones(fam.Wife) && !HasAnchor(fam.Marriage))
+            return "bare-bones family (both spouses and marriage lack anchors) \u2014 enrich first";
+        if (EarlierMarriageChildren.AllPredate(fam)) return EarlierMarriageChildren.Reason;
+        return ChildlessCouple.WithholdReason(fam, limits);
     }
 
     // -------------------------------------------------------------------

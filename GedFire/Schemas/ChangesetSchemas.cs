@@ -14,15 +14,13 @@ namespace GedFire.Schemas;
 public static class ChangesetSchemas
 {
     // Fields of a tool's response that only its digest carries; a saved report holds the full result.
-    static readonly string[] ChangesetDigestFields = ["items", "errorCount", "warningCount", "logCount", "mintedXrefCount", "pointsPreviewTotal"];
+    static readonly string[] ChangesetDigestFields = ["items", "errorCount", "logCount", "mintedXrefCount", "pointsPreviewTotal"];
     static readonly string[] DraftDigestFields = ["items", "decisionsSummary"];
 
     /// <summary>The changeset envelope, with every structure and op it holds under $defs.</summary>
     public static JsonObject Changeset()
     {
         var body = ShapeSchema(ChangesetDialect.Shape(ChangesetDialect.Envelope));
-        body["properties"]!["schemaVersion"]!["pattern"] = $@"^{ChangesetDialect.SupportedMajor}\.[0-9]+$";
-        body["required"] = new JsonArray("schemaVersion", "items");
         body["$defs"] = Definitions();
         return body;
     }
@@ -43,7 +41,7 @@ public static class ChangesetSchemas
     public static JsonObject ChangesetReport()
     {
         var body = Report(ChangesetToolSchemas.OutputSchemaWithPreviewJson, ChangesetDigestFields);
-        body["required"] = new JsonArray("success", "log", "errors", "warnings", "deltas", "mintedXrefs", "copiedSources", "reportWrittenTo");
+        body["required"] = new JsonArray("success", "log", "errors", "deltas", "mintedXrefs", "copiedSources", "reportWrittenTo");
         return body;
     }
 

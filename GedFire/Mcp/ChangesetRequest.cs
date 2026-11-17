@@ -5,12 +5,11 @@ namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
 // A changeset file and item selection as the changeset tools receive them,
-// loaded once: the raw JSON (for policy checks), the parsed changeset, the
-// selected item numbers, and the contract's warnings about legacy shapes.
-// Every rejection is the tool's error result.
+// loaded once: the raw JSON (for policy checks), the parsed changeset, and
+// the selected item numbers. Every rejection is the tool's error result.
 // ---------------------------------------------------------------------------
 
-sealed record ChangesetRequest(string Json, Changeset Changeset, int[] ItemNumbers, IReadOnlyList<string> Warnings)
+sealed record ChangesetRequest(string Json, Changeset Changeset, int[] ItemNumbers)
 {
     public static bool TryLoad(string changesetPath, string items, out ChangesetRequest? request, out CallToolResult? error)
     {
@@ -37,7 +36,7 @@ sealed record ChangesetRequest(string Json, Changeset Changeset, int[] ItemNumbe
         request = null;
         var changeset = file.Reading.Changeset!;
         if (!ItemSelector.TryParse(items ?? "", changeset, out int[] itemNumbers, out error)) return false;
-        request = new ChangesetRequest(file.Json, changeset, itemNumbers, file.Reading.Warnings);
+        request = new ChangesetRequest(file.Json, changeset, itemNumbers);
         return true;
     }
 }

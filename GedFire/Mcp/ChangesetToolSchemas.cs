@@ -53,11 +53,6 @@ static class ChangesetToolSchemas
               "items": { "type": "string" },
               "description": "Validation or verification failures. Non-empty only when success is false. Absent from the digest; the report file holds it."
             },
-            "warnings": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Each legacy shape the changeset was read from, by path: a singular citation, a relationship op's citations, an object value, a string match, an inline person, an undeclared new person, a field the dialect does not define, a missing schemaVersion. They do not fail the run; the contract will refuse them once it is enforced; redraft the changeset from its finding with draft_changeset. Absent from the digest; the report file holds it."
-            },
             "deltas": {
               "type": "object",
               "additionalProperties": { "type": "integer" },
@@ -79,7 +74,6 @@ static class ChangesetToolSchemas
               "description": "Digest only: the changeset item numbers the run selected."
             },
             "errorCount": { "type": "integer", "description": "Digest only: how many errors the report file holds." },
-            "warningCount": { "type": "integer", "description": "Digest only: how many warnings the report file holds." },
             "logCount": { "type": "integer", "description": "Digest only: how many log lines the report file holds." },
             "mintedXrefCount": { "type": "integer", "description": "Digest only: how many records the run minted; the report file names them." },
             "reportWrittenTo": {

@@ -30,7 +30,7 @@ public static class FactPayloads
         return Described.Contains(tag) ? FactPayload.Described : FactPayload.Event;
     }
 
-    /// <summary>Whether a text value is really a date put in the wrong field: NCHI's payload is a count, never a date.</summary>
+    /// <summary>Whether a text value is really a date put in the wrong field. A bare number is a count or an identifier (NCHI, SSN, IDNO), never a date.</summary>
     public static bool LooksLikeMisplacedDate(string tag, string? value) =>
-        tag != "NCHI" && GedDateSyntax.IsValid(value);
+        !string.IsNullOrWhiteSpace(value) && !value.Trim().All(char.IsAsciiDigit) && GedDateSyntax.IsValid(value);
 }

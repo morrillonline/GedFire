@@ -27,6 +27,8 @@ public sealed class ResearchBriefBuilder
         IReadOnlyList<GedDiagnostic> documentFindings, CancellationToken cancellationToken = default)
     {
         var duplicates = Duplicates(snapshot.MatchIndex, person.Xref, cancellationToken);
+        var suppressedCards = new List<SuppressedCard>();
+        var gaps = GapDetector.DetectForPeople([person], suppressedCards);
 
         return new ResearchBrief
         {
@@ -34,7 +36,8 @@ public sealed class ResearchBriefBuilder
             CardType = cardType,
             Person = (PersonRecord)_mapper.Map(snapshot.Model, person.Xref),
             Kin = Kin(person),
-            Gaps = GapDetector.WithBiographyCards([person], GapDetector.DetectForPeople([person])),
+            Gaps = GapDetector.WithBiographyCards([person], gaps),
+            SuppressedCards = suppressedCards,
             PossibleDuplicateOf = [.. duplicates.Take(DuplicateAnnotator.MaxListedDuplicates)],
             PossibleDuplicateCount = duplicates.Count,
             Plausibility = Plausibility(person, documentFindings),

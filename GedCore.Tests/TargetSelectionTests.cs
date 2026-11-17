@@ -602,6 +602,160 @@ public class GapDetectorTests
         Assert.Single(targets, t => t.CardType == "New child");
     }
 
+    // John Morrill and Mary Smith's family F1; each argument is GEDCOM placed under her record or the family's.
+    static string LateCouple(string wife, string family = "", string marriage = "2 DATE 17 MAR 1942") => $"""
+        0 @I1@ INDI
+        1 NAME John /Morrill/
+        1 SEX M
+        1 BIRT
+        2 PLAC Duluth, Minnesota
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Mary /Smith/
+        1 SEX F
+        {wife}
+        1 FAMS @F1@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        1 MARR
+        {marriage}
+        {family}
+        """;
+
+    static (List<SelectionTarget> Targets, List<SuppressedCard> Suppressed) DetectPeople(string ged, GapRules? rules = null)
+    {
+        var suppressed = new List<SuppressedCard>();
+        var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
+        return (GapDetector.DetectForPeople([model.Individuals["@I1@"]], 2026, suppressed, rules), suppressed);
+    }
+
+    [Fact]
+    public void NewChild_WithheldWhenTheWifeWasPastChildbearingAgeAtTheMarriage()
+    {
+        var (targets, suppressed) = DetectWithSuppressed(LateCouple("1 BIRT\n2 DATE 3 MAY 1877"));
+
+        Assert.DoesNotContain(targets, t => t.CardType == "New child");
+        var card = Assert.Single(suppressed, s => s.CardType == "New child");
+        Assert.Equal("@I1@", card.Xref);
+        Assert.Equal("wife aged 64 at marriage (born 3 MAY 1877, married 17 MAR 1942), at or past maxMotherAgeAtMarriage 50", card.Reason);
+    }
+
+    [Fact]
+    public void NewChild_WithheldReasonGivesTheYoungestAgeAnEstimatedBirthAllows()
+    {
+        var (_, suppressed) = DetectWithSuppressed(LateCouple("1 BIRT\n2 DATE ABT 1878"));
+
+        Assert.Equal("wife aged about 64 at marriage, at least 61 (born ABT 1878, married 17 MAR 1942), at or past maxMotherAgeAtMarriage 50",
+            Assert.Single(suppressed, s => s.CardType == "New child").Reason);
+    }
+
+    [Theory]
+    [InlineData("1 BIRT\n2 DATE 1 JAN 1898")]
+    [InlineData("1 BIRT\n2 DATE BET 1880 AND 1892")]
+    [InlineData("1 BIRT\n2 DATE ABT 1894")]
+    [InlineData("1 BIRT\n2 DATE AFT 1880")]
+    [InlineData("1 BIRT\n2 PLAC Duluth, Minnesota")]
+    [InlineData("1 NOTE no birth recorded")]
+    public void NewChild_DrawnWhenSomeReadingLeavesTheWifeUnderTheLimit(string wife)
+    {
+        var (targets, suppressed) = DetectWithSuppressed(LateCouple(wife));
+
+        Assert.Single(targets, t => t.CardType == "New child");
+        Assert.DoesNotContain(suppressed, s => s.CardType == "New child");
+    }
+
+    [Fact]
+    public void NewChild_DrawnWhenTheMarriageDateIsUnknown()
+    {
+        var (targets, _) = DetectWithSuppressed(LateCouple("1 BIRT\n2 DATE 1877", marriage: "2 PLAC Duluth, Minnesota"));
+
+        Assert.Single(targets, t => t.CardType == "New child");
+    }
+
+    [Fact]
+    public void NewChild_MaxMotherAgeAtMarriageMovesTheLimit()
+    {
+        string ged = LateCouple("1 BIRT\n2 DATE 1 JAN 1898");
+
+        var (targets, suppressed) = DetectPeople(ged, new GapRules { NewChild = new NewChildLimits(MaxMotherAgeAtMarriage: 44) });
+
+        Assert.DoesNotContain(targets, t => t.CardType == "New child");
+        Assert.EndsWith("at or past maxMotherAgeAtMarriage 44", Assert.Single(suppressed, s => s.CardType == "New child").Reason);
+    }
+
+    [Theory]
+    [InlineData("1 DEAT\n2 DATE 17 SEP 1942", "", "marriage lasted at most 6 months (married 17 MAR 1942, wife died 17 SEP 1942), under minMarriageYears 1")]
+    [InlineData("1 BURI\n2 DATE 1 OCT 1942", "", "marriage lasted at most 6 months (married 17 MAR 1942, wife buried 1 OCT 1942), under minMarriageYears 1")]
+    [InlineData("1 DEAT\n2 DATE 1942", "", "marriage lasted at most 9 months (married 17 MAR 1942, wife died 1942), under minMarriageYears 1")]
+    [InlineData("", "1 DIV\n2 DATE 2 APR 1942", "marriage lasted less than a month (married 17 MAR 1942, divorced 2 APR 1942), under minMarriageYears 1")]
+    public void NewChild_WithheldWhenTheMarriageEndedWithinAYear(string wifeEnd, string family, string reason)
+    {
+        var (targets, suppressed) = DetectWithSuppressed(LateCouple("1 BIRT\n2 DATE 1910\n" + wifeEnd, family));
+
+        Assert.DoesNotContain(targets, t => t.CardType == "New child");
+        Assert.Equal(reason, Assert.Single(suppressed, s => s.CardType == "New child").Reason);
+    }
+
+    [Theory]
+    [InlineData("1 DEAT\n2 DATE 17 MAR 1945")]
+    [InlineData("1 DEAT\n2 DATE BEF 1944")]
+    [InlineData("1 DEAT\n2 DATE AFT 1 APR 1942")]
+    [InlineData("1 DEAT\n2 DATE 1 JAN 1940")]
+    public void NewChild_DrawnWhenNoEndingProvesTheMarriageShort(string wifeEnd)
+    {
+        var (targets, suppressed) = DetectWithSuppressed(LateCouple("1 BIRT\n2 DATE 1910\n" + wifeEnd));
+
+        Assert.Single(targets, t => t.CardType == "New child");
+        Assert.DoesNotContain(suppressed, s => s.CardType == "New child");
+    }
+
+    [Fact]
+    public void NewChild_NotOfferedWhenTheFamilyAlreadyHasAChild()
+    {
+        string ged = LateCouple("1 BIRT\n2 DATE 1877", "1 CHIL @I3@") + "\n0 @I3@ INDI\n1 NAME Ruth /Morrill/\n1 FAMC @F1@";
+
+        var (targets, suppressed) = DetectWithSuppressed(ged);
+
+        Assert.DoesNotContain(targets, t => t.CardType == "New child");
+        Assert.DoesNotContain(suppressed, s => s.CardType == "New child");
+    }
+
+    [Theory]
+    [InlineData("1943")]
+    [InlineData("AFT 1930")]
+    public void NewChild_DrawnWhenAChildOfEitherSpouseMayHaveBeenBornAfterTheMarriage(string childBirth)
+    {
+        string ged = LateCouple("1 BIRT\n2 DATE 1877").ReplaceLineEndings("\n")
+            .Replace("1 FAMS @F1@\n0 @I2@", "1 FAMS @F1@\n1 FAMS @F2@\n0 @I2@") + $"""
+
+            0 @I3@ INDI
+            1 NAME Ruth /Morrill/
+            1 BIRT
+            2 DATE {childBirth}
+            1 FAMC @F2@
+            0 @F2@ FAM
+            1 HUSB @I1@
+            1 CHIL @I3@
+            """;
+
+        var (targets, suppressed) = DetectWithSuppressed(ged);
+
+        Assert.Single(targets, t => t.CardType == "New child");
+        Assert.DoesNotContain(suppressed, s => s.CardType == "New child");
+    }
+
+    [Fact]
+    public void NewChild_IncludeSuppressedDrawsAWithheldCard()
+    {
+        string ged = LateCouple("1 BIRT\n2 DATE 1877");
+
+        var (targets, suppressed) = DetectPeople(ged, new GapRules { IncludeSuppressed = true });
+
+        Assert.Single(targets, t => t.CardType == "New child");
+        Assert.Empty(suppressed);
+    }
+
     [Fact]
     public void EnrichPerson_InexactBirth_ReportsMissingDateAndPlace()
     {
@@ -831,7 +985,8 @@ public class GapDetectorTests
 
     static bool DeathDateIsAGap(string ged, HonestRange? honestRange = null)
     {
-        var targets = GapDetector.Detect(ModelBuilder.Build(Ged55Parser.Parse(ged)), ["Morrill"], 2026, honestRange: honestRange);
+        var targets = GapDetector.Detect(ModelBuilder.Build(Ged55Parser.Parse(ged)), ["Morrill"], 2026,
+            rules: new GapRules { HonestRange = honestRange ?? HonestRange.Default });
         return targets.Any(t => t.Enrichments?.Any(e => e.Fact == "Death" && e.MissingDate) == true);
     }
 

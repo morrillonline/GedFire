@@ -30,23 +30,17 @@ internal static class OpSummary
         [.. Citations(op).Select(c => c.TryGetProperty("quay", out var q) && q.TryGetInt32(out int grade) ? grade : (int?)null)
             .OfType<int>().Distinct().Order()];
 
-    // The citations of the fact or note the op writes, and of the family a relationship op links; a legacy op may give one citation.
-    static IEnumerable<JsonElement> Citations(JsonElement op)
-    {
-        if (op.TryGetProperty("citation", out var one) && one.ValueKind == JsonValueKind.Object) yield return one;
-        foreach (string key in new[] { "citations", "familyCitations" })
-            if (op.TryGetProperty(key, out var many) && many.ValueKind == JsonValueKind.Array)
-                foreach (var citation in many.EnumerateArray()) yield return citation;
-    }
+    // The citations of the fact or note the op writes, and of the family a relationship op links.
+    static IEnumerable<JsonElement> Citations(JsonElement op) =>
+        new[] { "citations", "familyCitations" }
+            .Where(key => op.TryGetProperty(key, out var many) && many.ValueKind == JsonValueKind.Array)
+            .SelectMany(key => op.GetProperty(key).EnumerateArray());
 
     static string ValueOf(JsonElement op)
     {
-        var value = op.TryGetProperty("value", out var given) ? given : default;
-        if (value.ValueKind == JsonValueKind.String) return value.GetString() ?? "";
-
-        var dated = value.ValueKind == JsonValueKind.Object ? value : op;
-        string? date = Text(dated, "date");
-        string? place = Text(dated, "place");
+        if (Text(op, "value") is { } value) return value;
+        string? date = Text(op, "date");
+        string? place = Text(op, "place");
         return date is not null && place is not null ? $"{date} at {place}" : date ?? place ?? "no value";
     }
 
@@ -59,19 +53,14 @@ internal static class OpSummary
 
     static string FamilyOf(JsonElement op) => Text(op, "family") is { } family ? $" in {family}" : "";
 
-    // A new person is named by xref and declared in the item's people; a legacy op describes it inline.
+    // A new person is named by xref and declared in the item's people.
     static string PersonRef(JsonElement op, string field, JsonElement people)
     {
-        if (!op.TryGetProperty(field, out var person)) return "unknown";
-        if (person.ValueKind == JsonValueKind.String)
-        {
-            string xref = person.GetString() ?? "unknown";
-            var declared = people.ValueKind == JsonValueKind.Array
-                ? people.EnumerateArray().FirstOrDefault(p => Text(p, "xref") == xref)
-                : default;
-            return Text(declared, "name") is { } declaredName ? $"{declaredName} ({xref})" : xref;
-        }
-        return Text(person, "name") is { } name ? $"{name} ({Text(person, "xref")})" : Text(person, "xref") ?? "unknown";
+        if (Text(op, field) is not { } xref) return "unknown";
+        var declared = people.ValueKind == JsonValueKind.Array
+            ? people.EnumerateArray().FirstOrDefault(p => Text(p, "xref") == xref)
+            : default;
+        return Text(declared, "name") is { } declaredName ? $"{declaredName} ({xref})" : xref;
     }
 
     static bool Has(JsonElement op, string field) => op.TryGetProperty(field, out _);

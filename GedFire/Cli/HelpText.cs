@@ -29,7 +29,9 @@ public static class HelpText
                         by nominal points and GED-only difficulty, and draw
                         <N> of them uniformly at random (one Legendary-band
                         cap per pack) into a self-contained wanted.json.
-                        Unanchored relationship gaps wait for enrichment;
+                        Unanchored relationship gaps wait for enrichment, and a
+                        New child card is withheld when the wife was 50 or older
+                        at marriage or the marriage lasted under a year;
                         suppressedCards lists the withheld cards and reasons.
 
           apply     --input <ged> --changes <json> --items all|1,3 [--dry-run]

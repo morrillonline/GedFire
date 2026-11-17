@@ -42,7 +42,11 @@ public sealed class SelectTargetsTool
         "cited notes carried, or text that matches none of the person's notes once case, whitespace and punctuation are folded. " +
         "New parent and New spouse require an exact date or non-empty place on an own vital event " +
         "(birth, christening/baptism, death, burial). New child requires an anchor on either spouse or " +
-        "the marriage. Otherwise enrich first; suppressedCards lists the withheld cards and reasons.";
+        "the marriage. Otherwise enrich first. A childless couple's New child card is also withheld when, on every reading of " +
+        "the dates (an ABT, CAL or EST date reads as two years either side), the wife was at least maxMotherAgeAtMarriage " +
+        "(default 50) at the marriage, or the marriage lasted under minMarriageYears (default 1) before either spouse's death " +
+        "or burial or a divorce; an unknown wife's birth or marriage date, or a child of either spouse born after the marriage, " +
+        "never withholds it. suppressedCards lists the withheld cards and reasons; with xrefs, includeSuppressed: true draws them anyway.";
 
     public const string InputSchemaJson = """
         {
@@ -65,7 +69,26 @@ public sealed class SelectTargetsTool
               "minItems": 1,
               "maxItems": 500,
               "items": { "type": "string", "pattern": "^@[^@]+@$", "minLength": 3 },
-              "description": "Person xrefs to score instead of drawing, e.g. [\"@I00006@\"]. Every eligible gap becomes a target; suppressedCards reports relationship gaps needing enrichment first.               Cannot be combined with people or surnames."
+              "description": "Person xrefs to score instead of drawing, e.g. [\"@I00006@\"]. Every eligible gap becomes a target; suppressedCards reports the cards withheld and why. Cannot be combined with people or surnames."
+            },
+            "maxMotherAgeAtMarriage": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 150,
+              "default": 50,
+              "description": "Withhold a childless couple's New child card when the wife's youngest possible age at the marriage is at least this. Default 50."
+            },
+            "minMarriageYears": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 1,
+              "description": "Withhold a childless couple's New child card when the marriage's longest possible length, to either spouse's death or burial or a divorce, is under this many years. Default 1; 0 turns the rule off."
+            },
+            "includeSuppressed": {
+              "type": "boolean",
+              "default": false,
+              "description": "Only with xrefs: draw every card a rule would withhold, so the owner can force one. suppressedCards is then empty."
             }
           },
           "oneOf": [
@@ -97,7 +120,7 @@ public sealed class SelectTargetsTool
                 },
                 "required": ["xref", "name", "cardType", "reason"]
               },
-              "description": "Relationship cards withheld until the subject or family has an anchor; enrich first."
+              "description": "Cards withheld, with the rule and the values behind it: relationship gaps needing enrichment first, and New child cards the couple almost certainly could not win."
             },
             "xrefsWithoutGaps": {
               "type": "array",
@@ -134,30 +157,45 @@ public sealed class SelectTargetsTool
     // field name in ExecuteAsync rather than failing inside the SDK binder.
     Task<CallToolResult> InvokeAsync(
         JsonElement? people = null, JsonElement? surnames = null, JsonElement? xrefs = null,
+        JsonElement? maxMotherAgeAtMarriage = null, JsonElement? minMarriageYears = null, JsonElement? includeSuppressed = null,
         CancellationToken cancellationToken = default)
-        => HandleAsync(people ?? default, surnames ?? default, xrefs ?? default, cancellationToken);
+        => HandleAsync(new SelectTargetsArguments
+        {
+            People = people ?? default,
+            Surnames = surnames ?? default,
+            Xrefs = xrefs ?? default,
+            MaxMotherAgeAtMarriage = maxMotherAgeAtMarriage ?? default,
+            MinMarriageYears = minMarriageYears ?? default,
+            IncludeSuppressed = includeSuppressed ?? default,
+        }, cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
         JsonElement people, JsonElement surnames, JsonElement xrefs, CancellationToken cancellationToken) =>
-        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(people, surnames, xrefs, ct), cancellationToken);
+        HandleAsync(new SelectTargetsArguments { People = people, Surnames = surnames, Xrefs = xrefs }, cancellationToken);
 
-    async Task<CallToolResult> ExecuteAsync(JsonElement people, JsonElement surnames, JsonElement xrefs, CancellationToken cancellationToken)
+    public Task<CallToolResult> HandleAsync(SelectTargetsArguments arguments, CancellationToken cancellationToken) =>
+        GatedToolRunner.RunAsync(_gate, ct => ExecuteAsync(arguments, ct), cancellationToken);
+
+    async Task<CallToolResult> ExecuteAsync(SelectTargetsArguments arguments, CancellationToken cancellationToken)
     {
-        bool hasXrefs = xrefs.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
-        if (hasXrefs) return await ExecuteForXrefsAsync(people, surnames, xrefs, cancellationToken).ConfigureAwait(false);
+        bool hasXrefs = arguments.Xrefs.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
+        if (!TryReadRules(arguments, hasXrefs, out var rules, out string? error))
+            return CallToolResults.Error(error!);
+        if (hasXrefs) return await ExecuteForXrefsAsync(arguments, rules, cancellationToken).ConfigureAwait(false);
 
+        var people = arguments.People;
         if (people.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
             return CallToolResults.Error("people is required: a positive integer, the number of people to draw.");
-        if (!ToolArguments.TryReadOptionalInt(people, "people", 1, int.MaxValue, 1, out int peopleCount, out string? error))
+        if (!ToolArguments.TryReadOptionalInt(people, "people", 1, int.MaxValue, 1, out int peopleCount, out error))
             return CallToolResults.Error(error!);
-        if (!ToolArguments.TryReadOptionalStringList(surnames, "surnames", out var surnameList, out error))
+        if (!ToolArguments.TryReadOptionalStringList(arguments.Surnames, "surnames", out var surnameList, out error))
             return CallToolResults.Error(error!);
         if (surnameList.Count == 0)
             return CallToolResults.Error("surnames is required: an array with at least one surname such as [\"Ashworth\"].");
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         var suppressedCards = new List<SuppressedCard>();
-        var candidates = GapDetector.Detect(snapshot.Model, surnameList, suppressedCards);
+        var candidates = GapDetector.Detect(snapshot.Model, surnameList, suppressedCards, rules);
         var draw = DuplicateAnnotator.Annotate(
           TargetDrawer.DrawPack(snapshot.Model, candidates, peopleCount, DateTime.UtcNow.Ticks) with { SuppressedCards = suppressedCards },
           snapshot.MatchIndex, cancellationToken);
@@ -166,13 +204,33 @@ public sealed class SelectTargetsTool
         return Success(json);
     }
 
-    // No draw: score exactly the given people, so the result is deterministic.
-    async Task<CallToolResult> ExecuteForXrefsAsync(JsonElement peopleToDraw, JsonElement surnames, JsonElement xrefs, CancellationToken cancellationToken)
+    static bool TryReadRules(SelectTargetsArguments arguments, bool hasXrefs, out GapRules rules, out string? error)
     {
-        if (peopleToDraw.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null) ||
-            surnames.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
+        rules = GapRules.Default;
+        var defaults = NewChildLimits.Default;
+        if (!ToolArguments.TryReadOptionalInt(arguments.MaxMotherAgeAtMarriage, "maxMotherAgeAtMarriage", 1, 150,
+                defaults.MaxMotherAgeAtMarriage, out int maxAge, out error) ||
+            !ToolArguments.TryReadOptionalInt(arguments.MinMarriageYears, "minMarriageYears", 0, 100,
+                defaults.MinMarriageYears, out int minYears, out error) ||
+            !ToolArguments.TryReadOptionalBool(arguments.IncludeSuppressed, "includeSuppressed", out bool includeSuppressed, out error))
+            return false;
+        if (includeSuppressed && !hasXrefs)
+        {
+            error = "includeSuppressed needs xrefs: only a person named explicitly can be forced past a rule.";
+            return false;
+        }
+
+        rules = new GapRules { NewChild = new NewChildLimits(maxAge, minYears), IncludeSuppressed = includeSuppressed };
+        return true;
+    }
+
+    // No draw: score exactly the given people, so the result is deterministic.
+    async Task<CallToolResult> ExecuteForXrefsAsync(SelectTargetsArguments arguments, GapRules rules, CancellationToken cancellationToken)
+    {
+        if (arguments.People.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null) ||
+            arguments.Surnames.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
             return CallToolResults.Error("xrefs cannot be combined with people or surnames: it scores exactly the given people, with no draw.");
-        if (!ToolArguments.TryReadXrefList(xrefs, "xrefs", MaxXrefs, out var list, out string? error))
+        if (!ToolArguments.TryReadXrefList(arguments.Xrefs, "xrefs", MaxXrefs, out var list, out string? error))
             return CallToolResults.Error(error!);
 
         var snapshot = await _session.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
@@ -186,7 +244,7 @@ public sealed class SelectTargetsTool
         }
 
         var suppressedCards = new List<SuppressedCard>();
-        var gaps = GapDetector.DetectForPeople(people, suppressedCards);
+        var gaps = GapDetector.DetectForPeople(people, suppressedCards, rules);
         var scored = DuplicateAnnotator.Annotate(
           new DrawResult { Targets = GapDetector.WithBiographyCards(people, gaps), Seed = null, LegendaryDiscards = [], SuppressedCards = suppressedCards },
             snapshot.MatchIndex, cancellationToken);
