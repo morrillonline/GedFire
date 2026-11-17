@@ -50,7 +50,10 @@ public sealed class DraftChangesetTool
         "a biography note must cite at least one; " +
         "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +
         "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
-        "way to a finding's bound that excludes it only when uncited or graded lower; otherwise it is left open. Hard bounds " +
+        "way to a finding's date or bound that contradicts it only when uncited or every citation is graded below the finding; " +
+        "a citation without a QUAY holds it. Otherwise the record's date is kept and an open decision names it, its citations " +
+        "(source and page) and the finding's conflicting date, so you can write a conflict note or pass replaceHeld; a more " +
+        "detailed place from the finding is still added beside it. Hard bounds " +
         "(BEF, AFT, BET) narrow one another into one range. " +
         "Findings aimed at the same target become one item. Returns the changeset, a " +
         "decisions list (what was reused, minted, merged, or left open for you), and errors; the changeset follows the " +

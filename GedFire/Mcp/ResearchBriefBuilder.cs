@@ -36,7 +36,7 @@ public sealed class ResearchBriefBuilder
             CardType = cardType,
             Person = (PersonRecord)_mapper.Map(snapshot.Model, person.Xref),
             Kin = Kin(person),
-            Gaps = GapDetector.WithBiographyCards([person], gaps),
+            Gaps = GapDetector.WithNamedBiographyCards([person], gaps),
             SuppressedCards = suppressedCards,
             PossibleDuplicateOf = [.. duplicates.Take(DuplicateAnnotator.MaxListedDuplicates)],
             PossibleDuplicateCount = duplicates.Count,

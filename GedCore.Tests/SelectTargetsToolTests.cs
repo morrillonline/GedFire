@@ -336,15 +336,97 @@ public class SelectTargetsToolTests : IDisposable
     }
 
     [Fact]
-    public async Task Xrefs_PersonWithEveryFactExactAndFullFamily_ProducesNoCardAndIsNamed()
+    public async Task Xrefs_ManWithEveryFactExactAndFullFamily_GetsOnlyHisBiographyCard()
     {
         var result = await CallXrefs(XrefTool(), "[\"@I10@\"]");
 
         var root = result.StructuredContent!.Value;
-        Assert.Equal(0, root.GetProperty("count").GetInt32());
-        Assert.Equal(0, root.GetProperty("targets").GetArrayLength());
-        var withoutGaps = root.GetProperty("xrefsWithoutGaps").EnumerateArray().Select(x => x.GetString()!);
-        Assert.Equal(["@I10@"], withoutGaps);
+        var target = Assert.Single(root.GetProperty("targets").EnumerateArray());
+        Assert.Equal("@I10@", target.GetProperty("xref").GetString());
+        Assert.Equal("Biography", target.GetProperty("cardType").GetString());
+        Assert.Equal(3, target.GetProperty("nominalPoints").GetInt32());
+        Assert.Equal(1, root.GetProperty("count").GetInt32());
+        Assert.Equal(0, root.GetProperty("totalCandidates").GetInt32());
+        Assert.Equal(0, root.GetProperty("xrefsWithoutGaps").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Xrefs_ManWithOtherGaps_GetsTheSameCardsAsBefore_ThenOneBiography()
+    {
+        var result = await CallXrefs(XrefTool(), "[\"@I14@\"]");
+
+        var cardTypes = result.StructuredContent!.Value.GetProperty("targets").EnumerateArray()
+            .Select(t => t.GetProperty("cardType").GetString()!).ToList();
+        Assert.Equal(["New spouse", "Enrich person", "Biography"], cardTypes);
+    }
+
+    [Theory]
+    [InlineData("F", "15 MAR 1820", "2 FEB 1890")]   // a woman with no gap
+    [InlineData("M", "15 MAR 1990", "2 FEB 2020")]   // a man inside the privacy floor
+    public async Task Xrefs_PersonWhoGetsNoCardAtAll_IsNamedInXrefsWithoutGaps(string sex, string born, string died)
+    {
+        string ged = $"""
+            0 HEAD
+            1 GEDC
+            2 VERS 5.5.1
+            0 @I1@ INDI
+            1 NAME Ada /Ashworth/
+            1 SEX {sex}
+            1 BIRT
+            2 DATE {born}
+            2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
+            1 DEAT
+            2 DATE {died}
+            2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
+            1 FAMC @F1@
+            1 FAMS @F2@
+            0 @I2@ INDI
+            1 NAME Henry /Ashworth/
+            1 SEX M
+            1 FAMS @F1@
+            0 @I3@ INDI
+            1 NAME Sarah /Price/
+            1 SEX F
+            1 FAMS @F1@
+            0 @I4@ INDI
+            1 NAME Tom /Smith/
+            1 SEX M
+            1 FAMS @F2@
+            0 @I5@ INDI
+            1 NAME Child /Smith/
+            1 FAMC @F2@
+            0 @F1@ FAM
+            1 HUSB @I2@
+            1 WIFE @I3@
+            1 CHIL @I1@
+            0 @F2@ FAM
+            1 HUSB @I4@
+            1 WIFE @I1@
+            1 CHIL @I5@
+            1 MARR
+            2 DATE 20 JUN 1845
+            2 PLAC Boston, Massachusetts
+            2 SOUR @S1@
+            0 @S1@ SOUR
+            1 TITL Records
+            """;
+
+        var result = await CallXrefs(new SelectTargetsTool(_sessions.Open(ged), new ToolGate()), "[\"@I1@\"]");
+
+        var root = result.StructuredContent!.Value;
+        Assert.DoesNotContain(root.GetProperty("targets").EnumerateArray(), t => t.GetProperty("xref").GetString() == "@I1@");
+        Assert.Equal(["@I1@"], root.GetProperty("xrefsWithoutGaps").EnumerateArray().Select(x => x.GetString()!));
+    }
+
+    [Fact]
+    public async Task Draw_ManWithNoOtherGap_StillGetsNoBiographyCard()
+    {
+        var result = await Call(XrefTool(), "50", "[\"Ashworth\"]");
+
+        Assert.DoesNotContain(result.StructuredContent!.Value.GetProperty("targets").EnumerateArray(),
+            t => t.GetProperty("xref").GetString() == "@I10@");
     }
 
     [Fact]

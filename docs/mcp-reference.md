@@ -196,8 +196,8 @@ historical person who might bear that name.
 `research_brief` combines the person's full record with:
 
 - `kin`: parents, siblings, spouses with marriage details, and children.
-- `gaps`: the same targets `select_targets` reports for the person, including
-  a man's Biography card when he has another card.
+- `gaps`: the same targets `select_targets` reports for the person when named
+  in `xrefs`, including a man's Biography card even when he has no other card.
 - `suppressedCards`: the cards `select_targets` would withhold for the person,
   with the same reasons.
 - `possibleDuplicateOf`: up to three scored candidates, plus the full count.
@@ -222,11 +222,13 @@ the GEDCOM path; `count` in it is the number of cards, and `totalCandidates`
 the gap cards before the draw. The clock seeds the draw. The CLI's
 `select-targets --count` is the same number of people.
 Alternatively, pass `xrefs` instead of people and surnames to score specified
-people the same way, deterministically. This names people without gap cards
-in `xrefsWithoutGaps` and sets `draw.seed` to null. An unknown xref is an error.
+people the same way, deterministically. A named man also gets his Biography
+card when he has no other gap. `xrefsWithoutGaps` names the people who get no
+card at all, such as a woman with no gap or anyone inside the privacy floor,
+and `draw.seed` is null. An unknown xref is an error.
 
-- A man outside the privacy floor who has at least one other card also gets
-  one `Biography` card; women and people with no other card get none. It
+- A man outside the privacy floor gets one `Biography` card: in the draw, only
+  beside another of his cards; with `xrefs`, always. Women get none. It
   stays open for people with complete vitals or existing prose, and pays again
   for each later changeset that adds new information: a new citation, or a
   biography note whose text none of the person's notes carried. `nominalPoints` is 3, and
@@ -496,12 +498,19 @@ assigns each fact's grade. Policy can require verification notes for low grades.
   periods, and a trailing `County`, `Co.`, or `Parish`. A finding that differs
   from the record only this way is cited, not written; the record's spelling is
   kept. The same rule applies to points scoring and GEN301 place matching.
-- Precision decides only between dates that can both be true. When a bound
-  excludes the record's date (or the record's bound excludes the finding's
-  date), the record's value gives way if it is uncited or graded below the
-  finding: the bound is written and the old citations move to a note. Otherwise
-  nothing is drafted for the fact and an `open` decision asks the author to
-  settle it.
+- Precision decides only between dates that can both be true. When two dates
+  contradict (two plain dates that disagree, a bound that excludes the
+  record's date, or the record's bound that excludes the finding's date), the
+  record's value gives way only if it is uncited or every citation carries a
+  QUAY below the finding's: the finding's date is written and the old
+  citations move to a note. A citation with no QUAY, common in imported
+  files, holds the record's date like a graded one. Otherwise the record's
+  date is kept and an `open` decision names the record's date, its citations
+  (source xref, page and grade), the findings and their conflicting date. Write
+  a note on the conflict, or give the fact `replaceHeld` with a reason. A
+  finding's place that says more than the record's (or a place where the
+  record has none) is still added beside the kept date, with the finding's
+  citation; otherwise nothing is drafted for the fact.
 - `ABT`, `CAL` and `EST` have no defined tolerance, so they never replace a
   specific date that is more than a year away; the fact is left `open`. A
   specific finding still replaces such an estimate on the record, with an
