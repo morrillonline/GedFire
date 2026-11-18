@@ -4,27 +4,18 @@ using GedCore.Drafting;
 
 namespace GedCore.Policy;
 
-/// <summary>The verification-note rule: a fact graded <see cref="MaxQuay"/> or lower must be named by a note containing <see cref="NotePrefix"/>.</summary>
-public sealed record VerificationNoteRule(int MaxQuay, string NotePrefix)
-{
-    /// <summary>The rule the drafter writes notes by when no policy file gives one.</summary>
-    public static readonly VerificationNoteRule Default = new(1, "needs independent verification:");
-}
-
 /// <summary>
 /// The editorial rules a server enforces on every changeset it validates or applies.
 /// Loaded from a JSON file; every key is optional and an absent rule is not enforced:
-/// <c>bannedPhrases</c>, <c>bannedPatterns</c> (regular expressions),
-/// <c>verificationNote</c> {<c>maxQuay</c>, <c>notePrefix</c>}, and
+/// <c>bannedPhrases</c>, <c>bannedPatterns</c> (regular expressions), and
 /// <c>deathPlaceEvidence</c> (a regular expression).
 /// </summary>
 public sealed class ChangesetPolicy
 {
-    static readonly string[] KnownKeys = ["bannedPhrases", "bannedPatterns", "verificationNote", "deathPlaceEvidence"];
+    static readonly string[] KnownKeys = ["bannedPhrases", "bannedPatterns", "deathPlaceEvidence"];
 
     public IReadOnlyList<string> BannedPhrases { get; private init; } = [];
     public IReadOnlyList<string> BannedPatterns { get; private init; } = [];
-    public VerificationNoteRule? VerificationNote { get; private init; }
     public string? DeathPlaceEvidence { get; private init; }
 
     IReadOnlyList<IPolicyRule> _rules = [];
@@ -37,6 +28,9 @@ public sealed class ChangesetPolicy
         catch (JsonException ex) { throw new FormatException($"policy file is not valid JSON: {ex.Message}"); }
 
         if (root.ValueKind != JsonValueKind.Object) throw new FormatException("policy file must be a JSON object.");
+        if (root.TryGetProperty("verificationNote", out _))
+            throw new FormatException("policy file has \"verificationNote\", which is no longer supported: GedFire never writes verification notes, " +
+                "because a person's notes hold only their life story. Delete the key.");
         foreach (var property in root.EnumerateObject().Where(p => !KnownKeys.Contains(p.Name)))
             throw new FormatException($"policy file has unknown key \"{property.Name}\"; accepted keys: {string.Join(", ", KnownKeys)}.");
 
@@ -44,7 +38,6 @@ public sealed class ChangesetPolicy
         {
             BannedPhrases = ReadStrings(root, "bannedPhrases"),
             BannedPatterns = ReadStrings(root, "bannedPatterns"),
-            VerificationNote = ReadVerificationNote(root),
             DeathPlaceEvidence = ReadString(root, "deathPlaceEvidence"),
         };
         policy._rules = policy.BuildRules();
@@ -52,7 +45,7 @@ public sealed class ChangesetPolicy
     }
 
     /// <summary>Every violation of the policy in the selected items of a changeset's JSON (all items when none are given); empty when it complies.</summary>
-    /// <param name="document">What the document already holds, so a verification note or a stronger citation already there counts; nothing when omitted.</param>
+    /// <param name="document">What the document already holds; nothing when omitted.</param>
     public IReadOnlyList<string> Check(
         string changesetJson, IReadOnlySet<int>? selectedItems = null, IRecordHistory? document = null)
     {
@@ -74,7 +67,6 @@ public sealed class ChangesetPolicy
         var rules = new List<IPolicyRule>();
         if (BannedPhrases.Count > 0 || BannedPatterns.Count > 0)
             rules.Add(new BannedProseRule(BannedPhrases, [.. BannedPatterns.Select(p => Compile("bannedPatterns", p))]));
-        if (VerificationNote is { } note) rules.Add(new LowQuayNoteRule(note.MaxQuay, note.NotePrefix));
         if (DeathPlaceEvidence is { } evidence) rules.Add(new DeathPlaceEvidenceRule(Compile("deathPlaceEvidence", evidence)));
         return rules;
     }
@@ -100,15 +92,5 @@ public sealed class ChangesetPolicy
         if (element.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(element.GetString()))
             throw new FormatException($"policy \"{key}\" must be a non-blank string.");
         return element.GetString();
-    }
-
-    static VerificationNoteRule? ReadVerificationNote(JsonElement root)
-    {
-        if (!root.TryGetProperty("verificationNote", out var element)) return null;
-        if (element.ValueKind != JsonValueKind.Object
-            || !element.TryGetProperty("maxQuay", out var quay) || !quay.TryGetInt32(out int maxQuay) || maxQuay is < 0 or > 3
-            || ReadString(element, "notePrefix") is not { } prefix)
-            throw new FormatException("policy \"verificationNote\" must be {\"maxQuay\": 0-3, \"notePrefix\": \"...\"}.");
-        return new VerificationNoteRule(maxQuay, prefix);
     }
 }

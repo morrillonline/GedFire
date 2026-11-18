@@ -89,8 +89,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         if (!ctx.Known(Record)) { errors.Add($"{Context}: target not in file"); return; }
         OpChecks.RejectFamilyEventOnPerson(ctx, Context, Record, Fact, errors);
         OpChecks.CitationsValid(ctx, Context, Citations, errors);
-        if (ReplacedCitations is not ("keep" or "drop" or "moveToNote"))
-            errors.Add($"{Context}: replacedCitations must be keep, drop, or moveToNote");
+        if (ReplacedCitations is not ("keep" or "drop"))
+            errors.Add($"{Context}: replacedCitations must be keep or drop");
         if (Mode is not ("upsert" or "add"))
             errors.Add($"{Context}: mode must be upsert or add");
         if (Mode == "add" && Match is not null)
@@ -165,12 +165,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
                             IReadOnlyList<Citation> citations, List<string> log, FactUpdate style)
     {
         var updates = PendingValueUpdates(existingFact);
-        GedRecord? previousNameNote = null;
-        if (Fact == "NAME" && ReplacedCitations == "moveToNote" && Value.Text is not null
-            && existingFact.PayloadValue != Value.Text && existingFact.PayloadValue.Length > 0)
-            previousNameNote = PreservePreviousName(state, target, existingFact, log);
         string? disposition = updates.Count > 0
-            ? NodeBuilder.DisposeCitations(state, target, existingFact, Fact, ReplacedCitations, previousNameNote)
+            ? NodeBuilder.DisposeCitations(state, target, existingFact, ReplacedCitations)
             : null;
         foreach (var update in updates)
         {
@@ -197,23 +193,6 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         log.Add(changes.Count > 0
             ? $"{LogContext}: {style.Outcome} ({string.Join("; ", changes)})"
             : $"{LogContext}: no-op (already matches)");
-    }
-
-    private GedRecord PreservePreviousName(ApplyState state, GedRecord target, GedRecord name, List<string> log)
-    {
-        string previous = string.Join(' ', name.PayloadValue.Replace("/", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        string attestation = name.ChildrenByTag("SOUR").Any() ? "cited" : "uncited";
-        string text = $"The previous name was {previous}, which was {attestation}.";
-        var note = target.ChildrenByTag("NOTE").FirstOrDefault(n => n.FullValue() == text);
-        if (note is null)
-        {
-            note = NodeBuilder.NoteNode(1, text);
-            NodeBuilder.Attach(target, note);
-            state.Mutated();
-            state.Touch(target);
-            log.Add($"{LogContext}: preserved previous name in a note");
-        }
-        return note;
     }
 
     private sealed record ValueUpdate(string Description, bool Replaces, Action Write, string? LessSpecific = null);
@@ -265,9 +244,8 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
 }
 
 /// <summary>
-/// Delete for the Vital noun: removes the whole fact subtree. Citations on
-/// the fact are dropped by default; "deletedCitations": "moveToNote"
-/// preserves them beneath a NOTE on the record. Absent fact → no-op.
+/// Delete for the Vital noun: removes the whole fact subtree, its citations
+/// with it. Absent fact → no-op.
 /// </summary>
 public sealed class DeleteVitalOp : ChangeOp
 {
@@ -276,21 +254,17 @@ public sealed class DeleteVitalOp : ChangeOp
     public required string Record { get; init; }
     public required string Fact { get; init; }
     public FactMatch? Match { get; init; }
-    public string DeletedCitations { get; init; } = "drop";
 
     internal static DeleteVitalOp Read(JsonElement el) => new()
     {
         Record = JsonRead.Req(el, "record", "deleteVital"),
         Fact = JsonRead.Req(el, "fact", "deleteVital"),
         Match = FactMatch.Read(el, "match"),
-        DeletedCitations = JsonRead.Str(el, "deletedCitations") ?? "drop",
     };
 
     internal override void Validate(ResolutionContext ctx, List<string> errors)
     {
         if (!ctx.Known(Record)) { errors.Add($"{Kind} {Fact} on {Record}: target not in file"); return; }
-        if (DeletedCitations is not ("drop" or "moveToNote"))
-            errors.Add($"{Kind} {Fact} on {Record}: deletedCitations must be drop or moveToNote");
         var target = ctx.Existing(Record);
         if (target is not null && Resolve.Fact(target, Fact, Match).Ambiguous)
             errors.Add($"{Kind} {Fact} on {Record}: ambiguous — multiple {Fact} facts match; refine \"match\"");
@@ -311,15 +285,9 @@ public sealed class DeleteVitalOp : ChangeOp
         }
 
         int cited = res.Fact.ChildrenByTag("SOUR").Count();
-        if (DeletedCitations == "moveToNote")
-            NodeBuilder.DisposeCitations(state, target, res.Fact, Fact, "moveToNote");
         target.Children.Remove(res.Fact);
         state.Mutated();
         state.Touch(target);
-        log.Add($"{Kind} {Fact} on {record}: deleted" + (cited > 0
-            ? DeletedCitations == "moveToNote"
-                ? $" ({cited} citation(s) moved to note)"
-                : $" ({cited} citation(s) dropped)"
-            : ""));
+        log.Add($"{Kind} {Fact} on {record}: deleted" + (cited > 0 ? $" ({cited} citation(s) dropped)" : ""));
     }
 }

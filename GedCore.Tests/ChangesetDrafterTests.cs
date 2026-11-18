@@ -275,21 +275,6 @@ public class ChangesetDrafterTests
     // ---- verification notes ----
 
     [Fact]
-    public void ALowGradedFact_GetsAVerificationNoteNamingIt()
-    {
-        var lookup = new FakeLookup(names: new() { ["@I1@"] = "Gladys Giedd" });
-
-        var result = new ChangesetDrafter(lookup).Draft(
-            [Finding("F-1", Memorial(info: "secondary"), "x", [Fact("BIRT", "1924", null, 1)])]);
-
-        var note = Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
-        Assert.Equal("@I1@", note.GetProperty("record").GetString());
-        Assert.Equal(
-            "Needs independent verification: the birth of Gladys Giedd rests on Find a Grave (secondary information) alone and has not yet been confirmed by a second source.",
-            note.GetProperty("text").GetString());
-    }
-
-    [Fact]
     public void AHighGradedFact_GetsNoNote()
     {
         var result = new ChangesetDrafter(new FakeLookup()).Draft(
@@ -307,20 +292,6 @@ public class ChangesetDrafterTests
             [Finding("F-1", Memorial(info: "secondary"), "x", [Fact("BIRT", "1924", null, 1)], notes: notes)]);
 
         Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
-    }
-
-    [Fact]
-    public void ThePoliciesCeilingAndPrefix_GovernTheNote()
-    {
-        var policy = ChangesetPolicy.Load(new MemoryStream(Encoding.UTF8.GetBytes(
-            """{ "verificationNote": { "maxQuay": 2, "notePrefix": "unconfirmed:" } }""")));
-
-        var result = new ChangesetDrafter(new FakeLookup(), policy).Draft(
-            [Finding("F-1", Memorial(), "x", [Fact("DEAT", "1900", null, 2)])]);
-
-        Assert.True(result.Success, string.Join("; ", result.Errors));
-        var note = Assert.Single(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
-        Assert.StartsWith("Unconfirmed: the death", note.GetProperty("text").GetString());
     }
 
     // ---- refusals ----
@@ -540,17 +511,6 @@ public class ChangesetDrafterTests
     }
 
     [Fact]
-    public void AnExistingVerificationNote_IsFlaggedOpenBesideTheNewOne()
-    {
-        var lookup = new FakeLookup(notes: new() { ["@I1@"] = ["Needs independent verification: the parents are unproven."] });
-
-        var result = new ChangesetDrafter(lookup).Draft(
-            [Finding("F-1", Memorial(info: "secondary"), "x", [Fact("BIRT", "1924", null, 1)])]);
-
-        Assert.Single(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("already has a verification note"));
-    }
-
-    [Fact]
     public void TheSameCitationGradedDifferentlyInTwoItems_IsRefused()
     {
         var result = new ChangesetDrafter(new FakeLookup()).Draft([
@@ -615,7 +575,7 @@ public class ChangesetDrafterTests
     }
 
     [Fact]
-    public void ABoundHusbandsName_IsUpdatedWithTheMarriageAndItsPreviousNameIsPreserved()
+    public void ABoundHusbandsName_IsUpdatedWithTheMarriage_AndThePreviousNameLeavesNoNote()
     {
         var drafted = DraftMarriage();
         Assert.True(drafted.Success, string.Join("; ", drafted.Errors));
@@ -631,7 +591,7 @@ public class ChangesetDrafterTests
         Assert.Equal("Joseph /Wadleigh/", husband.FirstChild("NAME")!.PayloadValue);
         Assert.Equal(2, husband.FirstChild("NAME")!.ChildrenByTag("SOUR").Count());
         Assert.Equal("27 OCT 1779", document.ByXref["@F1@"].FirstChild("MARR")!.FirstChild("DATE")!.Value);
-        Assert.Contains(husband.ChildrenByTag("NOTE"), n => n.FullValue().Contains("George") && n.FullValue().Contains("uncited"));
+        Assert.DoesNotContain(husband.ChildrenByTag("NOTE"), n => n.FullValue().Contains("George"));
         var repeated = GedCore.Apply.ChangesetApplier.Run(applied.OutputBytes!, changeset, [1], dryRun: false);
         Assert.True(repeated.Success, string.Join("; ", repeated.Errors));
         Assert.Null(repeated.OutputBytes);
@@ -709,15 +669,13 @@ public class ChangesetDrafterTests
         Assert.Equal(name, Ops(allowed).Single(o => o.GetProperty("op").GetString() == "createOrUpdateVital").GetProperty("value").GetString());
     }
 
-    [Theory]
-    [InlineData("keep")]
-    [InlineData("drop")]
-    public void ANameCorrection_CannotLoseOrMisattributeItsPreviousCitations(string disposition)
+    [Fact]
+    public void ANameCorrection_CannotKeepItsPreviousCitationsOnTheNewName()
     {
         var finding = MarriageFinding("A");
-        var drafted = DraftMarriage(RenameDocument, finding with { Facts = [finding.Facts[0] with { ReplacedCitations = disposition }] });
+        var drafted = DraftMarriage(RenameDocument, finding with { Facts = [finding.Facts[0] with { ReplacedCitations = "keep" }] });
         Assert.False(drafted.Success);
-        Assert.Contains(drafted.Errors, e => e.Contains("previous name's citations must be preserved"));
+        Assert.Contains(drafted.Errors, e => e.Contains("would then attest the new name"));
     }
 
     [Fact]
@@ -735,42 +693,27 @@ public class ChangesetDrafterTests
         Assert.True(applied.Success, string.Join("; ", applied.Errors));
         var person = GedCore.Ged70.Ged70Parser.Read(new MemoryStream(applied.OutputBytes!)).ByXref["@I20@"];
         Assert.Equal("Elizabeth /Morrill/", person.FirstChild("NAME")!.PayloadValue);
-        Assert.Contains(person.ChildrenByTag("NOTE"), n => n.FullValue() == "The previous name was Betty Morrill, which was uncited.");
+        Assert.DoesNotContain(person.ChildrenByTag("NOTE"), n => n.FullValue().Contains("Betty"));
     }
 
     [Fact]
-    public void APreviouslyCitedName_KeepsItsCompleteCitationTrailInItsOwnNote()
+    public void APreviouslyCitedName_IsCorrectedWithoutLeavingItsCitationsOrANote()
     {
         string document = RenameDocument.Replace("1 NAME George /Wadleigh/", """
             1 NAME George /Wadleigh/
             2 SOUR @S1@
             3 PAGE old page
-            3 DATA
-            4 TEXT George in an earlier fictional register.
             3 QUAY 1
-            3 NOTE Original citation annotation.
             """).Replace("0 TRLR", "0 @S1@ SOUR\n1 TITL Earlier fictional register\n0 TRLR");
-        var finding = MarriageFinding("A") with { Notes = [new DraftNote("@I10@", "An unrelated research note.")] };
-        var drafted = DraftMarriage(document, finding);
+        var drafted = DraftMarriage(document, MarriageFinding("A"));
         Assert.True(drafted.Success, string.Join("; ", drafted.Errors));
-        drafted.Changeset!["items"]![0]!["ops"]!.AsArray().Insert(0, new System.Text.Json.Nodes.JsonObject
-        {
-            ["op"] = "createOrUpdateNote", ["record"] = "@I10@", ["text"] = "An earlier unrelated note.",
-        });
         var applied = GedCore.Apply.ChangesetApplier.Run(Encoding.UTF8.GetBytes(document),
             GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString()), [1], dryRun: false);
         Assert.True(applied.Success, string.Join("; ", applied.Errors));
         var person = GedCore.Ged70.Ged70Parser.Read(new MemoryStream(applied.OutputBytes!)).ByXref["@I10@"];
-        var note = person.ChildrenByTag("NOTE").Single(n => n.FullValue() == "The previous name was George Wadleigh, which was cited.");
-        Assert.DoesNotContain("@", note.FullValue());
-        var citation = Assert.Single(note.ChildrenByTag("SOUR"));
-        Assert.Equal("@S1@", citation.Value);
-        Assert.Equal("old page", citation.FirstChild("PAGE")!.Value);
-        Assert.Equal("George in an earlier fictional register.", citation.FirstChild("DATA")!.FirstChild("TEXT")!.FullValue());
-        Assert.Equal("1", citation.FirstChild("QUAY")!.Value);
-        Assert.Equal("Original citation annotation.", citation.FirstChild("NOTE")!.FullValue());
+        Assert.Equal("Joseph /Wadleigh/", person.FirstChild("NAME")!.PayloadValue);
         Assert.DoesNotContain(person.FirstChild("NAME")!.ChildrenByTag("SOUR"), c => c.Value == "@S1@");
-        Assert.Empty(person.ChildrenByTag("NOTE").Single(n => n.FullValue() == "An earlier unrelated note.").ChildrenByTag("SOUR"));
+        Assert.DoesNotContain(person.ChildrenByTag("NOTE"), n => n.FullValue().Contains("George") || n.ChildrenByTag("SOUR").Any());
         var repeated = GedCore.Apply.ChangesetApplier.Run(applied.OutputBytes!,
             GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString()), [1], dryRun: false);
         Assert.True(repeated.Success, string.Join("; ", repeated.Errors));

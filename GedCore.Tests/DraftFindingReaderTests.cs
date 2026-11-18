@@ -325,12 +325,12 @@ public class DraftFindingReaderTests
     public void FactSubstructuresReplacedCitationsAndCiteOnly_AreRead()
     {
         var fact = Valid.Replace("\"date\": \"1 Jan 1900\", \"quay\": 2",
-            "\"date\": \"1 Jan 1900\", \"quay\": 2, \"substructures\": [ { \"tag\": \"type\", \"value\": \"Pension\" } ], \"replacedCitations\": \"moveToNote\"");
+            "\"date\": \"1 Jan 1900\", \"quay\": 2, \"substructures\": [ { \"tag\": \"type\", \"value\": \"Pension\" } ], \"replacedCitations\": \"drop\"");
         var (findings, errors) = Read($"[{fact}]");
         Assert.Empty(errors);
         var read = findings[0].Facts[0];
         Assert.Equal(new DraftSubstructure("TYPE", "Pension"), Assert.Single(read.Substructures));
-        Assert.Equal("moveToNote", read.ReplacedCitations);
+        Assert.Equal("drop", read.ReplacedCitations);
 
         var citeOnly = Valid.Replace("\"date\": \"1 Jan 1900\", \"quay\": 2", "\"quay\": 2, \"citeOnly\": true");
         var (cited, citeErrors) = Read($"[{citeOnly}]");

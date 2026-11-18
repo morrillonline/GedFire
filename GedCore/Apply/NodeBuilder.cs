@@ -243,24 +243,17 @@ internal static class NodeBuilder
 
     /// <summary>
     /// Disposition of citation(s) attached to a fact whose value is being
-    /// replaced or deleted:
-    ///   "keep"       — leave them in place (only meaningful for updates);
-    ///   "drop"       — remove them;
-    ///   "moveToNote" — re-attach them beneath a NOTE on the record (GEDCOM 7
-    ///                  allows SOUR under NOTE) so the prior attestation stays
-    ///                  auditable against the old value. Reuses the NOTE a
-    ///                  note op added earlier in the same item if present,
-    ///                  unless a biography note op wrote it; otherwise creates a
-    ///                  minimal superseded-value note.
+    /// replaced or deleted: "keep" leaves them in place (only meaningful for
+    /// updates); "drop" removes them, since a corrected value and the citations
+    /// that supported it have no place in the record.
     /// Returns a log fragment naming what became of each existing citation, or null when there were none.
     /// </summary>
-    public static string? DisposeCitations(ApplyState state, GedRecord record,
-                                           GedRecord factNode, string factTag, string mode, GedRecord? preservationNote = null)
+    public static string? DisposeCitations(ApplyState state, GedRecord record, GedRecord factNode, string mode)
     {
         var citations = factNode.ChildrenByTag("SOUR").ToList();
         if (citations.Count == 0) return null;
 
-        string fate = mode switch { "drop" => "dropped", "moveToNote" => "moved to note", _ => "kept" };
+        string fate = mode == "drop" ? "dropped" : "kept";
         string disposition = $"replacedCitations={mode}: " +
             string.Join(", ", citations.Select(c => $"{fate} {DescribeExisting(c)}"));
         if (mode == "keep") return disposition;
@@ -269,19 +262,6 @@ internal static class NodeBuilder
             factNode.Children.Remove(cit);
         state.Mutated();
         state.Touch(record);
-
-        if (mode == "drop") return disposition;
-
-        var note = preservationNote;
-        if (note is null && (!state.NotesAddedThisItem.TryGetValue(record.Xref!, out note) || state.BiographyNotesWritten.Contains(note)))
-        {
-            note = NewNode(1, "NOTE",
-                $"Prior citation(s) on the {FactLabel.Of(factTag)} superseded by a correction and retained here.");
-            Attach(record, note);
-            state.NotesAddedThisItem[record.Xref!] = note;
-        }
-        foreach (var cit in citations)
-            Attach(note, Relevel(cit, note.Level + 1));
         return disposition;
     }
 

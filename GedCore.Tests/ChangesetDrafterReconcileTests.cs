@@ -114,15 +114,6 @@ public class ChangesetDrafterReconcileTests
     }
 
     [Fact]
-    public void AnAttachedLowGradedFactBesideAStrongerOne_GetsNoVerificationNote()
-    {
-        var result = Draft(Finding("F-1", "1855", null, 1, "secondary"), Finding("F-2", "1 DEC 1855", null));
-
-        Assert.DoesNotContain(Ops(result), o => o.GetProperty("op").GetString() == "createOrUpdateNote");
-        Assert.Contains(result.Decisions, d => d.Kind == "verification-note" && d.Detail.Contains("BIRT is cited at QUAY 2"));
-    }
-
-    [Fact]
     public void TheSameApproximateDateTwice_IsOneFact()
     {
         var result = Draft(Finding("F-1", "ABT 1855", null), Finding("F-2", "ABT 1855", null));
@@ -448,15 +439,4 @@ public class ChangesetDrafterReconcileTests
         Assert.True(applied.Success, string.Join("; ", applied.Errors));
     }
 
-    [Fact]
-    public void TheVerificationPolicy_StillAcceptsAReconciledDraft()
-    {
-        var policy = ChangesetPolicy.Load(new MemoryStream(Encoding.UTF8.GetBytes(
-            """{ "verificationNote": { "maxQuay": 1, "notePrefix": "needs independent verification:" } }""")));
-
-        var result = new ChangesetDrafter(new FakeLookup(), policy).Draft([
-            Finding("F-1", "1877", "Maine", 1, "secondary"), Finding("F-2", "14 APR 1877", "Oakland, Maine")]);
-
-        Assert.True(result.Success, string.Join("; ", result.Errors));
-    }
 }

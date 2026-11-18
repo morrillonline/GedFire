@@ -97,7 +97,7 @@ public sealed class DraftFindingReader
         string? value = Text(el, "value", path);
         string? cls = Choice(el, "class", path, SourceClasses, required: false);
         string? info = Choice(el, "information", path, InformationClasses, required: false);
-        string? replaced = Choice(el, "replacedCitations", path, ["keep", "drop", "movetonote"], required: false);
+        string? replaced = Choice(el, "replacedCitations", path, ["keep", "drop"], required: false);
         var substructures = ReadList(el, "substructures", path, ReadSubstructure);
         bool citeOnly = ReadFlag(el, "citeOnly", path);
         bool allowSurnameChange = ReadFlag(el, "allowSurnameChange", path);
@@ -127,7 +127,7 @@ public sealed class DraftFindingReader
         return new DraftFact(record, tag, date, place, quay, cls, info, Text(el, "excerpt", path), value)
         {
             Substructures = substructures,
-            ReplacedCitations = replaced is null ? null : replaced == "movetonote" ? "moveToNote" : replaced,
+            ReplacedCitations = replaced,
             CiteOnly = citeOnly,
             AllowSurnameChange = allowSurnameChange,
             ReplaceHeld = replaceHeld,

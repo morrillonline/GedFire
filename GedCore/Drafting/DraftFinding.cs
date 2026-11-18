@@ -124,11 +124,10 @@ public static class DraftDecisionKinds
     public const string MintedPerson = "minted-person";
     public const string MergedCitation = "merged-citation";
     public const string KeptCitation = "kept-citation";
-    public const string VerificationNote = "verification-note";
     public const string DroppedSeed = "dropped-seed";
     public const string Resolved = "resolved";
     public const string Open = "open";
 
     public static readonly IReadOnlyList<string> All =
-        [ReusedSource, MintedSource, MintedPerson, MergedCitation, KeptCitation, VerificationNote, DroppedSeed, Resolved, Open];
+        [ReusedSource, MintedSource, MintedPerson, MergedCitation, KeptCitation, DroppedSeed, Resolved, Open];
 }

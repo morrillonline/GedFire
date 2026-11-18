@@ -180,7 +180,7 @@ public class ValidateChangesetPointsTests : IDisposable
     [Fact]
     public async Task DryRun_ReportsEveryPolicyViolationAsAnError()
     {
-        var policy = Policy("""{ "verificationNote": { "maxQuay": 1, "notePrefix": "needs independent verification:" } }""");
+        var policy = Policy("""{ "deathPlaceEvidence": "\\b(died|death)\\b" }""");
         var tool = new ValidateChangesetTool(WriteGed(), new ToolGate(), policy);
 
         var result = await tool.HandleAsync(WriteChangeset(DeathChangeset), "all", CancellationToken.None);
@@ -223,7 +223,7 @@ public class ValidateChangesetPointsTests : IDisposable
     {
         string path = WriteGed();
         byte[] before = File.ReadAllBytes(path);
-        var policy = Policy("""{ "verificationNote": { "maxQuay": 1, "notePrefix": "needs independent verification:" } }""");
+        var policy = Policy("""{ "deathPlaceEvidence": "\\b(died|death)\\b" }""");
         var tool = new ApplyChangesetTool(path, new ToolGate(), readOnly: false, policy);
 
         var result = await tool.HandleAsync(WriteChangeset(DeathChangeset), "all", CancellationToken.None);

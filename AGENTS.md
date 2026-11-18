@@ -61,6 +61,8 @@ Before declaring that a change is ready to commit, run the full test suite to en
 - GEDCOM extensions are allowed by the standard and so should be supported by this system.
 - GedFire itself never writes GEDCOM extensions (no `_TAG` structures or `HEAD.SCHMA` entries of its own). Express GedFire's data with standard GEDCOM 7 structures, such as a plain person-level `NOTE` with source citations for biographical prose; keep tool-only metadata in changesets.
 - Preserve GEDCOM record xrefs (such as `@I1@`) across all edits. Never renumber or reuse them; remove them only through an approved delete or merge.
+- A person's notes are part of their life story. The generated family web page follows the Register style, adapted to a web page. Never write anything into a `NOTE` that would not appear in a Register-style report: no change logs, no bookkeeping, no record of a replaced value.
+- A fact that was wrong and has been corrected has no place in the genealogical record. Remove the old value and the citations that supported it; do not keep them in a note.
 - With fixes and enhancements, make heavy use of unit tests to ensure correctness and no regressions.
 - Always respect the MCP read-only option when enabled. "Read-only" means exactly one thing: the GEDCOM file is not modified. That is the only intent. Do not read more into the word, such as a rule that no tool may write any other file, and do not extend it to other behavior.
 - Always respect the MCP enforce-privacy option when enabled.

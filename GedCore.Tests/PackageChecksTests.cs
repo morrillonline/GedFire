@@ -4,8 +4,6 @@ namespace GedCore.Tests;
 
 public class PackageChecksTests
 {
-    const string Prefix = "needs independent verification:";
-
     sealed class FakeSources(Dictionary<string, SourceDescription>? held = null) : ISourceRecords
     {
         public SourceDescription? Source(string xref) => held?.GetValueOrDefault(xref);
@@ -15,7 +13,7 @@ public class PackageChecksTests
         PackageChecks.Check(
             [.. changesets.Select((json, i) => new PackageChangeset(i + 1, json))],
             sources ?? new FakeSources(),
-            new PackageOptions(sameNamePeople, Prefix));
+            new PackageOptions(sameNamePeople));
 
     static string Changeset(string ops, string people = "[]", string newSources = "[]", int item = 1) => $$"""
         { "newSources": {{newSources}},
@@ -102,36 +100,4 @@ public class PackageChecksTests
     public void ADeclaredPairNoChangesetCreates_IsRefused() =>
         Assert.Contains("sameNamePeople names @NewI_z@, which no changeset in the package creates",
             Assert.Single(Check([NewChild("@NewI_a@", "Mason /Vale/")], null, new SameNamePair("@NewI_a@", "@NewI_z@"))));
-
-    // ---- verification notes ----
-
-    const string AloneNote =
-        "Needs independent verification: the birth of Ada Vale rests on Parish Register (primary information) alone and has not yet been confirmed by a second source.";
-
-    static string Note(string record, string text) => $$"""{ "op": "createOrUpdateNote", "record": "{{record}}", "text": "{{text}}" }""";
-
-    [Fact]
-    public void ANoteSayingOneRecordWhileThePackageCitesTwo_IsRefused()
-    {
-        string first = Changeset($"{Birth("@I1@", "@S1@", "p. 4", 1)}, {Note("@I1@", AloneNote)}");
-        string second = Changeset(Birth("@I1@", "@S2@", "p. 9", 1, "baptized, born 1 Jan 1850"));
-
-        string error = Assert.Single(Check([first, second]));
-
-        Assert.StartsWith("changeset 1 item 1 writes a note on @I1@ saying the birth rests on one record alone, but the package cites the birth from 2 records", error);
-        Assert.Contains("@S2@, page \"p. 9\", in changeset 2 item 1", error);
-    }
-
-    [Fact]
-    public void ANoteSayingOneRecordWhenThePackageCitesOne_Passes() =>
-        Assert.Empty(Check([Changeset($"{Birth("@I1@", "@S1@", "p. 4", 1)}, {Note("@I1@", AloneNote)}"), Changeset(Birth("@I1@", "@S1@", "p. 4", 1))]));
-
-    [Fact]
-    public void ThePlaceholderOfOneChangeset_IsNotThePersonOfAnother()
-    {
-        string first = Changeset($"{Birth("@NewI1@", "@S1@", "p. 4", 1)}, {Note("@NewI1@", AloneNote)}");
-        string second = Changeset(Birth("@NewI1@", "@S2@", "p. 9", 1, "another"));
-
-        Assert.Empty(Check([first, second]));
-    }
 }

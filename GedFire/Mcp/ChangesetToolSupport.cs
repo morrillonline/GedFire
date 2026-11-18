@@ -73,7 +73,7 @@ static class ChangesetToolSupport
         return Respond(mapped, request.ItemNumbers, report);
     }
 
-    // The document as the policy reads it, read only when a rule asks: most changesets carry their own verification notes.
+    // The document as the policy reads it, read only when a rule asks.
     // A document that cannot be read holds nothing here; the run that follows reports why.
     internal static DocumentHistory PolicyDocument(Func<GedDocument?> read) => new(() =>
     {

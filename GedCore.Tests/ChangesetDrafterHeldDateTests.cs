@@ -48,13 +48,13 @@ public class ChangesetDrafterHeldDateTests
     // ---- a bound that excludes the record's date ----
 
     [Fact]
-    public void ABoundThatExcludesAnUncitedRecordDate_ReplacesItAndKeepsItsCitationsInANote()
+    public void ABoundThatExcludesAnUncitedRecordDate_ReplacesItAndRemovesItsCitations()
     {
         var result = Draft(Holding("17 OCT 1810"), Finding("F-1", "BEF 27 SEP 1796"));
 
         var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
         Assert.Equal("BEF 27 SEP 1796", DateOf(vital));
-        Assert.Equal("moveToNote", Str(vital, "replacedCitations"));
+        Assert.Equal("drop", Str(vital, "replacedCitations"));
         var resolved = Assert.Single(result.Decisions, d => d.Kind == "resolved");
         Assert.Contains("17 OCT 1810 does not fit BEF 27 SEP 1796 and is uncited", resolved.Detail);
         Assert.Equal(["F-1"], resolved.Findings);
@@ -101,7 +101,7 @@ public class ChangesetDrafterHeldDateTests
 
         var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
         Assert.Equal("17 OCT 1810", DateOf(vital));
-        Assert.Equal("moveToNote", Str(vital, "replacedCitations"));
+        Assert.Equal("drop", Str(vital, "replacedCitations"));
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class ChangesetDrafterHeldDateTests
     }
 
     [Theory]
-    [InlineData(null, "moveToNote")]
+    [InlineData(null, "drop")]
     [InlineData("moveToNote", "moveToNote")]
     [InlineData("drop", "drop")]
     [InlineData("keep", null)]
@@ -243,13 +243,13 @@ public class ChangesetDrafterHeldDateTests
     }
 
     [Fact]
-    public void AContradictingDate_ReplacesALowerGradedOne_AndMovesItsCitationsToANote()
+    public void AContradictingDate_ReplacesALowerGradedOne_AndRemovesItsCitations()
     {
         var result = Draft(HoldingTag("BIRT", "29 NOV 1760", 0), Finding("F-1", "1761", quay: 1, tag: "BIRT"));
 
         var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
         Assert.Equal("1761", DateOf(vital));
-        Assert.Equal("moveToNote", Str(vital, "replacedCitations"));
+        Assert.Equal("drop", Str(vital, "replacedCitations"));
         Assert.Contains(result.Decisions, d => d.Kind == "resolved" && d.Detail.Contains("cited at QUAY 0, below the finding's QUAY 1"));
     }
 
@@ -304,13 +304,13 @@ public class ChangesetDrafterHeldDateTests
     }
 
     [Fact]
-    public void ReplaceHeld_SettlesAContradictionAndMovesTheOldCitations()
+    public void ReplaceHeld_SettlesAContradictionAndRemovesTheOldCitations()
     {
         var result = Draft(Holding("17 OCT 1810", 3), Finding("F-1", "BEF 27 SEP 1796", replaceHeld: "1810 is the son's death"));
 
         var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
         Assert.Equal("BEF 27 SEP 1796", DateOf(vital));
-        Assert.Equal("moveToNote", Str(vital, "replacedCitations"));
+        Assert.Equal("drop", Str(vital, "replacedCitations"));
         Assert.DoesNotContain(result.Decisions, d => d.Kind == "open");
     }
 
@@ -333,7 +333,7 @@ public class ChangesetDrafterHeldDateTests
         var delete = Assert.Single(OpsOf(result, "deleteVital"));
         Assert.Equal("BIRT", Str(delete, "fact"));
         Assert.Equal("ABT 1755", delete.GetProperty("match").GetProperty("date").GetString());
-        Assert.Equal("moveToNote", Str(delete, "deletedCitations"));
+        Assert.Null(Str(delete, "deletedCitations"));
         Assert.Empty(OpsOf(result, "createOrUpdateVital"));
         Assert.Contains(result.Decisions, d => d.Kind == "resolved" && d.Detail.Contains("withdrawn: BIRT on @I1@ (ABT 1755), she bore children 1735-1739"));
         Assert.Contains(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("record the evidence in a note"));
@@ -431,6 +431,6 @@ public class ChangesetDrafterHeldDateTests
         var applied = Apply(Draft(HoldingTag("BIRT", "ABT 1755", 0), Finding("F-1", null, tag: "BIRT", withdraw: "she bore children 1735-1739")));
 
         Assert.True(applied.Success, string.Join("; ", applied.Errors));
-        Assert.Contains(applied.Log, line => line.Contains("deleteVital BIRT on @I1@: deleted (1 citation(s) moved to note)"));
+        Assert.Contains(applied.Log, line => line.Contains("deleteVital BIRT on @I1@: deleted (1 citation(s) dropped)"));
     }
 }

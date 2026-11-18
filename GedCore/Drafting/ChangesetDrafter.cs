@@ -12,7 +12,7 @@ public sealed record DraftResult(JsonObject? Changeset, IReadOnlyList<DraftDecis
 
 /// <summary>
 /// Compiles findings into a changeset in the op dialect. The mechanical work is done the same way
-/// every time (source reuse, merged extracts, verbatim locators, verification notes, QUAY ceilings);
+/// every time (source reuse, merged extracts, verbatim locators, QUAY ceilings);
 /// the values, identity and note wording are the author's and arrive as input, so nothing is guessed.
 /// </summary>
 public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? policy = null)
@@ -59,7 +59,7 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         decisions.AddRange(MintedPeople(findings));
         var itemDrafter = new ItemDrafter(sources, lookup, citable, newPeople);
 
-        var drafted = new List<DraftedItem>();
+        var drafted = new List<JsonObject>();
         var evidence = new JsonArray();
         foreach (var group in findings.GroupBy(f => (f.Target.Xref, f.Target.Card)))
         {
@@ -68,9 +68,8 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
             foreach (var finding in group) evidence.Add(FindingEvidence.Describe(finding, number, sources.CitedRefOf(finding)));
         }
         foreach (var finding in citable.CitedOnly) evidence.Add(FindingEvidence.DescribeCited(finding, sources.RefFor(finding)));
-        AddVerificationNotes(drafted, newPeople, decisions);
 
-        var items = new JsonArray([.. drafted.Select(d => (JsonNode)d.Item)]);
+        var items = new JsonArray([.. drafted.Select(d => (JsonNode)d)]);
         var changeset = new JsonObject();
         if (sources.NewSources.Count > 0) changeset["newSources"] = sources.NewSources;
         changeset["items"] = items;
@@ -80,16 +79,6 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         errors.AddRange(RelativeDuplicates(changeset));
         if (policy is not null) errors.AddRange(policy.Check(changeset.ToJsonString(), document: lookup));
         return new DraftResult(changeset, decisions, errors);
-    }
-
-    // Each item's notes are due by its own evidence, as the policy judges an item, but name every record the draft cites
-    // for the fact, so two items citing one fact from different records never each say it rests on one record alone.
-    void AddVerificationNotes(List<DraftedItem> drafted, IReadOnlyDictionary<string, DraftPerson> newPeople, List<DraftDecision> decisions)
-    {
-        var planner = new VerificationNotePlanner(lookup, lookup, policy?.VerificationNote ?? VerificationNoteRule.Default, newPeople);
-        IReadOnlyList<CitedFact> package = [.. drafted.SelectMany(d => d.Noted)];
-        foreach (var item in drafted)
-            item.Add(planner.Plan(item.Noted, item.AuthorNotes, package, decisions).ToList());
     }
 
     // The same refusal validation gives, so a draft that would be refused is never written.

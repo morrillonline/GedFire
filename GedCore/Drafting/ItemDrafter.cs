@@ -3,16 +3,6 @@ using GedCore.Apply;
 
 namespace GedCore.Drafting;
 
-/// <summary>One drafted item, and what its verification notes are planned from once every item of the draft is known.</summary>
-internal sealed record DraftedItem(JsonObject Item, IReadOnlyList<CitedFact> Noted, IReadOnlyList<DraftNote> AuthorNotes)
-{
-    public void Add(IEnumerable<JsonObject> ops)
-    {
-        var array = Item["ops"]!.AsArray();
-        foreach (var op in ops) array.Add(op);
-    }
-}
-
 /// <summary>
 /// Compiles the findings aimed at one target into a changeset item: one citation per
 /// (source, page, grade) with every extract merged into its dataText, the relationship ops that
@@ -40,10 +30,7 @@ internal sealed class ItemDrafter(
     // The new people the current item's relationship ops name, in the order first named.
     readonly List<string> _itemPeople = [];
 
-    // Facts whose citation was not attached because their approximate date does not fit the one chosen.
-    readonly HashSet<Asserted> _excluded = [];
-
-    public DraftedItem Draft(int number, IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions, List<string> errors)
+    public JsonObject Draft(int number, IReadOnlyList<DraftFinding> group, List<DraftDecision> decisions, List<string> errors)
     {
         _itemPeople.Clear();
         var withdrawals = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is not null).Select(x => (Finding: f, Fact: x))).ToList();
@@ -70,12 +57,11 @@ internal sealed class ItemDrafter(
         foreach (var withdrawal in NoteWithdrawalOps(group, decisions)) ops.Add(withdrawal);
         foreach (var finding in group)
             foreach (var note in finding.Notes.Where(n => !n.IsWithdrawal)) ops.Add(NoteOp(note, finding, citations));
-        var noted = asserted.Where(a => !_excluded.Contains(a)).Select(a => new CitedFact(a.Finding, a.Fact, a.Cite.Source)).ToList();
 
         var item = new JsonObject { ["item"] = number, ["target"] = Label(group[0].Target) };
         if (_itemPeople.Count > 0) item["people"] = new JsonArray([.. _itemPeople.Select(Declaration)]);
         item["ops"] = ops;
-        return new DraftedItem(item, noted, [.. group.SelectMany(f => f.Notes)]);
+        return item;
     }
 
     // A fact is cited from its own finding at its grade, and from each finding it cites, as that finding's own record.
@@ -221,7 +207,6 @@ internal sealed class ItemDrafter(
                 if (held[0].Place is not null) match["place"] = held[0].Place;
                 op["match"] = match;
             }
-            op["deletedCitations"] = "moveToNote";
 
             string reasons = string.Join("; ", byFact.Select(w => w.Fact.Withdraw).Distinct());
             decisions.Add(new DraftDecision(DraftDecisionKinds.Resolved,
@@ -394,11 +379,7 @@ internal sealed class ItemDrafter(
                     : "; nothing was drafted for it. ") + (contested ? ContestAdvice : ""),
                 Findings = attachedIds,
             });
-        if (judged?.Outcome == HeldOutcome.Skip || contested && !addsPlaceBesideContest)
-        {
-            foreach (var skipped in facts) _excluded.Add(skipped);
-            return null;
-        }
+        if (judged?.Outcome == HeldOutcome.Skip || contested && !addsPlaceBesideContest) return null;
 
         bool writesPlace = place is not null
             && (replaceReason is not null || !HeldIsMoreSpecific(held?.Place, place, Specificity.PlaceSupersedes));
@@ -412,7 +393,6 @@ internal sealed class ItemDrafter(
             decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
                 $"{claims[i].FindingId}'s {claims[i].Date} for {tag} on {record} does not fit the chosen date {date}, so its citation was not attached; check it",
                 [claims[i].FindingId]));
-        foreach (var dropped in facts.Where((_, i) => resolution.Excluded.Contains(i))) _excluded.Add(dropped);
 
         if (!contested && (claims.Select(c => (c.Date, c.Place, c.Value)).Distinct().Count() > 1 || !writesDate && date is not null || !writesPlace && place is not null))
             decisions.Add(new DraftDecision(DraftDecisionKinds.Resolved,
@@ -423,7 +403,7 @@ internal sealed class ItemDrafter(
         var key = keys[0] with
         {
             Date = writesDate ? date!.ToUpperInvariant() : null, Place = writesPlace ? place : null, Value = name,
-            ReplacedCitations = keys[0].ReplacedCitations ?? (replacesHeld ? "moveToNote" : null),
+            ReplacedCitations = keys[0].ReplacedCitations ?? (replacesHeld ? "drop" : null),
         };
         // The citations of a contradicted value are not restated onto the value that replaces it.
         return VitalOp(key, attached, new Placement(null, false, replacesHeld ? null : held), citations, decisions);
@@ -492,7 +472,7 @@ internal sealed class ItemDrafter(
         return givesWay
             ? new HeldDate(HeldOutcome.Write, Replaces: true, Decision: Resolved(
                 $"{claim.Fact}: the record's {held.Date} does not fit {claim.Date} and is {standing}, below the finding's QUAY {claim.Quay}, so it is replaced"
-                + (grades.Count == 0 ? "" : " and its citations kept in a note")))
+                + (grades.Count == 0 ? "" : " and its citations removed")))
             : new HeldDate(HeldOutcome.Contested, Decision: Open(
                 $"{claim.Fact}: the record's {held.Date} ({standing}; {DescribeCitations(held.Citations)}) does not fit {claim.Date} " +
                 $"({string.Join(", ", claim.Findings)}, QUAY {claim.Quay}); the record's date was kept"));
@@ -570,7 +550,7 @@ internal sealed class ItemDrafter(
     static FactKey FactKeyOf(DraftFact fact) =>
         new(fact.Record, fact.Tag, fact.Date?.ToUpperInvariant(), fact.Place, fact.Value,
             string.Join('|', fact.Substructures.Select(s => $"{s.Tag}={s.Value}")),
-            fact.Tag == "NAME" ? "moveToNote" : fact.ReplacedCitations);
+            fact.Tag == "NAME" ? fact.ReplacedCitations ?? "drop" : fact.ReplacedCitations);
 
     JsonObject VitalOp(FactKey key, List<Asserted> facts, Placement placement, Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
     {

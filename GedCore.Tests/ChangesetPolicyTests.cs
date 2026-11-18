@@ -9,8 +9,6 @@ public class ChangesetPolicyTests
 
     const string Phrases = """{ "bannedPhrases": ["Both readings are kept", "not added"], "bannedPatterns": ["@[ISFMN][A-Za-z]*\\d+@"] }""";
 
-    const string Verification = """{ "verificationNote": { "maxQuay": 1, "notePrefix": "needs independent verification:" } }""";
-
     const string DeathEvidence = """{ "deathPlaceEvidence": "\\b(died|death)\\b" }""";
 
     static string Changeset(string opsJson) => $$"""{ "items": [ { "item": 1, "ops": [ {{opsJson}} ] } ] }""";
@@ -38,8 +36,13 @@ public class ChangesetPolicyTests
     }
 
     [Fact]
-    public void Load_RejectsAMalformedVerificationNote() =>
-        Assert.Throws<FormatException>(() => Load("""{ "verificationNote": { "maxQuay": 9, "notePrefix": "x" } }"""));
+    public void Load_RefusesAVerificationNoteRule_SayingToDeleteIt()
+    {
+        var ex = Assert.Throws<FormatException>(() => Load("""{ "verificationNote": { "maxQuay": 1, "notePrefix": "needs independent verification:" } }"""));
+
+        Assert.Contains("\"verificationNote\", which is no longer supported", ex.Message);
+        Assert.Contains("Delete the key", ex.Message);
+    }
 
     [Fact]
     public void EmptyPolicy_EnforcesNothing() =>
@@ -96,159 +99,6 @@ public class ChangesetPolicyTests
 
         Assert.Empty(Load(Phrases).Check(json, new HashSet<int> { 1 }));
         Assert.Single(Load(Phrases).Check(json, new HashSet<int> { 2 }));
-    }
-
-    // ---- verification note ----
-
-    [Fact]
-    public void LowQuayFact_WithoutAVerificationNote_IsReported()
-    {
-        var violations = Load(Verification).Check(Changeset(
-            """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
-                 "citations": [{ "source": "@S1@", "quay": 1 }] }
-            """));
-
-        Assert.Contains("BIRT on @I1@", Assert.Single(violations));
-    }
-
-    [Fact]
-    public void LowQuayFact_WithANoteOnTheSameRecord_Passes() =>
-        Assert.Empty(Load(Verification).Check(Changeset(
-            """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
-              "citations": [{ "source": "@S1@", "quay": 1 }] },
-            { "op": "createOrUpdateNote", "record": "@I1@", "text": "Needs independent verification: the birth rests on one index." }
-            """)));
-
-    [Fact]
-    public void LowQuayFact_WithANoteOnAnotherRecord_IsReported() =>
-        Assert.Single(Load(Verification).Check(Changeset(
-            """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
-              "citations": [{ "source": "@S1@", "quay": 1 }] },
-            { "op": "createOrUpdateNote", "record": "@I2@", "text": "Needs independent verification: something else." }
-            """)));
-
-    const string LowBirth = """
-        { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
-          "citations": [{ "source": "@S1@", "quay": 1 }] }
-        """;
-
-    static DocumentHistory Holding(string lines) => new(Ged70.Ged70Parser.Parse($"""
-        0 HEAD
-        1 GEDC
-        2 VERS 7.0
-        0 @I1@ INDI
-        {lines}
-        0 @S1@ SOUR
-        1 TITL Register
-        0 TRLR
-        """.Replace("\r\n", "\n")));
-
-    static DocumentHistory HoldingNote(string note) => Holding($"1 NOTE {note}");
-
-    [Fact]
-    public void LowQuayFact_WithANoteOnTheRecordNamingAnotherFact_IsReported() =>
-        Assert.Single(Load(Verification).Check(Changeset(LowBirth + """
-            , { "op": "createOrUpdateNote", "record": "@I1@", "text": "Needs independent verification: the death rests on one index." }
-            """)));
-
-    [Fact]
-    public void LowQuayFact_NamedByAVerificationNoteTheDocumentHolds_Passes() =>
-        Assert.Empty(Load(Verification).Check(Changeset(LowBirth),
-            document: HoldingNote("Needs independent verification: she was born in 1900 by one index only.")));
-
-    [Fact]
-    public void LowQuayFact_WhoseHeldNoteNamesAnotherFact_IsReported() =>
-        Assert.Single(Load(Verification).Check(Changeset(LowBirth),
-            document: HoldingNote("Needs independent verification: the death rests on one index.")));
-
-    [Fact]
-    public void LowQuayFact_WhoseHeldNoteTheItemDeletes_IsReported()
-    {
-        const string held = "Needs independent verification: the birth rests on one index.";
-
-        Assert.Single(Load(Verification).Check(Changeset(LowBirth + $$"""
-            , { "op": "deleteNote", "record": "@I1@", "text": "{{held}}" }
-            """), document: HoldingNote(held)));
-    }
-
-    [Theory]
-    [InlineData("2", true)]
-    [InlineData("1", false)]
-    public void LowQuayCitation_OfAFactTheDocumentAlreadyCitesMoreStrongly_NeedsNoNote(string heldQuay, bool lifted)
-    {
-        var document = Holding($"1 BIRT\n2 DATE 1900\n2 SOUR @S1@\n3 QUAY {heldQuay}");
-
-        Assert.Equal(lifted, Load(Verification).Check(Changeset(LowBirth), document: document).Count == 0);
-    }
-
-    [Theory]
-    [InlineData("1900", true)]
-    [InlineData("1910", false)]
-    public void ACensusIsLiftedOnlyByAStrongCitationOnTheSameDatedInstance(string heldDate, bool lifted)
-    {
-        var document = Holding($"1 CENS\n2 DATE {heldDate}\n2 SOUR @S1@\n3 QUAY 3");
-
-        var violations = Load(Verification).Check(Changeset("""
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "date": "1900", "mode": "add",
-              "citations": [ { "source": "@S1@", "quay": 1 } ] }
-            """), document: document);
-
-        Assert.Equal(lifted, violations.Count == 0);
-    }
-
-    [Fact]
-    public void HighQuayFact_NeedsNoNote() =>
-        Assert.Empty(Load(Verification).Check(Changeset(
-            """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
-                 "citations": [{ "source": "@S1@", "quay": 3 }] }
-            """)));
-
-    [Fact]
-    public void LowQuayCitation_BesideAStrongerOneOnTheSameFact_NeedsNoNote() =>
-        Assert.Empty(Load(Verification).Check(Changeset(
-            """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900",
-                 "citations": [ { "source": "@S1@", "quay": 1 }, { "source": "@S2@", "quay": 2 } ] }
-            """)));
-
-    [Fact]
-    public void LowQuayCitation_BesideAnUngradedOne_IsReported() =>
-        Assert.Single(Load(Verification).Check(Changeset(
-            """
-            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "DEAT", "date": "1900",
-                 "citations": [ { "source": "@S1@", "quay": 1 }, { "source": "@S2@" } ] }
-            """)));
-
-    [Fact]
-    public void LowQuayFactOfAPersonDeclaredInPeople_IsNamedByANoteMentioningTheGivenName()
-    {
-        static string Item(string note) => $$"""
-            { "items": [ { "item": 1,
-              "people": [ { "xref": "@NewI1@", "name": "Ruth /Test/", "facts": [
-                { "fact": "BIRT", "date": "1900", "citations": [ { "source": "@S1@", "quay": 0 } ] } ] } ],
-              "ops": [ { "op": "createOrUpdateChild", "family": "@F1@", "child": "@NewI1@" }{{note}} ] } ] }
-            """;
-        string note = """, { "op": "createOrUpdateNote", "record": "@F1@", "text": "Needs independent verification: Ruth's birth is from one index." }""";
-
-        Assert.Contains("BIRT of Ruth /Test/", Assert.Single(Load(Verification).Check(Item(""))));
-        Assert.Empty(Load(Verification).Check(Item(note)));
-    }
-
-    [Fact]
-    public void LowQuayMarriage_IsNamedByANoteMentioningMarriage()
-    {
-        string op = """
-            { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": "@I2@", "family": "@F1@",
-              "marriage": { "date": "1900", "citations": [{ "source": "@S1@", "quay": 1 }] } }
-            """;
-        string note = """, { "op": "createOrUpdateNote", "record": "@F1@", "text": "Needs independent verification: the marriage rests on one index." }""";
-
-        Assert.Single(Load(Verification).Check(Changeset(op)));
-        Assert.Empty(Load(Verification).Check(Changeset(op + note)));
     }
 
     // ---- death place ----

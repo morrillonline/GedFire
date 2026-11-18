@@ -55,19 +55,8 @@ internal sealed class ApplyState(GedDocument doc)
     /// <summary>INDI xref → FAM xrefs needing a FAMC back-link.</summary>
     public Dictionary<string, List<string>> PendingFamc { get; } = [];
 
-    /// <summary>
-    /// Record xref → NOTE node added (or matched) by a note op earlier in the
-    /// item currently being applied. Lets a moveToNote disposition in the same
-    /// item find "the note this proposal added", as opposed to any unrelated
-    /// NOTE the record already carried. Reset at the start of each item.
-    /// </summary>
-    public Dictionary<string, GedRecord> NotesAddedThisItem { get; } = [];
-
     /// <summary>Person xref → the citations biography note ops added to that person's notes this run, in order.</summary>
     public Dictionary<string, List<BiographyCitation>> BiographyCitationsAdded { get; } = new(StringComparer.Ordinal);
-
-    /// <summary>Notes a biography note op wrote this run; moveToNote never files displaced citations under them.</summary>
-    public HashSet<GedRecord> BiographyNotesWritten { get; } = [];
 
     public void AddBiographyCitations(string person, IEnumerable<BiographyCitation> citations)
     {
@@ -99,7 +88,6 @@ internal sealed class ApplyState(GedDocument doc)
 
     public void BeginItem()
     {
-        NotesAddedThisItem.Clear();
         ItemSourceRedirects.Clear();
     }
 

@@ -285,11 +285,11 @@ public class ChangesetDrafterNoteAndCitationTests
     [Fact]
     public void ReplacedCitations_IsPassedToTheOp()
     {
-        var replacing = Fact("DEAT", "1874", null) with { ReplacedCitations = "moveToNote" };
+        var replacing = Fact("DEAT", "1874", null) with { ReplacedCitations = "drop" };
 
         var result = Draft(Finding("F-1", Source("Register", "p. 2"), "x", [replacing]));
 
-        Assert.Equal("moveToNote", Ops(result)[0].GetProperty("replacedCitations").GetString());
+        Assert.Equal("drop", Ops(result)[0].GetProperty("replacedCitations").GetString());
         AssertApplies(result);
     }
 
