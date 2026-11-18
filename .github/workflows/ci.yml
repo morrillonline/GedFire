@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+    # labeled/unlabeled re-evaluate docs-guard when docs-cleanup is added or removed.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -50,7 +52,7 @@ jobs:
           if (( deleted > added )); then
             echo "::error::This PR deletes more documentation lines ($deleted) than it adds ($added)." \
               "Check that README.md and docs/ were not rewritten from a stale snapshot." \
-              "If the deletion is intentional, apply the docs-cleanup label and re-run."
+              "If the deletion is intentional, apply the docs-cleanup label; the check runs again by itself."
             exit 1
           fi
 
