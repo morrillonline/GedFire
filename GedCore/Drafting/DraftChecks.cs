@@ -97,8 +97,8 @@ internal static class DraftChecks
                          && lookup?.HasPerson(fact.Record) == false)
                     yield return $"{path}.record {fact.Record} is not an existing person in the document.";
                 if (fact.Value is null || fact.CiteOnly || fact.Withdraw is not null) continue;
-                if (fact.ReplacedCitations is "keep" or "drop")
-                    yield return $"{path}.replacedCitations must be moveToNote for NAME corrections; the previous name's citations must be preserved.";
+                if (fact.ReplacedCitations is "keep")
+                    yield return $"{path}.replacedCitations cannot be keep for a NAME correction: the previous name's citations would then attest the new name. Leave it out to remove them.";
                 string? heldSurname = lookup?.PersonSurname(fact.Record);
                 string? newSurname = GedNamePayload.Split(fact.Value).Surname;
                 if (heldSurname is not null && !string.Equals(Fold(heldSurname), Fold(newSurname ?? ""), StringComparison.OrdinalIgnoreCase)

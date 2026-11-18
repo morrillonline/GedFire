@@ -36,8 +36,7 @@ public sealed class DraftPackageTool
         "against this server's document, or that carries no findings, fails the call with its errors named, and " +
         "nothing is written; fix the findings and draft the changeset again. The changesets are also checked together, " +
         "and the call fails naming both items when two items grade one source, page and extract at different QUAYs, " +
-        "when two new people share a first given name and surname (declare a truly distinct pair in sameNamePeople), or " +
-        "when a verification note says a fact rests on one record while the package cites it from several. The result reports the proposal's " +
+        "when two new people share a first given name and surname (declare a truly distinct pair in sameNamePeople). The result reports the proposal's " +
         "path and each changeset it presents, with the sha256 of the exact bytes presented. An existing proposal " +
         "file is replaced only when overwrite is true. Reads the document, writes nothing to it.";
 
@@ -107,7 +106,7 @@ public sealed class DraftPackageTool
                 "required": ["number", "path", "sha256", "success", "errors"]
               }
             },
-            "errors": { "type": "array", "items": { "type": "string" }, "description": "Problems not tied to one changeset's validation: a rule that spans the package's items (one QUAY per source, page and extract; one name per new person; a verification note that says a fact rests on one record when the package cites it from several), each naming both items and the cure; a changeset that carries no findings; or the proposal file that could not be written." }
+            "errors": { "type": "array", "items": { "type": "string" }, "description": "Problems not tied to one changeset's validation: a rule that spans the package's items (one QUAY per source, page and extract; one name per new person), each naming both items and the cure; a changeset that carries no findings; or the proposal file that could not be written." }
           },
           "required": ["success", "proposalPath", "proposalSha256", "changesets", "errors"]
         }
@@ -116,7 +115,6 @@ public sealed class DraftPackageTool
     readonly ChangesetValidator _validator;
     readonly ToolGate _gate;
     readonly string _documentPath;
-    readonly string _notePrefix;
 
     public DraftPackageTool(string absoluteGedcomPath, ToolGate gate, ChangesetPolicy? policy = null)
     {
@@ -124,7 +122,6 @@ public sealed class DraftPackageTool
         _validator = new ChangesetValidator(absoluteGedcomPath, policy);
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _documentPath = absoluteGedcomPath;
-        _notePrefix = (policy?.VerificationNote ?? VerificationNoteRule.Default).NotePrefix;
     }
 
     public McpServerTool ToMcpServerTool() =>
@@ -160,7 +157,7 @@ public sealed class DraftPackageTool
         }
 
         var errors = new List<string>(PackageChecks.Check(
-            read, new DocumentSources(() => GedReader.ReadFile(_documentPath)), new PackageOptions(request.SameNamePeople, _notePrefix)));
+            read, new DocumentSources(() => GedReader.ReadFile(_documentPath)), new PackageOptions(request.SameNamePeople)));
         string? proposalPath = null;
         string? proposalSha = null;
         if (changesets.All(c => c.Success) && errors.Count == 0)

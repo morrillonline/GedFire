@@ -35,9 +35,11 @@ public sealed class SelectTargetsTool
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
         "never selected. Pass xrefs instead of people and surnames to skip the draw and score exactly those " +
         "people the same way: the result is " +
-        "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that produced no gap target. " +
+        "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that got no card at all (a woman with no gap, " +
+        "or anyone born within the last 100 years). " +
         "A Biography target is a repeatable card for a man's cited biographical prose (service, occupation, migration, " +
-        "probate...), offered only beside another of his cards, and open even when prose exists; nominalPoints 3 plus the enrichment difficulty bonus (birth era and region), paid " +
+        "probate...): in the draw it is offered only beside another of his cards, while a man named in xrefs gets it even with no other gap; " +
+        "it is open even when prose exists; nominalPoints 3 plus the enrichment difficulty bonus (birth era and region), paid " +
         "once per person per changeset when a biography note adds new information: a citation (source and page) none of the person's " +
         "cited notes carried, or text that matches none of the person's notes once case, whitespace and punctuation are folded. " +
         "New parent and New spouse require an exact date or non-empty place on an own vital event " +
@@ -69,7 +71,7 @@ public sealed class SelectTargetsTool
               "minItems": 1,
               "maxItems": 500,
               "items": { "type": "string", "pattern": "^@[^@]+@$", "minLength": 3 },
-              "description": "Person xrefs to score instead of drawing, e.g. [\"@I00006@\"]. Every eligible gap becomes a target; suppressedCards reports the cards withheld and why. Cannot be combined with people or surnames."
+              "description": "Person xrefs to score instead of drawing, e.g. [\"@I00006@\"]. Every eligible gap becomes a target, and a named man also gets his Biography card even with no other gap; suppressedCards reports the cards withheld and why. Cannot be combined with people or surnames."
             },
             "maxMotherAgeAtMarriage": {
               "type": "integer",
@@ -125,7 +127,7 @@ public sealed class SelectTargetsTool
             "xrefsWithoutGaps": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Only with xrefs: the input xrefs that produced no gap target (a Biography target is not a gap)."
+              "description": "Only with xrefs: the input xrefs that got no card at all. A named man outside the privacy floor always gets at least his Biography card."
             },
             "draw": {
               "type": "object",
@@ -245,13 +247,14 @@ public sealed class SelectTargetsTool
 
         var suppressedCards = new List<SuppressedCard>();
         var gaps = GapDetector.DetectForPeople(people, suppressedCards, rules);
+        var targets = GapDetector.WithNamedBiographyCards(people, gaps);
         var scored = DuplicateAnnotator.Annotate(
-          new DrawResult { Targets = GapDetector.WithBiographyCards(people, gaps), Seed = null, LegendaryDiscards = [], SuppressedCards = suppressedCards },
+          new DrawResult { Targets = targets, Seed = null, LegendaryDiscards = [], SuppressedCards = suppressedCards },
             snapshot.MatchIndex, cancellationToken);
-        var produced = gaps.Select(t => t.Xref).ToHashSet(StringComparer.Ordinal);
-        var withoutGaps = people.Select(p => p.Xref).Where(x => !produced.Contains(x)).ToList();
+        var carded = targets.Select(t => t.Xref).ToHashSet(StringComparer.Ordinal);
+        var withoutCards = people.Select(p => p.Xref).Where(x => !carded.Contains(x)).ToList();
 
-        return Success(WantedFileWriter.ToJsonForXrefs(withoutGaps, scored));
+        return Success(WantedFileWriter.ToJsonForXrefs(withoutCards, scored));
     }
 
     static CallToolResult Success(string json)

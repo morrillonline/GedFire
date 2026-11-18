@@ -219,18 +219,6 @@ public class ChangesetDrafterRelationTests
     }
 
     [Fact]
-    public void ALowGradedFactOnANewPerson_GetsAVerificationNoteNamingThem()
-    {
-        var result = new ChangesetDrafter(new FakeLookup()).Draft([Finding(
-            [Person("@NewI1@", "Mary /Test/", "F")], [Spouse("@I1@", "@NewI1@", "@NewF1@", quay: 1)],
-            [Fact("@NewI1@", "BIRT", "1807", "Maine", quay: 1)])]);
-
-        var note = Ops(result).Single(o => Verb(o) == "createOrUpdateNote");
-        Assert.Equal("@NewI1@", note.GetProperty("record").GetString());
-        Assert.Contains("Mary Test", note.GetProperty("text").GetString());
-    }
-
-    [Fact]
     public void ANewPersonIsReportedAsADecision() =>
         Assert.Single(
             new ChangesetDrafter(new FakeLookup()).Draft([Finding(

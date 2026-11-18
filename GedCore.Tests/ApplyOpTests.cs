@@ -334,7 +334,6 @@ public class ApplyOpTests : ApplyTestBase
     [Theory]
     [InlineData("keep", "replacedCitations=keep: kept @S00001@ (p. 1)")]
     [InlineData("drop", "replacedCitations=drop: dropped @S00001@ (p. 1)")]
-    [InlineData("moveToNote", "replacedCitations=moveToNote: moved to note @S00001@ (p. 1)")]
     public void Vital_ReplacingAValue_LogsWhatBecameOfEachExistingCitation(string mode, string expected)
     {
         SeedBirtWithExistingCitation();
@@ -388,68 +387,21 @@ public class ApplyOpTests : ApplyTestBase
     }
 
     [Fact]
-    public void Vital_ReplacedCitationsMoveToNote_CreatesMinimalNote()
+    public void Vital_ReplacedCitationsMoveToNote_IsRefusedAndNothingIsWritten()
     {
         SeedBirtWithExistingCitation();
+        var before = ReadBytes();
 
-        RunExpectSuccess("""
-            { "newSources": [ { "xref": "@NewS1@", "ops": [
-                { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "New Source",
-                  "title": "New source" } ] } ],
-              "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota",
-                "replacedCitations": "moveToNote",
-                "citations": [{ "source": "@NewS1@", "page": "p. 1",
-                              "dataText": "born April 2, 1928", "quay": 2 }] } ] } ] }
-            """);
-
-        var indi = ReadDoc().ByXref["@I00001@"];
-        var birtSources = indi.FirstChild("BIRT")!.ChildrenByTag("SOUR").Select(s => s.Value).ToList();
-        Assert.DoesNotContain("@S00001@", birtSources);
-        Assert.Contains("@S00002@", birtSources);
-
-        var note = indi.ChildrenByTag("NOTE").Single();
-        var noteSour = note.FirstChild("SOUR")!;
-        Assert.Equal("@S00001@", noteSour.Value);
-        Assert.Equal("p. 1", noteSour.FirstChild("PAGE")!.Value);
-        Assert.Equal("born 1928 per old source",
-            noteSour.FirstChild("DATA")!.FirstChild("TEXT")!.Value);
-    }
-
-    [Fact]
-    public void Vital_ReplacedCitationsMoveToNote_ReusesNoteFromSameItem_NotUnrelatedOnes()
-    {
-        SeedBirtWithExistingCitation();
-        // an unrelated pre-existing note must never receive the moved citation
-        RunExpectSuccess("""
+        var result = Run("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateNote", "record": "@I00001@",
-                "text": "Unrelated biography note." } ] } ] }
-            """);
-
-        RunExpectSuccess("""
-            { "newSources": [ { "xref": "@NewS1@", "ops": [
-                { "op": "createOrUpdateSource", "xref": "@NewS1@", "auth": "New Source",
-                  "title": "New source" } ] } ],
-              "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateNote", "record": "@I00001@",
-                "text": "Birth date refined; prior citation retained below." },
               { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota",
-                "replacedCitations": "moveToNote",
-                "citations": [{ "source": "@NewS1@", "page": "p. 1",
-                              "dataText": "born April 2, 1928", "quay": 2 }] } ] } ] }
+                "date": "2 APR 1928", "replacedCitations": "moveToNote" } ] } ] }
             """);
 
-        var notes = ReadDoc().ByXref["@I00001@"].ChildrenByTag("NOTE").ToList();
-        Assert.Equal(2, notes.Count);
-        var unrelated = notes.Single(n => n.Value == "Unrelated biography note.");
-        Assert.Null(unrelated.FirstChild("SOUR"));
-        var itemNote = notes.Single(n => n.Value == "Birth date refined; prior citation retained below.");
-        Assert.Equal("@S00001@", itemNote.FirstChild("SOUR")!.Value);
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("replacedCitations must be keep or drop"));
+        Assert.Equal(before, ReadBytes());
     }
-
     [Fact]
     public void Note_WithCitation_AttachesSourceUnderNote_AndReportsMintedXref()
     {
@@ -602,24 +554,6 @@ public class ApplyOpTests : ApplyTestBase
         Assert.Null(indi.FirstChild("BIRT"));
         Assert.DoesNotContain(indi.Children, c => c.Tag == "NOTE");
         Assert.Contains(result.Log, l => l.Contains("citation(s) dropped"));
-    }
-
-    [Fact]
-    public void DeleteVital_MoveToNote_PreservesCitationsOnANote()
-    {
-        SeedBirtWithExistingCitation();
-
-        RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
-              { "op": "deleteVital", "record": "@I00001@", "fact": "BIRT",
-                "deletedCitations": "moveToNote" } ] } ] }
-            """);
-
-        var indi = ReadDoc().ByXref["@I00001@"];
-        Assert.Null(indi.FirstChild("BIRT"));
-        var note = indi.ChildrenByTag("NOTE").Single();
-        Assert.Equal("@S00001@", note.FirstChild("SOUR")!.Value);
-        Assert.Equal("Prior citation(s) on the birth superseded by a correction and retained here.", note.FullValue());
     }
 
     [Fact]

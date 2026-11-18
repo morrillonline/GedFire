@@ -19,15 +19,18 @@ public class ChangesetDrafterHeldDateTests
         public string? PersonName(string xref) => null;
     }
 
-    static DraftFinding Finding(string id, string? date, int quay = 2, string tag = "DEAT", string? replaceHeld = null, string? withdraw = null, string? place = null) =>
+    static DraftFinding Finding(string id, string? date, int quay = 2, string tag = "DEAT", string? replaceHeld = null, string? withdraw = null,
+        string? place = null, string record = "@I1@", string? replacedCitations = null) =>
         new(id, new DraftSource("Probate Records", null, null, $"Case {id}", null, "original", "primary"), $"extract {id}",
             new DraftTarget("@I1@", "enrich", null),
-            [new DraftFact("@I1@", tag, date, place, quay, null, null, null) { ReplaceHeld = replaceHeld, Withdraw = withdraw }], []);
+            [new DraftFact(record, tag, date, place, quay, null, null, null) { ReplaceHeld = replaceHeld, Withdraw = withdraw, ReplacedCitations = replacedCitations }], []);
 
     static FakeLookup Holding(string? date, params int?[] citationGrades) => HoldingTag("DEAT", date, citationGrades);
 
-    static FakeLookup HoldingTag(string tag, string? date, params int?[] citationGrades) =>
-        new(new() { [$"@I1@|{tag}"] = [new ExistingFact(date, null, [.. citationGrades.Select((q, i) => new ExistingCitation($"@S{i + 1}@", $"p. {i}", null, q))])] });
+    static FakeLookup HoldingTag(string tag, string? date, params int?[] citationGrades) => HoldingAt("@I1@", tag, date, null, citationGrades);
+
+    static FakeLookup HoldingAt(string record, string tag, string? date, string? place, params int?[] citationGrades) =>
+        new(new() { [$"{record}|{tag}"] = [new ExistingFact(date, place, [.. citationGrades.Select((q, i) => new ExistingCitation($"@S{i + 1}@", $"p. {i}", null, q))])] });
 
     static DraftResult Draft(IDraftLookup lookup, params DraftFinding[] findings) => new ChangesetDrafter(lookup).Draft(findings);
 
@@ -45,13 +48,13 @@ public class ChangesetDrafterHeldDateTests
     // ---- a bound that excludes the record's date ----
 
     [Fact]
-    public void ABoundThatExcludesAnUncitedRecordDate_ReplacesItAndKeepsItsCitationsInANote()
+    public void ABoundThatExcludesAnUncitedRecordDate_ReplacesItAndRemovesItsCitations()
     {
         var result = Draft(Holding("17 OCT 1810"), Finding("F-1", "BEF 27 SEP 1796"));
 
         var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
         Assert.Equal("BEF 27 SEP 1796", DateOf(vital));
-        Assert.Equal("moveToNote", Str(vital, "replacedCitations"));
+        Assert.Equal("drop", Str(vital, "replacedCitations"));
         var resolved = Assert.Single(result.Decisions, d => d.Kind == "resolved");
         Assert.Contains("17 OCT 1810 does not fit BEF 27 SEP 1796 and is uncited", resolved.Detail);
         Assert.Equal(["F-1"], resolved.Findings);
@@ -98,7 +101,7 @@ public class ChangesetDrafterHeldDateTests
 
         var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
         Assert.Equal("17 OCT 1810", DateOf(vital));
-        Assert.Equal("moveToNote", Str(vital, "replacedCitations"));
+        Assert.Equal("drop", Str(vital, "replacedCitations"));
     }
 
     [Fact]
@@ -185,6 +188,108 @@ public class ChangesetDrafterHeldDateTests
         Assert.Contains("check that both describe the same event", Assert.Single(result.Decisions, d => d.Kind == "open").Detail);
     }
 
+    // ---- a plain date that contradicts the record's ----
+
+    [Theory]
+    [InlineData("@I1@", "BIRT")]
+    [InlineData("@I1@", "DEAT")]
+    [InlineData("@F1@", "MARR")]
+    public void AContradictingDate_AgainstAnUngradedCitedOne_IsLeftOpenNamingBothValuesAndTheCitation(string record, string tag)
+    {
+        var result = Draft(HoldingAt(record, tag, "29 NOV 1760", null, [null]), Finding("F-1", "1761", quay: 1, tag: tag, record: record));
+
+        Assert.Empty(OpsOf(result, "createOrUpdateVital"));
+        Assert.Empty(OpsOf(result, "createOrUpdateCitation"));
+        var open = Assert.Single(result.Decisions, d => d.Kind == "open");
+        Assert.Equal($"{tag} on {record}: the record's 29 NOV 1760 (cited without a grade; cited to @S1@ \"p. 0\" ungraded) does not fit 1761 (F-1, QUAY 1); " +
+            "the record's date was kept; nothing was drafted for it. Write a note on the conflict, or give the fact replaceHeld with the reason", open.Detail);
+        Assert.Equal(["F-1"], open.Findings);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public void AContradictingDate_AgainstAnEquallyOrBetterGradedOne_IsLeftOpen(int grade)
+    {
+        var result = Draft(HoldingTag("BIRT", "29 NOV 1760", grade), Finding("F-1", "1761", quay: 1, tag: "BIRT"));
+
+        Assert.Empty(OpsOf(result, "createOrUpdateVital"));
+        Assert.Contains($"cited to @S1@ \"p. 0\" QUAY {grade}", Assert.Single(result.Decisions, d => d.Kind == "open").Detail);
+    }
+
+    [Theory]
+    [InlineData(null, "drop")]
+    [InlineData("moveToNote", "moveToNote")]
+    [InlineData("drop", "drop")]
+    [InlineData("keep", null)]
+    public void ReplaceHeld_OverwritesAnUngradedCitedDate_HandlingItsCitationsAsDirected(string? disposition, string? expected)
+    {
+        var result = Draft(HoldingTag("BIRT", "29 NOV 1760", [null]),
+            Finding("F-1", "1761", quay: 1, tag: "BIRT", replaceHeld: "the book misreads the town record", replacedCitations: disposition));
+
+        var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
+        Assert.Equal("1761", DateOf(vital));
+        Assert.Equal(expected, Str(vital, "replacedCitations"));
+        Assert.DoesNotContain(result.Decisions, d => d.Kind == "open");
+    }
+
+    [Fact]
+    public void AContradictingDate_ReplacesAnUncitedOne()
+    {
+        var result = Draft(HoldingTag("BIRT", "29 NOV 1760"), Finding("F-1", "1761", quay: 1, tag: "BIRT"));
+
+        Assert.Equal("1761", DateOf(Assert.Single(OpsOf(result, "createOrUpdateVital"))));
+        Assert.Contains(result.Decisions, d => d.Kind == "resolved" && d.Detail.Contains("29 NOV 1760 does not fit 1761 and is uncited"));
+    }
+
+    [Fact]
+    public void AContradictingDate_ReplacesALowerGradedOne_AndRemovesItsCitations()
+    {
+        var result = Draft(HoldingTag("BIRT", "29 NOV 1760", 0), Finding("F-1", "1761", quay: 1, tag: "BIRT"));
+
+        var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
+        Assert.Equal("1761", DateOf(vital));
+        Assert.Equal("drop", Str(vital, "replacedCitations"));
+        Assert.Contains(result.Decisions, d => d.Kind == "resolved" && d.Detail.Contains("cited at QUAY 0, below the finding's QUAY 1"));
+    }
+
+    [Fact]
+    public void AContradictingDate_WithAMoreDetailedPlace_KeepsTheDateAndAddsThePlace()
+    {
+        var result = Draft(HoldingAt("@I1@", "BIRT", "29 NOV 1760", "Maine", [null]),
+            Finding("F-1", "1761", quay: 1, tag: "BIRT", place: "Kittery, York, Maine"));
+
+        var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
+        Assert.Null(DateOf(vital));
+        Assert.Equal("Kittery, York, Maine", Str(vital, "place"));
+        Assert.Null(Str(vital, "replacedCitations"));
+        var open = Assert.Single(result.Decisions, d => d.Kind == "open");
+        Assert.Contains("the record's date was kept; the finding's more detailed place Kittery, York, Maine was added", open.Detail);
+        Assert.DoesNotContain(result.Decisions, d => d.Kind == "resolved");
+    }
+
+    [Theory]
+    [InlineData("Maine")]
+    [InlineData("Boston, Massachusetts")]
+    public void AContradictingDate_WithAPlaceThatAddsNothing_DraftsNothing(string place)
+    {
+        var result = Draft(HoldingAt("@I1@", "BIRT", "29 NOV 1760", "Kittery, York, Maine", [null]),
+            Finding("F-1", "1761", quay: 1, tag: "BIRT", place: place));
+
+        Assert.Empty(OpsOf(result, "createOrUpdateVital"));
+        Assert.Contains("nothing was drafted for it", Assert.Single(result.Decisions, d => d.Kind == "open").Detail);
+    }
+
+    [Fact]
+    public void AMoreDetailedPlace_BesideTheRecordsOwnDate_IsStillAdded()
+    {
+        var result = Draft(HoldingAt("@I1@", "BIRT", "29 NOV 1760", "Maine", [null]),
+            Finding("F-1", "29 NOV 1760", quay: 1, tag: "BIRT", place: "Kittery, York, Maine"));
+
+        Assert.Equal("Kittery, York, Maine", Str(Assert.Single(OpsOf(result, "createOrUpdateVital")), "place"));
+        Assert.DoesNotContain(result.Decisions, d => d.Kind == "open");
+    }
+
     // ---- the author replaces or withdraws ----
 
     [Fact]
@@ -199,13 +304,13 @@ public class ChangesetDrafterHeldDateTests
     }
 
     [Fact]
-    public void ReplaceHeld_SettlesAContradictionAndMovesTheOldCitations()
+    public void ReplaceHeld_SettlesAContradictionAndRemovesTheOldCitations()
     {
         var result = Draft(Holding("17 OCT 1810", 3), Finding("F-1", "BEF 27 SEP 1796", replaceHeld: "1810 is the son's death"));
 
         var vital = Assert.Single(OpsOf(result, "createOrUpdateVital"));
         Assert.Equal("BEF 27 SEP 1796", DateOf(vital));
-        Assert.Equal("moveToNote", Str(vital, "replacedCitations"));
+        Assert.Equal("drop", Str(vital, "replacedCitations"));
         Assert.DoesNotContain(result.Decisions, d => d.Kind == "open");
     }
 
@@ -228,7 +333,7 @@ public class ChangesetDrafterHeldDateTests
         var delete = Assert.Single(OpsOf(result, "deleteVital"));
         Assert.Equal("BIRT", Str(delete, "fact"));
         Assert.Equal("ABT 1755", delete.GetProperty("match").GetProperty("date").GetString());
-        Assert.Equal("moveToNote", Str(delete, "deletedCitations"));
+        Assert.Null(Str(delete, "deletedCitations"));
         Assert.Empty(OpsOf(result, "createOrUpdateVital"));
         Assert.Contains(result.Decisions, d => d.Kind == "resolved" && d.Detail.Contains("withdrawn: BIRT on @I1@ (ABT 1755), she bore children 1735-1739"));
         Assert.Contains(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("record the evidence in a note"));
@@ -289,11 +394,43 @@ public class ChangesetDrafterHeldDateTests
     }
 
     [Fact]
+    public void AMoreDetailedPlaceBesideAContestedDate_KeepsTheDateAndBothCitationsWhenApplied()
+    {
+        const string held = """
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 NAME Micajah /Test/
+            1 SEX M
+            1 BIRT
+            2 DATE 29 NOV 1760
+            2 PLAC Maine
+            2 SOUR @S1@
+            3 PAGE p. 0
+            0 @S1@ SOUR
+            1 TITL Vital Records
+            0 TRLR
+            """;
+        var draft = Draft(HoldingAt("@I1@", "BIRT", "29 NOV 1760", "Maine", [null]),
+            Finding("F-1", "1761", quay: 1, tag: "BIRT", place: "Kittery, York, Maine"));
+
+        var applied = ChangesetApplier.Run(Encoding.UTF8.GetBytes(held), Changeset.Parse(draft.Changeset!.ToJsonString()), [1], dryRun: false);
+
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        string output = Encoding.UTF8.GetString(applied.OutputBytes!);
+        Assert.Contains("2 DATE 29 NOV 1760", output);
+        Assert.Contains("2 PLAC Kittery, York, Maine", output);
+        Assert.Contains("2 SOUR @S1@", output);
+        Assert.Equal(2, output.Split('\n').Count(line => line.StartsWith("2 SOUR ")));
+    }
+
+    [Fact]
     public void AWithdrawal_IsAcceptedByTheApplier()
     {
         var applied = Apply(Draft(HoldingTag("BIRT", "ABT 1755", 0), Finding("F-1", null, tag: "BIRT", withdraw: "she bore children 1735-1739")));
 
         Assert.True(applied.Success, string.Join("; ", applied.Errors));
-        Assert.Contains(applied.Log, line => line.Contains("deleteVital BIRT on @I1@: deleted (1 citation(s) moved to note)"));
+        Assert.Contains(applied.Log, line => line.Contains("deleteVital BIRT on @I1@: deleted (1 citation(s) dropped)"));
     }
 }

@@ -26,7 +26,7 @@ public sealed class ValidateChangesetTool
         "success/log/errors shape apply_changeset would, but the file is never touched. Call this to check a " +
         "changeset, or re-check it after edits, before calling apply_changeset with the same arguments. Always " +
         "available, even on a server started with --read-only. When the server was started with a policy file, " +
-        "every violation of it (banned phrases, a low-graded fact with no verification note, a death place " +
+        "every violation of it (banned phrases, a death place " +
         "with no death evidence) is reported as an error here, so it surfaces at the dry run. Pass \"cards\" to " +
         "get pointsPreview: which research cards the changeset closes by what it writes to the tree (cards may be " +
         "given inline or by cardsPath, a file holding {\"cards\": [...]}). Pass reportPath to write the full result " +

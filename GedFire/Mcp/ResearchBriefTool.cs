@@ -27,7 +27,7 @@ public sealed class ResearchBriefTool
         "kin (parents, siblings, spouses with marriage date and place, and children, each as a one-line " +
         "{xref, name, born, died} summary, not a full record); gaps (exactly the targets select_targets " +
         "would report for this person, in the same record shape, so the caller sees what would score, " +
-        "including a man's Biography card when he has another card); suppressedCards (the cards select_targets " +
+        "including a man's Biography card, even when he has no other card); suppressedCards (the cards select_targets " +
         "would withhold for this person, with the same reasons, such as a New child card a couple almost certainly " +
         "could not win); " +
         "possibleDuplicateOf and possibleDuplicateCount (the same-person candidates select_targets computes, " +

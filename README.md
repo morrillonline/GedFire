@@ -91,8 +91,8 @@ a record says, identify whom it concerns, then propose a cited change.
 - **Deterministic mechanics.** Tools rank identity candidates, reconcile
   compatible findings, reuse sources, and flag disagreements. The agent
   supplies the evidence and judgment.
-- **Rules you control.** A policy file can reject banned prose, require
-  verification notes, and demand evidence for a death place.
+- **Rules you control.** A policy file can reject banned prose and demand
+  evidence for a death place.
 - **Local processing.** GedFire makes no network requests and sends no
   telemetry. Your MCP client controls where tool results go.
 - **One publishing source.** Generate family pages directly from the reviewed
@@ -244,8 +244,7 @@ changesets approved ahead of this one, applied in memory in order, so a
 conflict between packages shows before apply. `draft_package` writes a numbered proposal
 from the finished changesets, including evidence, grades, and any identity
 arguments the author supplied. It also checks the changesets together, and
-refuses a package that grades one extract twice, names one new person two ways,
-or carries a verification note that understates the package's evidence.
+refuses a package that grades one extract twice or names one new person two ways.
 
 **Apply only what your review process accepts.** Select the approved items
 with `apply_changeset`. It validates and verifies them again before writing.

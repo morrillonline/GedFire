@@ -111,9 +111,10 @@ public static class GapDetector
 
     // -------------------------------------------------------------------
     // Biography — not a gap: one repeatable card per man for cited
-    // biographical prose, open even when prose exists, and offered only
-    // beside another of his cards. Priced like enrichment: era and region of
-    // the person's own birth, no anchor-strength adjustment.
+    // biographical prose, open even when prose exists. A drawn man gets it
+    // only beside another of his cards; a man the owner names gets it alone.
+    // Priced like enrichment: era and region of the person's own birth, no
+    // anchor-strength adjustment.
     // -------------------------------------------------------------------
 
     public const int BiographyPoints = 3;
@@ -126,10 +127,20 @@ public static class GapDetector
     /// Every card that pays for each of <paramref name="people"/>, in order: the person's <paramref name="gapCards"/>,
     /// then, for a man with at least one of them, his Biography card.
     /// </summary>
-    public static List<SelectionTarget> WithBiographyCards(IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards)
+    public static List<SelectionTarget> WithBiographyCards(IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards) =>
+        WithBiographyCards(people, gapCards, biographyAlone: false);
+
+    /// <summary>
+    /// Every card that pays for each of the named <paramref name="people"/>, in order: the person's <paramref name="gapCards"/>,
+    /// then, for a man, his Biography card, even when he has no other card.
+    /// </summary>
+    public static List<SelectionTarget> WithNamedBiographyCards(IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards) =>
+        WithBiographyCards(people, gapCards, biographyAlone: true);
+
+    static List<SelectionTarget> WithBiographyCards(IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards, bool biographyAlone)
     {
         var byPerson = gapCards.ToLookup(c => c.Xref, StringComparer.Ordinal);
-        return [.. people.SelectMany(person => byPerson[person.Xref].Any()
+        return [.. people.SelectMany(person => biographyAlone || byPerson[person.Xref].Any()
             ? byPerson[person.Xref].Concat(BiographyCards([person]))
             : [])];
     }

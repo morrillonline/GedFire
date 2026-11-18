@@ -11,7 +11,7 @@ namespace GedFire.Mcp;
 // ---------------------------------------------------------------------------
 // The draft_changeset MCP tool: compiles findings into a changeset in the op
 // dialect so the mechanical parts (source reuse, merged extracts, verbatim
-// locators, verification notes, QUAY ceilings) are written the same way every
+// locators, QUAY ceilings) are written the same way every
 // time. The author supplies the judgement: each fact's value and grade, and
 // any note wording. Never touches the GEDCOM file; validate_changeset and
 // apply_changeset remain the only tools that read or write a changeset's effect.
@@ -26,11 +26,10 @@ public sealed class DraftChangesetTool
         "time: one source record per collection (an existing source with the same title and author is cited instead " +
                 "of minted; titles match ignoring case and punctuation, and a trailing \" - <person name>\" is dropped, so " +
                 "record-specific text belongs in the locator), one merged extract per (source, page, grade) in each item, the locator copied verbatim into the " +
-        "citation page, a verification note for each fact whose best citation (in the item or already in the document) is at or below the policy ceiling " +
-        "(QUAY 1 without a policy file), naming the fact in words (\"occupation\", never OCCU) and every record it rests on across the draft's items, " +
-        "so two items citing one fact from different records write one note naming both; skipped when a note on the record already says so; and a refusal, naming the field, for a QUAY the source and information " +
+        "citation page; and a refusal, naming the field, for a QUAY the source and information " +
         "class cannot support, a target name that differs from the person's recorded name, or prose the server's " +
-        "policy bans. You supply the judgement: each fact's record, tag, date, place (or a text value such as a NAME " +
+        "policy bans. It never writes a note of its own: a person's notes hold only their life story, as a Register-style report would show it. " +
+        "You supply the judgement: each fact's record, tag, date, place (or a text value such as a NAME " +
         "change) and QUAY, and any note text. A repeatable tag (CENS, RESI, ...) is placed by date: a date no instance " +
         "the record holds has is added (\"mode\":\"add\", even on a record with none), a date one instance has updates it " +
         "by match (a bare year names a fuller date in that year), and a date several have is refused, naming them. " +
@@ -39,8 +38,8 @@ public sealed class DraftChangesetTool
         "New people and families come from people " +
         "(placeholder xrefs) and relations (spouse, child, parent), compiled to the dialect's relationship ops with " +
         "the finding's citation. NAME facts may correct the target or people bound by existingPeople or relations; " +
-        "a fact's record alone is not a binding. Surname changes require allowSurnameChange=true. NAME corrections " +
-        "preserve the previous name and move its citations to a plain-sentence note, never dropping them. Relations use " +
+        "a fact's record alone is not a binding. Surname changes require allowSurnameChange=true. A NAME correction " +
+        "removes the previous name and its citations; it writes no note about them. Relations use " +
         "the finding's citation. A new parent, spouse or child is refused when the person it attaches to already has a " +
         "parent in that role, or a spouse or child of an agreeing name; the error names that relative's xref, to use in " +
         "place of the placeholder or to list in the relation's notDuplicateOf. A note may rewrite an existing note (match), delete it (match and withdraw, a reason), " +
@@ -50,7 +49,10 @@ public sealed class DraftChangesetTool
         "a biography note must cite at least one; " +
         "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +
         "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
-        "way to a finding's bound that excludes it only when uncited or graded lower; otherwise it is left open. Hard bounds " +
+        "way to a finding's date or bound that contradicts it only when uncited or every citation is graded below the finding; " +
+        "a citation without a QUAY holds it. Otherwise the record's date is kept and an open decision names it, its citations " +
+        "(source and page) and the finding's conflicting date, so you can write a conflict note or pass replaceHeld; a more " +
+        "detailed place from the finding is still added beside it. Hard bounds " +
         "(BEF, AFT, BET) narrow one another into one range. " +
         "Findings aimed at the same target become one item. Returns the changeset, a " +
         "decisions list (what was reused, minted, merged, or left open for you), and errors; the changeset follows the " +
@@ -130,7 +132,7 @@ public sealed class DraftChangesetTool
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "kind": { "type": "string", "enum": ["reused-source", "minted-source", "minted-person", "merged-citation", "kept-citation", "verification-note", "dropped-seed", "resolved", "open"] },
+                  "kind": { "type": "string", "enum": ["reused-source", "minted-source", "minted-person", "merged-citation", "kept-citation", "dropped-seed", "resolved", "open"] },
                   "detail": { "type": "string" },
                   "findings": { "type": "array", "items": { "type": "string" } }
                 },

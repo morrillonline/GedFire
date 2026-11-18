@@ -6,9 +6,7 @@ namespace GedCore.Apply;
 /// CreateOrUpdate for the Note noun: research reasoning and conflict analysis
 /// (never a dated fact assertion). Key: (record, exact full text). A note with the
 /// exact requested text → no-op; "match" naming an existing note's full text →
-/// that note is rewritten; otherwise → create. The touched note registers as
-/// this item's note so a moveToNote disposition in the same item reuses it —
-/// including on re-runs, which keeps them no-ops.
+/// that note is rewritten; otherwise → create.
 ///
 /// Optional <c>citations</c> attach SOUR structures beneath the NOTE (GEDCOM 7
 /// allows a citation under a NOTE). This is the narrative-biography form: the
@@ -19,8 +17,7 @@ namespace GedCore.Apply;
 /// Purpose "biography" says the note is the person's cited biographical prose
 /// and records the citations the op added for biography credit
 /// (<see cref="BiographyNotes"/>); the purpose lives in the changeset only and
-/// writes nothing extra to the file. A note a biography op wrote never
-/// receives moveToNote citations in the same run.
+/// writes nothing extra to the file.
 /// </summary>
 public sealed class CreateOrUpdateNoteOp : ChangeOp
 {
@@ -84,12 +81,10 @@ public sealed class CreateOrUpdateNoteOp : ChangeOp
         }
 
         var heldCitations = BiographyNotes.CitationsOf(note).ToHashSet();
-        state.NotesAddedThisItem[target.Xref!] = note;
 
         var citeChanges = CitationReconciler.Upsert(state, note, state.ResolveCitations(Citations));
         if (IsBiography)
         {
-            state.BiographyNotesWritten.Add(note);
             state.AddBiographyCitations(target.Xref!, BiographyNotes.CitationsOf(note).Where(c => !heldCitations.Contains(c)));
             state.AddBiographyText(target.Xref!, note.FullValue());
         }

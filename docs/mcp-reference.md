@@ -196,8 +196,8 @@ historical person who might bear that name.
 `research_brief` combines the person's full record with:
 
 - `kin`: parents, siblings, spouses with marriage details, and children.
-- `gaps`: the same targets `select_targets` reports for the person, including
-  a man's Biography card when he has another card.
+- `gaps`: the same targets `select_targets` reports for the person when named
+  in `xrefs`, including a man's Biography card even when he has no other card.
 - `suppressedCards`: the cards `select_targets` would withhold for the person,
   with the same reasons.
 - `possibleDuplicateOf`: up to three scored candidates, plus the full count.
@@ -222,11 +222,13 @@ the GEDCOM path; `count` in it is the number of cards, and `totalCandidates`
 the gap cards before the draw. The clock seeds the draw. The CLI's
 `select-targets --count` is the same number of people.
 Alternatively, pass `xrefs` instead of people and surnames to score specified
-people the same way, deterministically. This names people without gap cards
-in `xrefsWithoutGaps` and sets `draw.seed` to null. An unknown xref is an error.
+people the same way, deterministically. A named man also gets his Biography
+card when he has no other gap. `xrefsWithoutGaps` names the people who get no
+card at all, such as a woman with no gap or anyone inside the privacy floor,
+and `draw.seed` is null. An unknown xref is an error.
 
-- A man outside the privacy floor who has at least one other card also gets
-  one `Biography` card; women and people with no other card get none. It
+- A man outside the privacy floor gets one `Biography` card: in the draw, only
+  beside another of his cards; with `xrefs`, always. Women get none. It
   stays open for people with complete vitals or existing prose, and pays again
   for each later changeset that adds new information: a new citation, or a
   biography note whose text none of the person's notes carried. `nominalPoints` is 3, and
@@ -413,17 +415,20 @@ that hold these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-Current versions: `finding` 3.3 (a fact takes `cites`, and a cite may name a
+Current versions: `finding` 4.0 (`replacedCitations` drops `moveToNote`; 3.3
+let a fact take `cites` and a cite name a
 finding of any target; 3.2 let a parent relation take `notDuplicateOf`;
 3.1 let a note `withdraw` the note its `match` names; 3.0 required `cites` on
 a biography note; 2.0
-tightened date, tag, excerpt, grade and sex rules), `finding-file` 3.3 (embeds
-`finding` 3.3; 2.0 refused unknown keys and a mismatched `draft.id`),
+tightened date, tag, excerpt, grade and sex rules), `finding-file` 4.0 (embeds
+`finding` 4.0; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
-`persons[].xref`), `argument` 1.0, `changeset` 2.0 (refuses every legacy shape,
-including the `schemaVersion` key; 1.1 let `createOrUpdateParent` take
+`persons[].xref`), `argument` 1.0, `changeset` 3.0 (`replacedCitations` drops
+`moveToNote` and `deleteVital` drops `deletedCitations`; 2.0 refused every
+legacy shape, including the `schemaVersion` key; 1.1 let `createOrUpdateParent` take
 `notDuplicateOf`), `cards` 1.0, `changeset-report` 2.0 (drops `warnings`) and
-`draft-report` 2.0 (embeds `changeset` 2.0). A schema
+`draft-report` 3.0 (embeds `changeset` 3.0; drops the `verification-note`
+decision kind). A schema
 document states structure only. `validate_finding` is the full check. In its default
 strict mode, ajv rejects the `x-schemaVersion` annotation. Register it with
 `ajv.addKeyword("x-schemaVersion")`, or pass `--strict=false` to `ajv-cli`.
@@ -465,7 +470,7 @@ The compiler rejects a citation grade above these ceilings:
 | User-contributed | 0 | 0 |
 
 These are ceilings, not automatic grades or proof of accuracy. The author
-assigns each fact's grade. Policy can require verification notes for low grades.
+assigns each fact's grade.
 
 ### Reconciliation
 
@@ -496,12 +501,19 @@ assigns each fact's grade. Policy can require verification notes for low grades.
   periods, and a trailing `County`, `Co.`, or `Parish`. A finding that differs
   from the record only this way is cited, not written; the record's spelling is
   kept. The same rule applies to points scoring and GEN301 place matching.
-- Precision decides only between dates that can both be true. When a bound
-  excludes the record's date (or the record's bound excludes the finding's
-  date), the record's value gives way if it is uncited or graded below the
-  finding: the bound is written and the old citations move to a note. Otherwise
-  nothing is drafted for the fact and an `open` decision asks the author to
-  settle it.
+- Precision decides only between dates that can both be true. When two dates
+  contradict (two plain dates that disagree, a bound that excludes the
+  record's date, or the record's bound that excludes the finding's date), the
+  record's value gives way only if it is uncited or every citation carries a
+  QUAY below the finding's: the finding's date is written and the old
+  citations are removed. A citation with no QUAY, common in imported
+  files, holds the record's date like a graded one. Otherwise the record's
+  date is kept and an `open` decision names the record's date, its citations
+  (source xref, page and grade), the findings and their conflicting date. Write
+  a note on the conflict, or give the fact `replaceHeld` with a reason. A
+  finding's place that says more than the record's (or a place where the
+  record has none) is still added beside the kept date, with the finding's
+  citation; otherwise nothing is drafted for the fact.
 - `ABT`, `CAL` and `EST` have no defined tolerance, so they never replace a
   specific date that is more than a year away; the fact is left `open`. A
   specific finding still replaces such an estimate on the record, with an
@@ -511,22 +523,11 @@ assigns each fact's grade. Policy can require verification notes for low grades.
 - Name reconciliation only expands documented nicknames with matching surname,
   suffix, and given-name count. Other disagreements stay `open`.
 
-The compiler maintains its own standard verification notes, one per fact. A
-fact gets a note only when its best citation, in the item or already in the
-document, is at or below the policy ceiling, the same test the policy applies
-to each item. The note names every record the fact rests on: the document's,
-and those cited for that fact by every item of the draft, so when two items
-cite one fact from different records, neither says it rests on one record
-alone, and both write the same note, which applies once. Draft such items
-together, in one `draft_changeset` call. A note names each fact by its word
-("occupation", "residence", "birth"), never by its GEDCOM tag; a note an older
-version wrote with a tag, such as "the occu of", still counts for that fact.
-No note is added when a note on the record already says the fact
-awaits verification, however worded. Once stronger
-citations lift a named fact above the policy ceiling, it removes that fact
-from the note or deletes the note when no low-grade facts remain. It preserves
-sources. It leaves other verification-note wording to the author and raises an
-`open` decision. An author's explicit note rewrite with `match` takes precedence.
+The compiler never writes a note of its own. A person's notes are part of
+their life story, and the family web page follows the Register style, so a
+note holds only what a Register-style report would show: no verification
+reminders, no change logs, and no record of a replaced value. A low grade is
+carried by the citation's QUAY.
 
 ### People, relationships, and notes
 
@@ -590,15 +591,17 @@ The warning requests source review, is not an error, and does not block applicat
   child the family does not list.
 - A fact can carry `substructures`, such as an `EVEN` with a `TYPE`.
   Such an event adds an instance rather than matching by date.
-- `replacedCitations` chooses `keep`, `drop`, or `moveToNote` for citations on
-  a replaced value. NAME corrections always use `moveToNote`; `keep` and
-  `drop` are rejected so old citations cannot attest the new name or be lost.
+- `replacedCitations` chooses `keep` or `drop` for citations on
+  a replaced value. A value corrected by stronger evidence or `replaceHeld`
+  drops its citations by default: a corrected fact has no place in the
+  record, in a note or elsewhere. NAME corrections refuse `keep`, so old
+  citations cannot attest the new name.
 - `citeOnly: true` cites an existing fact; date/place select its instance.
 - `replaceHeld: "<reason>"` writes a single-valued fact's date and place over
   the record's, even a more specific or better-cited one. A contradicted value's
-  citations move to a note unless `replacedCitations` says otherwise.
+  citations are removed unless `replacedCitations` says otherwise.
 - `withdraw: "<reason>"` deletes the record's fact with nothing in its place;
-  date/place select the instance, and its citations move to a note. Like a
+  date/place select the instance, and its citations are removed with it. Like a
   removal, it raises an `open` decision unless the finding adds a cited note.
   The reason is shown to the reviewer in the changeset's findings table.
 - A note's `match` names the exact text to rewrite. `cites` lists
@@ -660,14 +663,10 @@ to one op. A different or removed surname is refused unless that NAME fact
 sets `allowSurnameChange: true`. Keep `target.name`, when supplied, as the
 currently recorded name, not the proposed correction.
 
-Applying a different NAME preserves the losing value in a plain-sentence
-NOTE, for example, "The previous name was George Wadleigh, which was uncited."
-If cited, the sentence says "cited" and the original citation subtrees move
-from NAME into that note. Its prose contains no record ids. This preservation
-is performed by the NAME op's `moveToNote` disposition against the actual
-document at apply time. Unchanged names create no preservation note, and a
-second apply is a no-op. Both `validate_changeset` and `check_plausibility`
-include the old-name-to-new-name replacement in their `log`.
+Applying a different NAME replaces the old name and removes its citations. No
+note records the old name. Unchanged names change nothing, and a second apply
+is a no-op. Both `validate_changeset` and `check_plausibility` include the
+old-name-to-new-name replacement in their `log`.
 
 ### Identity arguments and output
 
@@ -732,11 +731,6 @@ cure, and no proposal is written while one stands:
 - Two new people whose names share the first given name and the surname are
   refused as one person named two ways, unless declared in `sameNamePeople`.
   A placeholder names a person only within its own changeset.
-- A verification note saying a fact rests on one record alone is refused when
-  the package cites that fact, on that record, from two or more distinct
-  records (source and page). The drafter avoids this within one
-  `draft_changeset` call, so draft the findings for one fact together, or
-  draft the later changeset once the earlier one is applied.
 
 Each numbered item presents its cited findings, extracts, source and
 information classes, grades, and supplied identity arguments:
@@ -754,12 +748,11 @@ unknown keys stop startup. See the [complete example](policy.example.json).
 |---|---|
 | `bannedPhrases` | Reject case-insensitive phrases in note text or citation pages. |
 | `bannedPatterns` | Reject regular-expression matches in note text or citation pages. |
-| `verificationNote` | Require a note with `notePrefix` that names the fact (by its label, such as "birth", or a word for it, such as "born") on each record receiving a fact whose strongest citation is at or below `maxQuay`. A citation the document already holds on the fact counts toward its strongest citation (for a repeatable fact such as CENS, only the instance on the same date). The note may be in the same item or already on the record, unless the item rewrites or deletes it. With `after`, the document is read as the earlier changesets leave it. |
 | `deathPlaceEvidence` | Require a death-place citation whose page or `dataText` matches this regular expression. |
 
-For example, `{"maxQuay": 1, "notePrefix": "needs independent verification:"}`
-requires a note identifying the affected record. It can sit on the record,
-name the person's given name, or mention marriage for a marriage fact.
+A policy file that still holds the retired `verificationNote` key stops
+startup with a message to delete it: GedFire no longer writes or requires
+verification notes.
 
 Only selected items undergo policy checks. Violations appear as
 `policy: item 2: ...`; validation reports errors and apply refuses the changes.
@@ -814,8 +807,7 @@ A `biography` card closes at its `points` when a `createOrUpdateNote` with
 Biographical notes are plain
 person-level notes with prose and at least one source citation; GedFire writes
 no marker or extension, so they are recognized from standard GEDCOM structure.
-Only an op with the purpose earns credit, and
-uncited verification notes never qualify. A citation is its source and page
+Only an op with the purpose earns credit. A citation is its source and page
 (`SOUR` + `PAGE`), so quotation text, QUAY, spacing or case in the page,
 citation order, and a placeholder or copied source xref do not make it new.
 Existing prose never exhausts the card: a new note beside it, a new

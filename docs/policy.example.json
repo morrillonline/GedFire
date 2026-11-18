@@ -6,9 +6,5 @@
   "bannedPatterns": [
     "@[ISFMN][A-Za-z]*\\d+@"
   ],
-  "verificationNote": {
-    "maxQuay": 1,
-    "notePrefix": "needs independent verification:"
-  },
   "deathPlaceEvidence": "\\b(died|death)\\b"
 }

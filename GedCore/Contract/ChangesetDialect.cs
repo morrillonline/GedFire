@@ -31,7 +31,7 @@ public sealed record DialectShape(string Name, string Description, IReadOnlyList
 public static class ChangesetDialect
 {
     /// <summary>The published changeset schema's version (its x-schemaVersion); changeset files do not carry it.</summary>
-    public const string SchemaVersion = "2.0";
+    public const string SchemaVersion = "3.0";
 
     /// <summary>The shape name an op array names: each element is the op its "op" field names.</summary>
     public const string Op = "op";
@@ -96,12 +96,11 @@ public static class ChangesetDialect
             Enum("mode", "\"upsert\" (default) updates a matched or sole instance or creates one; \"add\" creates a new instance unless one with the same value, date and place exists, which gains the citations instead. \"add\" forbids match.", "upsert", "add"),
             Objs("substructures", "substructure", "Extra GEDCOM substructures written under the fact."),
             Citations("They cite the fact this op writes."),
-            Enum("replacedCitations", "What happens to the citations already on a fact whose value this op replaces: \"keep\" (default), \"drop\", or \"moveToNote\".", "keep", "drop", "moveToNote")),
+            Enum("replacedCitations", "What happens to the citations already on a fact whose value this op replaces: \"keep\" (default) or \"drop\".", "keep", "drop")),
         OpShape("deleteVital",
             Xref("record", "Target person or family xref.", required: true),
-            Str("fact", "The GEDCOM tag to remove.", required: true),
-            Match,
-            Enum("deletedCitations", "\"drop\" (default) or \"moveToNote\", which keeps the fact's citations under a NOTE on the record.", "drop", "moveToNote")),
+            Str("fact", "The GEDCOM tag to remove, with its citations.", required: true),
+            Match),
         OpShape("createOrUpdateSpouse",
             Xref("person", "The already-known partner's xref.", required: true),
             PersonRef("spouse", "The other partner."),

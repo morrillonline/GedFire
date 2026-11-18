@@ -48,30 +48,6 @@ public class PriorChangesetsTests : IDisposable
     static JsonElement After(params string[] paths) =>
         JsonSerializer.SerializeToElement(paths.Select(p => new { changesetPath = p, items = "all" }));
 
-    [Fact]
-    public async Task TheVerificationPolicy_ReadsTheDocumentAsTheEarlierChangesetsLeaveIt()
-    {
-        string ged = Write("tree.ged", Ged.Replace("0 TRLR\r\n", "0 @S1@ SOUR\r\n1 TITL Register\r\n0 TRLR\r\n"));
-        string noted = Write("noted.json", """
-            { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateNote", "record": "@I1@", "text": "Needs independent verification: the birth rests on one register." } ] } ] }
-            """);
-        string birth = Write("birth.json", """
-            { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1900",
-                "citations": [ { "source": "@S1@", "page": "p. 4", "quay": 1 } ] } ] } ] }
-            """);
-        var policy = GedCore.Policy.ChangesetPolicy.Load(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
-            """{ "verificationNote": { "maxQuay": 1, "notePrefix": "needs independent verification:" } }""")));
-        var tool = new ValidateChangesetTool(ged, new ToolGate(), policy);
-
-        var alone = await tool.HandleAsync(new ValidateChangesetArguments(birth, "all"), CancellationToken.None);
-        var afterNote = await tool.HandleAsync(new ValidateChangesetArguments(birth, "all", After: After(noted)), CancellationToken.None);
-
-        Assert.Contains(Errors(alone), e => e.StartsWith("policy: item 1: the BIRT on @I1@"));
-        Assert.True(afterNote.StructuredContent!.Value.GetProperty("success").GetBoolean(), string.Join("; ", Errors(afterNote)));
-    }
-
     async Task<CallToolResult> Validate(string ged, string changeset, JsonElement after) =>
         await new ValidateChangesetTool(ged, new ToolGate()).HandleAsync(new ValidateChangesetArguments(changeset, "all", After: after), CancellationToken.None);
 

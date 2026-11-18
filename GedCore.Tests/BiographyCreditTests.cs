@@ -152,31 +152,6 @@ public class BiographyCreditTests : ApplyTestBase
         Assert.Empty(result.Changes.Biographies);
     }
 
-    [Fact]
-    public void ANoteABiographyOpWrote_NeverReceivesCitationsMovedOffAReplacedFact()
-    {
-        WriteFileWithNotesOnAllen();
-        RunExpectSuccess("""
-            { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citations": [{ "source": "@S00001@", "page": "p. 1", "quay": 1 }] } ] } ] }
-            """);
-
-        var result = RunExpectSuccess($$"""
-            { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateNote", "record": "@I00001@", "text": "{{Service}}", "purpose": "biography",
-                "citations": [ {{PensionFile}} ] },
-              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "date": "2 APR 1928", "place": "Fergus Falls, Minnesota", "replacedCitations": "moveToNote",
-                "citations": [{ "source": "@S00002@", "page": "Birth affidavit", "quay": 2 }] } ] } ] }
-            """);
-
-        var notes = ReadDoc().ByXref["@I00001@"].ChildrenByTag("NOTE").ToList();
-        Assert.Equal(["@S00002@"], notes.Single(n => n.Value == Service).ChildrenByTag("SOUR").Select(s => s.Value));
-        Assert.Equal(["@S00001@"], notes.Single(n => n.Value != Service).ChildrenByTag("SOUR").Select(s => s.Value));
-        Assert.Equal([new BiographyCitation("@S00002@", "File 4471")], Assert.Single(result.Changes.Biographies).NewCitations);
-    }
-
     [Theory]
     [InlineData("@F00002@", "biography", "a biography note belongs on a person")]
     [InlineData("@I00001@", "obituary", "purpose must be \"biography\"")]
