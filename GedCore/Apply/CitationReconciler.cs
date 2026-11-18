@@ -27,6 +27,10 @@ internal enum CitationUpsertMode { CorrectPageInPlace, AddBeside }
 ///   4. in <see cref="CitationUpsertMode.CorrectPageInPlace"/>, a leftover that
 ///      could pair with several existing citations is ambiguous and is rejected.
 /// Nothing is ever removed here; removal is deleteCitation's job.
+///
+/// Commentary-only citations (<see cref="GedRecord.VoidPointer"/>) have no
+/// page to match on: one whose commentary the structure already carries is a
+/// no-op, and any other is added beside the rest.
 /// </summary>
 internal static class CitationReconciler
 {
@@ -35,7 +39,10 @@ internal static class CitationReconciler
         CitationUpsertMode mode = CitationUpsertMode.CorrectPageInPlace)
     {
         var changes = new List<string>();
-        foreach (var group in citations.GroupBy(c => c.Source))
+        foreach (var commentary in citations.Where(c => c.IsCommentaryOnly))
+            if (CommentaryCitation(structure, commentary.Commentary!) is null)
+                changes.Add(NodeBuilder.AddCitation(state, structure, commentary));
+        foreach (var group in citations.Where(c => !c.IsCommentaryOnly).GroupBy(c => c.Source))
         {
             var swapped = group.Select(c => c.SwappedFrom).OfType<string>().ToHashSet(StringComparer.Ordinal);
             var existing = Resolve.CitationsOnStructure(structure, group.Key, swapped);
@@ -81,6 +88,14 @@ internal static class CitationReconciler
 
     static bool SamePage(GedRecord node, Citation citation) =>
         citation.Page is null ? PageOf(node) is null : PageOf(node) == citation.Page;
+
+    /// <summary>The structure's commentary-only citation whose commentary reads <paramref name="commentary"/>, or null.</summary>
+    internal static GedRecord? CommentaryCitation(GedRecord structure, string commentary)
+    {
+        string text = NodeBuilder.NormalizeText(commentary);
+        return structure.ChildrenByTag("SOUR")
+            .FirstOrDefault(s => s.IsVoidPointer && s.FirstChild("NOTE")?.FullValue() == text);
+    }
 
     static string? PageOf(GedRecord node) => node.FirstChild("PAGE")?.Value;
 

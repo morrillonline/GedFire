@@ -81,6 +81,21 @@ public class ChangesetPolicyTests
             """)));
 
     [Fact]
+    public void BannedPhrase_InCitationCommentary_IsReported() =>
+        Assert.Contains("citation commentary contains banned phrase \"not added\"", Assert.Single(Load(Phrases).Check(Changeset(
+            """
+            { "op": "createOrUpdateCitation", "record": "@I1@", "fact": "BIRT",
+                 "citations": [{ "source": "@VOID@", "commentary": "The age was not added up." }] }
+            """))));
+
+    [Fact]
+    public void BannedPhrase_InCommentaryBeingDeleted_IsNotProse() =>
+        Assert.Empty(Load(Phrases).Check(Changeset(
+            """
+            { "op": "deleteCitation", "record": "@I1@", "fact": "BIRT", "source": "@VOID@", "commentary": "The age was not added up." }
+            """)));
+
+    [Fact]
     public void BannedPhrase_InAVerbatimExtract_IsNotProse() =>
         Assert.Empty(Load(Phrases).Check(Changeset(
             """

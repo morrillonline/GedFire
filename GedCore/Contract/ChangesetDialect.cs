@@ -31,7 +31,7 @@ public sealed record DialectShape(string Name, string Description, IReadOnlyList
 public static class ChangesetDialect
 {
     /// <summary>The published changeset schema's version (its x-schemaVersion); changeset files do not carry it.</summary>
-    public const string SchemaVersion = "3.0";
+    public const string SchemaVersion = "3.1";
 
     /// <summary>The shape name an op array names: each element is the op its "op" field names.</summary>
     public const string Op = "op";
@@ -139,8 +139,9 @@ public static class ChangesetDialect
             Str("fact", "The fact's GEDCOM tag. Omit it and note to address a family's own citations (family records only)."),
             Str("note", "The exact current text of one of the record's notes, to address that note's citations instead of a fact's."),
             Match,
-            Xref("source", "The cited source's xref to remove.", required: true),
-            Str("page", "Which citation to remove when the fact cites the source on several pages; required only then.")),
+            Xref("source", "The cited source's xref to remove, or @VOID@ to remove commentary named by commentary.", required: true),
+            Str("page", "Which citation to remove when the fact cites the source on several pages; required only then."),
+            Str("commentary", "With source @VOID@: the exact text of the commentary to remove.")),
         OpShape("createOrUpdateNote",
             Xref("record", "Target person or family xref; a person for purpose biography.", required: true),
             Str("text", "The note's full text. Refer to people and sources by name; text containing a record id such as @S1@ is refused.", required: true),
@@ -210,12 +211,13 @@ public static class ChangesetDialect
             Value, Date, Place,
             Citations("They cite this fact."),
         ]),
-        new("citation", "One source citation.",
+        new("citation", "One source citation, or the author's commentary alone.",
         [
-            Xref("source", "The cited source: an existing xref, or a @NewSource…@ placeholder a newSources group defines.", required: true),
+            Xref("source", "The cited source: an existing xref, or a @NewSource…@ placeholder a newSources group defines. @VOID@ cites no source: the citation then holds only commentary, and never counts as evidence.", required: true),
             Str("page", "Where in the source: the locator, copied verbatim."),
             Str("dataText", "The verbatim extract."),
             new("quay", DialectType.Integer, "The GEDCOM QUAY assessment, 0 to 3.") { Minimum = 0, Maximum = 3 },
+            Str("commentary", "A sentence or two of the author's own comment on what this source says, written as the citation's NOTE and printed after the source in the footnote. Required, and the only field, when source is @VOID@."),
         ]),
         new("marriage", "The MARR fact a createOrUpdateSpouse writes on the family.",
         [

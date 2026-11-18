@@ -107,7 +107,8 @@ public sealed class TreeChanges
         record.Children
             .Where(c => c.Tag is not ("CHAN" or "CREA"))
             .Where(c => c.FirstChild("DATE") is not null || c.FirstChild("PLAC") is not null)
-            .Select(c => new FactSignature(c.Tag, Payload(c.FirstChild("DATE")), Payload(c.FirstChild("PLAC")), c.FirstChild("SOUR") is not null));
+            .Select(c => new FactSignature(c.Tag, Payload(c.FirstChild("DATE")), Payload(c.FirstChild("PLAC")),
+                c.ChildrenByTag("SOUR").Any(s => !s.IsVoidPointer)));
 
     static string? Payload(GedRecord? node) => node?.FullValue().Trim() is { Length: > 0 } text ? text : null;
 

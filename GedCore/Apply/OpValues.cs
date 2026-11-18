@@ -12,6 +12,13 @@ public sealed record Citation(string Source, string? Page, string? DataText, int
     // SwappedFrom is set only by ApplyState.ResolveCitations when a shared
     // source was copied for this item: the original source this citation
     // replaces on the structures it is applied to.
+
+    /// <summary>A sentence or two of the author's own comment, written as the citation's NOTE and printed after the source in the footnote.</summary>
+    public string? Commentary { get; init; }
+
+    /// <summary>A citation of no source (<see cref="GedRecord.VoidPointer"/>): only the author's commentary. It is never evidence.</summary>
+    public bool IsCommentaryOnly => Source == GedRecord.VoidPointer;
+
     /// <summary>The citations of the fact an object writes.</summary>
     internal static IReadOnlyList<Citation> ReadAll(JsonElement el) => ReadArray(el, "citations");
 
@@ -26,7 +33,10 @@ public sealed record Citation(string Source, string? Page, string? DataText, int
         JsonRead.Str(el, "page"),
         JsonRead.Str(el, "dataText"),
         el.TryGetProperty("quay", out var q) && q.ValueKind == JsonValueKind.Number
-            ? q.GetInt32() : null);
+            ? q.GetInt32() : null)
+    {
+        Commentary = JsonRead.Str(el, "commentary"),
+    };
 }
 
 /// <summary>

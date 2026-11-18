@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace GedCore.Policy;
 
-/// <summary>Published prose (note text, citation pages) must not contain banned phrases or patterns.</summary>
+/// <summary>Published prose (note text, citation pages and commentary) must not contain banned phrases or patterns.</summary>
 internal sealed class BannedProseRule(IReadOnlyList<string> phrases, IReadOnlyList<Regex> patterns) : IPolicyRule
 {
     public IEnumerable<string> Check(IReadOnlyList<PolicyItem> items, GedCore.Drafting.IRecordHistory document) =>
@@ -31,6 +31,8 @@ internal sealed class BannedProseRule(IReadOnlyList<string> phrases, IReadOnlyLi
                 yield return ("note text", note);
             if (OpJson.String(node, "source") is not null && OpJson.String(node, "page") is { } page)
                 yield return ("citation page", page);
+            if (OpJson.String(node, "op") is null && OpJson.String(node, "commentary") is { } commentary)
+                yield return ("citation commentary", commentary);
         }
     }
 }

@@ -29,8 +29,9 @@ public sealed class DocumentHistory(Func<GedDocument?> read) : IRecordHistory
 
     GedRecord? Record(string xref) => _doc.Value is { } doc && doc.ByXref.TryGetValue(xref, out var rec) ? rec : null;
 
+    // Commentary alone cites no source, so it is not one of the fact's citations.
     IEnumerable<ExistingCitation> CitationsOn(GedRecord fact) =>
-        fact.ChildrenByTag("SOUR").Where(s => s.IsPointerValue).Select(s => new ExistingCitation(
+        fact.ChildrenByTag("SOUR").Where(s => s.IsPointerValue && !s.IsVoidPointer).Select(s => new ExistingCitation(
             s.Value,
             s.FirstChild("PAGE")?.Value,
             s.FirstChild("DATA")?.FirstChild("TEXT")?.FullValue(),

@@ -6,7 +6,7 @@ namespace GedCore.Apply;
 /// Node-construction and structure-editing helpers shared by the op classes.
 /// File conventions live here: zero-padded days, event detail (DATE/PLAC)
 /// ahead of citations/links/notes, vitals inserted before FAMS/FAMC/NOTE/UID,
-/// citation sub-order PAGE → DATA → QUAY.
+/// citation sub-order PAGE → DATA → QUAY → NOTE.
 /// </summary>
 internal static class NodeBuilder
 {
@@ -98,6 +98,7 @@ internal static class NodeBuilder
             Attach(sour, data);
         }
         if (cit.Quay is not null) Attach(sour, NewNode(level + 1, "QUAY", cit.Quay.Value.ToString()));
+        if (cit.Commentary is not null) Attach(sour, NoteNode(level + 1, cit.Commentary));
         return sour;
     }
 
@@ -173,7 +174,7 @@ internal static class NodeBuilder
     }
 
     public static string DescribeCitation(Citation cit) =>
-        cit.Page is null ? $"cited {cit.Source}" : $"cited {cit.Source} ({cit.Page})";
+        cit.IsCommentaryOnly ? "added commentary" : cit.Page is null ? $"cited {cit.Source}" : $"cited {cit.Source} ({cit.Page})";
 
     /// <summary>
     /// Update one existing citation node in place: every requested field
@@ -205,11 +206,30 @@ internal static class NodeBuilder
         }
         if (cit.Quay is not null)
             UpsertSub(existing, "QUAY", cit.Quay.Value.ToString(), at: null, changes);
+        if (cit.Commentary is not null)
+            UpsertCommentary(existing, cit.Commentary, changes);
 
         if (changes.Count == 0) return null;
         state.Mutated();
         state.Touch(structure);
         return $"updated citation {cit.Source} ({string.Join("; ", changes)})";
+    }
+
+    // A citation carries one commentary NOTE; a new commentary replaces its text.
+    private static void UpsertCommentary(GedRecord citation, string commentary, List<string> changes)
+    {
+        string text = NormalizeText(commentary);
+        var note = citation.FirstChild("NOTE");
+        if (note is null)
+        {
+            Attach(citation, NoteNode(citation.Level + 1, commentary));
+            changes.Add("commentary added");
+        }
+        else if (note.FullValue() != text)
+        {
+            SetNoteText(note, commentary);
+            changes.Add("commentary replaced");
+        }
     }
 
     /// <summary>
@@ -223,6 +243,7 @@ internal static class NodeBuilder
         if (cit.DataText is not null) state.RecordCitationField(citation, cit.Source, "DATA.TEXT", cit.DataText);
         if (cit.Quay is not null)
             state.RecordCitationField(citation, cit.Source, "QUAY", cit.Quay.Value.ToString());
+        if (cit.Commentary is not null) state.RecordCitationField(citation, cit.Source, "NOTE", cit.Commentary);
     }
 
     private static void UpsertSub(GedRecord parent, string tag, string value,
@@ -298,8 +319,8 @@ internal static class OpChecks
     public static void CitationsRequired(string context, IReadOnlyList<Citation> citations,
                                          List<string> errors)
     {
-        if (citations.Count == 0)
-            errors.Add($"{context}: citation required (uncited facts are not accepted)");
+        if (!citations.Any(c => !c.IsCommentaryOnly))
+            errors.Add($"{context}: citation required (uncited facts are not accepted; commentary alone cites no source)");
     }
 
     public static void CitationsValid(ResolutionContext ctx, string context,
@@ -307,8 +328,8 @@ internal static class OpChecks
     {
         foreach (var cit in citations)
         {
-            if (cit.Source == GedRecord.VoidPointer)
-                errors.Add($"{context}: citation source {GedRecord.VoidPointer} is not an addressable record");
+            if (cit.IsCommentaryOnly)
+                CommentaryOnlyValid(context, cit, errors);
             else if (!ctx.Known(cit.Source))
                 errors.Add($"{context}: citation source {cit.Source} unknown");
             // A citation value carrying a raw line break serializes to an
@@ -317,6 +338,9 @@ internal static class OpChecks
             // with a clear message rather than in the reparse-verify step.
             ProseXrefGuard.Check(context, $"citation {cit.Source} page", cit.Page, errors);
             ProseXrefGuard.Check(context, $"citation {cit.Source} dataText", cit.DataText, errors);
+            ProseXrefGuard.Check(context, $"citation {cit.Source} commentary", cit.Commentary, errors);
+            if (cit.Commentary is not null && cit.Commentary.Trim().Length == 0)
+                errors.Add($"{context}: citation {cit.Source} commentary is blank; omit it instead");
             if (HasLineBreak(cit.Page))
                 errors.Add($"{context}: citation {cit.Source} page contains a line break — " +
                            "citation values must be single-line");
@@ -324,9 +348,21 @@ internal static class OpChecks
                 errors.Add($"{context}: citation {cit.Source} dataText contains a line break — " +
                            "flatten it to a single line (join phrases with '. ')");
         }
-        foreach (var dup in citations.GroupBy(c => (c.Source, Page: c.Page ?? "")).Where(g => g.Count() > 1))
+        foreach (var dup in citations.Where(c => !c.IsCommentaryOnly).GroupBy(c => (c.Source, Page: c.Page ?? "")).Where(g => g.Count() > 1))
             errors.Add($"{context}: source {dup.Key.Source} cited twice on one structure" +
                        (dup.Key.Page.Length > 0 ? $" with the same page ({dup.Key.Page})" : " with no page"));
+        foreach (var dup in citations.Where(c => c.IsCommentaryOnly && c.Commentary is not null)
+                     .GroupBy(c => NodeBuilder.NormalizeText(c.Commentary!)).Where(g => g.Count() > 1))
+            errors.Add($"{context}: the same commentary is given twice on one structure");
+    }
+
+    // A citation of no source holds only the author's commentary: there is no page, extract or grade to give.
+    private static void CommentaryOnlyValid(string context, Citation cit, List<string> errors)
+    {
+        if (cit.Commentary is null)
+            errors.Add($"{context}: a {GedRecord.VoidPointer} citation cites no source, so it needs \"commentary\"");
+        if (cit.Page is not null || cit.DataText is not null || cit.Quay is not null)
+            errors.Add($"{context}: a {GedRecord.VoidPointer} citation holds only commentary; page, dataText and quay belong to a cited source");
     }
 
     private static bool HasLineBreak(string? value) =>

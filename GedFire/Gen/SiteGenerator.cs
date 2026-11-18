@@ -737,6 +737,14 @@ public sealed class SiteGenerator
             citation += body;
         }
 
+        // The author's commentary follows the source and its extract.
+        string commentary = sref.Commentary.Trim();
+        if (commentary.Length > 0)
+        {
+            if (citation.Length > 0) citation += " ";
+            citation += commentary;
+        }
+
         if (citation.Length > 0)
             page.AddFootnote(citation);
     }

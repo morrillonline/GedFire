@@ -113,6 +113,35 @@ public class RecordMapperCitationTests
     }
 
     [Fact]
+    public void Commentary_IsCarriedOnItsCitation_AndCommentaryAloneIsKindCommentary()
+    {
+        var model = MatchTestModels.Build("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @S1@ SOUR
+            1 TITL Parish Register
+            0 @I1@ INDI
+            1 NAME Cornelius /Ashworth/
+            1 BIRT
+            2 DATE 1741
+            2 SOUR @S1@
+            3 PAGE p. 12
+            3 NOTE The clerk wrote the year only.
+            2 SOUR @VOID@
+            3 NOTE His sons disagreed.
+            0 TRLR
+            """);
+
+        var citations = Assert.IsType<PersonRecord>(Mapper.Map(model, "@I1@", false)).Birth!.Citations;
+
+        Assert.Equal(
+            [new CitationDetail("citation", "@S1@", "p. 12", null, null, "The clerk wrote the year only."),
+             new CitationDetail("commentary", null, null, null, null, "His sons disagreed.")],
+            citations);
+    }
+
+    [Fact]
     public void IncludeSources_ListsEachCitedSourceOnceInFirstCitedOrder()
     {
         var sources = Person(includeSources: true).Sources!;
