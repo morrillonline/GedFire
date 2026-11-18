@@ -95,13 +95,14 @@ public sealed class GetRecordTool
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "kind": { "enum": ["citation", "inlineNote", "personalNote"], "description": "citation: a real source citation. inlineNote: prose carried on the citation. personalNote: the personal-note pseudo-source, which cites nothing." },
-                "source": { "type": ["string", "null"], "description": "The cited source's xref; null only for an inline note that names no source." },
+                "kind": { "enum": ["citation", "inlineNote", "personalNote", "commentary"], "description": "citation: a real source citation. inlineNote: prose carried on the citation. personalNote: the personal-note pseudo-source, which cites nothing. commentary: the author's comment alone (SOUR @VOID@), which cites no source and is never evidence." },
+                "source": { "type": ["string", "null"], "description": "The cited source's xref; null for an inline note that names no source, and for commentary." },
                 "page": { "type": ["string", "null"] },
                 "dataText": { "type": ["string", "null"], "description": "The quoted or transcribed text recorded with the citation." },
-                "quay": { "type": ["integer", "null"], "minimum": 0, "maximum": 3, "description": "Citation quality, 0 (unreliable) through 3 (direct evidence)." }
+                "quay": { "type": ["integer", "null"], "minimum": 0, "maximum": 3, "description": "Citation quality, 0 (unreliable) through 3 (direct evidence)." },
+                "commentary": { "type": ["string", "null"], "description": "The author's comment on the citation (its NOTE), printed after the source in the footnote." }
               },
-              "required": ["kind", "source", "page", "dataText", "quay"]
+              "required": ["kind", "source", "page", "dataText", "quay", "commentary"]
             },
             "MediaFile": {
               "type": "object",

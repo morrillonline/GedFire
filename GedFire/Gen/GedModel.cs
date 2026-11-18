@@ -36,6 +36,10 @@ public sealed class GedSourceRef
     public string Page     { get; set; } = "";
     public string DataText { get; set; } = "";  // 3 DATA / 4 TEXT, after ParsePropertyList
     public int?   Quay     { get; set; }        // 3 QUAY, 0-3; null when absent or out of range
+    // 3 NOTE: the author's commentary, printed after the source in the footnote.
+    public string Commentary { get; set; } = "";
+    // SOUR @VOID@: no source is cited, only Commentary; never evidence.
+    public bool   CommentaryOnly { get; set; }
 }
 
 /// <summary>One person-level biographical note, with any citations attached to that prose.</summary>

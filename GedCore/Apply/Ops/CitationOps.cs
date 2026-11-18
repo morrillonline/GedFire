@@ -91,7 +91,7 @@ public sealed class CreateOrUpdateCitationOp : ChangeOp
         if (OpChecks.RejectVoid(Context, Record, errors)) return;
         if (!ctx.Known(Record)) { errors.Add($"{Context}: target not in file"); return; }
         OpChecks.RejectFamilyEventOnPerson(ctx, Context, Record, Fact, errors);
-        OpChecks.CitationsRequired(Context, Citations, errors);
+        if (Citations.Count == 0) errors.Add($"{Context}: at least one citation is required");
         OpChecks.CitationsValid(ctx, Context, Citations, errors);
         Address.ValidateShape(ctx, Context, errors);
 
@@ -137,6 +137,9 @@ public sealed class DeleteCitationOp : ChangeOp
     public required string Source { get; init; }
     public string? Page { get; init; }
 
+    /// <summary>Selects which commentary-only (<see cref="GedRecord.VoidPointer"/>) citation to remove, by its exact text.</summary>
+    public string? Commentary { get; init; }
+
     internal static DeleteCitationOp Read(JsonElement el) => new()
     {
         Record = JsonRead.Req(el, "record", "deleteCitation"),
@@ -145,7 +148,10 @@ public sealed class DeleteCitationOp : ChangeOp
         Note = JsonRead.Str(el, "note"),
         Source = JsonRead.Req(el, "source", "deleteCitation"),
         Page = JsonRead.Str(el, "page"),
+        Commentary = JsonRead.Str(el, "commentary"),
     };
+
+    private bool RemovesCommentary => Source == GedRecord.VoidPointer;
 
     private CitationAddress Address => new(Record, Fact, Match, Note);
     private string Context => Address.Context(Kind);
@@ -155,6 +161,14 @@ public sealed class DeleteCitationOp : ChangeOp
         if (OpChecks.RejectVoid(Context, Record, errors)) return;
         if (!ctx.Known(Record)) { errors.Add($"{Context}: target not in file"); return; }
         Address.ValidateShape(ctx, Context, errors);
+        if (RemovesCommentary != (Commentary is not null))
+        {
+            errors.Add(RemovesCommentary
+                ? $"{Context}: a {GedRecord.VoidPointer} citation is selected by its \"commentary\" text"
+                : $"{Context}: \"commentary\" selects a {GedRecord.VoidPointer} citation; to remove a source's citation name its page");
+            return;
+        }
+        if (RemovesCommentary) return;
 
         var target = ctx.Existing(Record);
         if (target is null) return;
@@ -184,6 +198,11 @@ public sealed class DeleteCitationOp : ChangeOp
         var source = state.Resolve(Source);
         var target = state.Doc.ByXref[record];
         var structure = Address.Resolve(target);
+        if (RemovesCommentary)
+        {
+            RemoveCommentary(state, target, structure, log);
+            return;
+        }
         var cited = structure is null ? [] : Resolve.CitationsOnStructure(structure, source);
         if (Page is null && cited.Count > 1)
             throw new InvalidOperationException(AmbiguousCitation(cited));
@@ -201,5 +220,19 @@ public sealed class DeleteCitationOp : ChangeOp
         state.Mutated();
         state.Touch(target);
         log.Add($"{Context}: removed citation {source}");
+    }
+
+    private void RemoveCommentary(ApplyState state, GedRecord target, GedRecord? structure, List<string> log)
+    {
+        var citation = structure is null ? null : CitationReconciler.CommentaryCitation(structure, Commentary!);
+        if (citation is null)
+        {
+            log.Add($"{Context}: no-op (no such commentary)");
+            return;
+        }
+        structure!.Children.Remove(citation);
+        state.Mutated();
+        state.Touch(target);
+        log.Add($"{Context}: removed commentary");
     }
 }

@@ -18,11 +18,12 @@ public sealed record MediaDetail(string Xref, string? Title, CropDetail? Crop, I
 
 /// <summary>
 /// One citation on a fact, note, or name. Kind is "citation" (a real source
-/// citation), "inlineNote" (prose carried on the citation), or "personalNote"
-/// (the personal-note pseudo-source, which cites nothing). Source is null only
-/// for an inline note that names no source record.
+/// citation), "inlineNote" (prose carried on the citation), "personalNote"
+/// (the personal-note pseudo-source, which cites nothing), or "commentary"
+/// (the author's comment alone, SOUR @VOID@). Source is null for an inline
+/// note that names no source record, and for commentary.
 /// </summary>
-public sealed record CitationDetail(string Kind, string? Source, string? Page, string? DataText, int? Quay);
+public sealed record CitationDetail(string Kind, string? Source, string? Page, string? DataText, int? Quay, string? Commentary = null);
 
 public sealed record EventDetail(
     string? Date,

@@ -826,6 +826,23 @@ public class GapDetectorTests
     }
 
     [Fact]
+    public void EnrichPerson_ABirthWithOnlyCommentary_StillMissesItsCitation()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME William /Morrill/
+            1 SEX M
+            1 BIRT
+            2 DATE 15 MAR 1802
+            2 PLAC Boston, Massachusetts
+            2 SOUR @VOID@
+            3 NOTE The family Bible is lost.
+            """;
+        var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
+        Assert.True(Assert.Single(target.Enrichments!, e => e.Fact == "Birth").MissingCitation);
+    }
+
+    [Fact]
     public void EnrichPerson_ExactDateOnlyUncited_AlsoReportsMissingCitation()
     {
         const string ged = """

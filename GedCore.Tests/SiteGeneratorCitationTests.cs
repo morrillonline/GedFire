@@ -65,4 +65,63 @@ public class SiteGeneratorCitationTests : IDisposable
         Assert.True(Count(html, ", 40.") > 0, "page 40 is not rendered");
         Assert.Equal(Count(html, ", 40."), Count(html, ", 41."));
     }
+
+    const string CommentaryGed = """
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @S1@ SOUR
+        1 AUTH Parish Clerk
+        1 TITL Parish Register
+        0 @I1@ INDI
+        1 NAME Cornelius /Ashworth/
+        1 SEX M
+        1 BIRT
+        2 DATE 1741
+        2 SOUR @S1@
+        3 PAGE p. 40
+        3 NOTE The clerk wrote the year only.
+        1 DEAT
+        2 DATE 1809
+        2 SOUR @VOID@
+        3 NOTE His sons disagreed about the month.
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Beatrice /Fenwick/
+        1 SEX F
+        1 FAMS @F1@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        1 CHIL @I3@
+        0 @I3@ INDI
+        1 NAME Levi /Ashworth/
+        1 SEX M
+        1 FAMC @F1@
+        0 TRLR
+        """;
+
+    string GenerateCommentaryHtml()
+    {
+        var model = ModelBuilder.Build(GedCore.Ged70.Ged70Parser.Parse(CommentaryGed));
+        new SiteGenerator(model, Template).Generate(_outDir);
+        return string.Join("\n", Directory.EnumerateFiles(_outDir, "*.html", SearchOption.AllDirectories).Select(File.ReadAllText));
+    }
+
+    [Fact]
+    public void CitationCommentary_FollowsTheSourceInItsFootnote()
+    {
+        string html = GenerateCommentaryHtml();
+
+        Assert.Contains(", 40. The clerk wrote the year only.", html);
+    }
+
+    [Fact]
+    public void CommentaryCitingNoSource_IsAFootnoteOfItsOwn()
+    {
+        string html = GenerateCommentaryHtml();
+
+        Assert.True(Count(html, "His sons disagreed about the month.") > 0, "the commentary is not rendered");
+        Assert.DoesNotContain("@VOID@", html);
+    }
 }

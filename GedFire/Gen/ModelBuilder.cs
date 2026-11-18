@@ -38,11 +38,9 @@ public static class ModelBuilder
             .. FamilyEvents.Tags,
         ];
 
-        // Source-ref resolution: maps each GedSourceRef to its GEDCOM xref
-        // and any inline NOTE override.  Populated during Pass 1, consumed
-        // and discarded at the end of Pass 2.
+        // Source-ref resolution: maps each GedSourceRef to its GEDCOM xref.
+        // Populated during Pass 1, consumed and discarded at the end of Pass 2.
         readonly Dictionary<GedSourceRef, string> _pending      = new();
-        readonly Dictionary<GedSourceRef, string> _inlineNotes  = new();
 
         // Xref scaffolding collected during Pass 1 for use in Pass 2.
         // Keeping this here means domain objects carry only resolved
@@ -348,20 +346,20 @@ public static class ModelBuilder
                 if (sc.Length > 0) sref.ShortCitation = sc;
             }
 
+            // A citation's NOTE is the author's commentary on it (GEDCOM 7 NOTE_STRUCTURE).
+            sref.Commentary = sourRec.FirstChild("NOTE")?.FullValue().Trim() ?? "";
+
+            // SOUR @VOID@ cites nothing: only its commentary prints, and it is never evidence.
+            if (sourRec.IsVoidPointer)
+            {
+                sref.CommentaryOnly = true;
+                sref.NoCitation = true;
+                return sref;
+            }
+
             // Stash xref for resolution in Pass 2
             sref.GlobalSource = null;
             _pending[sref] = sourRec.Value;  // "@Sxxx@"
-
-            // Inline NOTE override — resolved in Pass 2
-            var noteChild = sourRec.FirstChild("NOTE");
-            if (noteChild != null)
-            {
-                var rawNote = noteChild.FullValue();
-                string note2 = FtmCitationText.ParseSourceNote(rawNote,
-                    out bool _, out string _);
-                _inlineNotes[sref] = note2.Length > 0 ? note2 : rawNote;
-            }
-
             return sref;
         }
 
@@ -583,12 +581,8 @@ public static class ModelBuilder
                     // NOTE — rendered as body text near the person, never a footnote.
                     if (noCit) { sref.NoCitation = true; sref.IsNote = true; }
                 }
-
-                // Let inline NOTE child override
-                if (_inlineNotes.TryGetValue(sref, out var overrideNote))
-                    sref.Note = overrideNote;
             }
-            // _pending and _inlineNotes go out of scope with this BuildContext instance —
+            // _pending goes out of scope with this BuildContext instance —
             // no manual Clear() call needed.
         }
     }

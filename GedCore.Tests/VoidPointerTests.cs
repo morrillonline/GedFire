@@ -52,7 +52,7 @@ public class VoidPointerTests : ApplyTestBase
     }
 
     [Fact]
-    public void CreateOrUpdateCitation_SourceIsVoid_FailsValidation()
+    public void CreateOrUpdateCitation_VoidSourceWithoutCommentary_FailsValidation()
     {
         WriteBaseFile();
 
@@ -63,7 +63,7 @@ public class VoidPointerTests : ApplyTestBase
             """, dryRun: true);
 
         Assert.False(result.Success);
-        Assert.Contains(result.Errors, e => e.Contains("@VOID@ is not an addressable record"));
+        Assert.Contains(result.Errors, e => e.Contains("@VOID@ citation cites no source, so it needs \"commentary\""));
     }
 
     [Fact]

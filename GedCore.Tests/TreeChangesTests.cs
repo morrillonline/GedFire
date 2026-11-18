@@ -44,6 +44,17 @@ public class TreeChangesTests : ApplyTestBase
     }
 
     [Fact]
+    public void CommentaryAloneOnAnUncitedFact_IsNoCitation()
+    {
+        var changes = DryRunChanges("""
+            { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
+              "citations": [{ "source": "@VOID@", "commentary": "His age varies by census." }] }
+            """);
+
+        Assert.Empty(changes.Facts);
+    }
+
+    [Fact]
     public void RestatingAnIdenticalFact_WritesNothing()
     {
         var changes = DryRunChanges("""

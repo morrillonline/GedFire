@@ -208,16 +208,17 @@ public sealed class RecordMapper
         new(note.Text, note.Mime, MapCitations(note.Sources));
 
     // A citation naming a source record that does not exist is dropped; an
-    // inline note is kept even when it names no source.
+    // inline note, or commentary that cites no source, is kept.
     static List<CitationDetail> MapCitations(IEnumerable<GedSourceRef> sourceRefs) =>
         [.. sourceRefs
-            .Where(s => s.GlobalSource != null || s.IsNote)
+            .Where(s => s.GlobalSource != null || s.IsNote || s.CommentaryOnly)
             .Select(s => new CitationDetail(
-                s.NoCitation ? "personalNote" : s.IsNote ? "inlineNote" : "citation",
+                s.CommentaryOnly ? "commentary" : s.NoCitation ? "personalNote" : s.IsNote ? "inlineNote" : "citation",
                 s.GlobalSource?.Xref,
                 OrNull(s.Page),
                 OrNull(s.DataText),
-                s.Quay))];
+                s.Quay,
+                OrNull(s.Commentary)))];
 
     List<MediaDetail> MapMediaList(IEnumerable<GedMediaLink> links) =>
         [.. links.Select(MapMedia)];

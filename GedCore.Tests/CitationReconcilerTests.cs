@@ -308,4 +308,116 @@ public class CitationReconcilerTests : ApplyTestBase
         Assert.Equal("Edward's register entry", DataText(citation));
         Assert.Equal("2", citation.FirstChild("QUAY")!.Value);
     }
+
+    // ---- commentary ----
+
+    static string CommentOp(string citationJson) =>
+        $$"""
+        { "items": [ { "item": 1, "ops": [
+          { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
+            "citations": [ {{citationJson}} ] } ] } ] }
+        """;
+
+    static string? Commentary(GedRecord citation) => citation.FirstChild("NOTE")?.FullValue();
+
+    [Fact]
+    public void Commentary_IsWrittenAsTheCitationsNoteAfterItsOtherFields_AndReapplyingChangesNothing()
+    {
+        WriteBaseFile();
+        string op = CommentOp("""{ "source": "@S00001@", "page": "p. 4", "quay": 2, "commentary": "The register gives his age, not his birth date." }""");
+
+        RunExpectSuccess(op);
+        var bytes = ReadBytes();
+        var second = RunExpectSuccess(op);
+
+        var citation = Assert.Single(BirthCitations());
+        Assert.Equal(["PAGE", "QUAY", "NOTE"], citation.Children.Select(c => c.Tag));
+        Assert.Equal("The register gives his age, not his birth date.", Commentary(citation));
+        Assert.Null(second.OutputBytes);
+        Assert.Equal(bytes, ReadBytes());
+    }
+
+    [Fact]
+    public void Commentary_OnAnExistingCitation_IsAddedThenReplaced()
+    {
+        WriteFile(LinesWithBirthCitations(("@S00001@", "p. 4", 2)));
+
+        var added = RunExpectSuccess(CommentOp("""{ "source": "@S00001@", "page": "p. 4", "commentary": "First reading." }"""));
+        var replaced = RunExpectSuccess(CommentOp("""{ "source": "@S00001@", "page": "p. 4", "commentary": "Second reading." }"""));
+
+        var citation = Assert.Single(BirthCitations());
+        Assert.Equal("Second reading.", Commentary(citation));
+        Assert.Single(citation.ChildrenByTag("NOTE"));
+        Assert.Equal("2", citation.FirstChild("QUAY")!.Value);
+        Assert.Contains(added.Log, l => l.Contains("commentary added"));
+        Assert.Contains(replaced.Log, l => l.Contains("commentary replaced"));
+    }
+
+    [Fact]
+    public void CommentaryAlone_CitesVoid_IsKeptOnceAndAnotherIsAddedBeside()
+    {
+        WriteFile(LinesWithBirthCitations(("@S00001@", "p. 4", 2)));
+        string first = CommentOp("""{ "source": "@VOID@", "commentary": "Both censuses round his age to the decade." }""");
+
+        RunExpectSuccess(first);
+        var replay = RunExpectSuccess(first);
+        RunExpectSuccess(CommentOp("""{ "source": "@VOID@", "commentary": "His stone gives no year." }"""));
+
+        var comments = BirthCitations("@VOID@");
+        Assert.Equal(["Both censuses round his age to the decade.", "His stone gives no year."], comments.Select(Commentary));
+        Assert.All(comments, c => Assert.Equal(["NOTE"], c.Children.Select(x => x.Tag)));
+        Assert.Single(BirthCitations("@S00001@"));
+        Assert.Null(replay.OutputBytes);
+    }
+
+    [Theory]
+    [InlineData("""{ "source": "@VOID@", "page": "p. 1", "commentary": "x" }""")]
+    [InlineData("""{ "source": "@VOID@", "quay": 1, "commentary": "x" }""")]
+    [InlineData("""{ "source": "@VOID@", "dataText": "x", "commentary": "x" }""")]
+    public void CommentaryAlone_WithAPageExtractOrGrade_IsRefused(string citation)
+    {
+        WriteBaseFile();
+
+        var result = Run(CommentOp(citation), dryRun: true);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("holds only commentary"));
+    }
+
+    [Fact]
+    public void CommentaryAlone_DoesNotSatisfyAMarriagesRequiredCitation()
+    {
+        WriteBaseFile();
+
+        var result = Run("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateSpouse", "person": "@I00002@", "spouse": "@I00003@", "family": "@F00001@",
+                "marriage": { "date": "1925", "citations": [ { "source": "@VOID@", "commentary": "Family tradition only." } ] } } ] } ] }
+            """, dryRun: true);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("commentary alone cites no source"));
+    }
+
+    [Fact]
+    public void DeleteCitation_RemovesCommentaryNamedByItsText_AndNeedsTheText()
+    {
+        WriteBaseFile();
+        RunExpectSuccess(CommentOp("""{ "source": "@VOID@", "commentary": "Keep this one." }"""));
+        RunExpectSuccess(CommentOp("""{ "source": "@VOID@", "commentary": "Remove this one." }"""));
+        const string unnamed = """
+            { "items": [ { "item": 1, "ops": [
+              { "op": "deleteCitation", "record": "@I00001@", "fact": "BIRT", "source": "@VOID@" } ] } ] }
+            """;
+
+        var refused = Run(unnamed, dryRun: true);
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "deleteCitation", "record": "@I00001@", "fact": "BIRT", "source": "@VOID@", "commentary": "Remove this one." } ] } ] }
+            """);
+
+        Assert.False(refused.Success);
+        Assert.Contains(refused.Errors, e => e.Contains("selected by its \"commentary\" text"));
+        Assert.Equal(["Keep this one."], BirthCitations("@VOID@").Select(Commentary));
+    }
 }

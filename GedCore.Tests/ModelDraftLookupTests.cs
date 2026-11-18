@@ -87,6 +87,26 @@ public class ModelDraftLookupTests
     }
 
     [Fact]
+    public void FactsOn_LeavesOutCommentaryThatCitesNoSource()
+    {
+        var model = ModelBuilder.Build(GedCore.Ged70.Ged70Parser.Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 BIRT
+            2 DATE 29 NOV 1760
+            2 SOUR @VOID@
+            3 NOTE The day is a family tradition.
+            0 TRLR
+            """));
+
+        var birth = Assert.Single(new ModelDraftLookup(model).FactsOn("@I1@", "BIRT"));
+
+        Assert.Empty(birth.Citations);
+    }
+
+    [Fact]
     public void FactsOn_ListsEveryInstanceOfARepeatableTag()
     {
         var model = new GedModel();

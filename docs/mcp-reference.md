@@ -115,7 +115,8 @@ disagreeing event hints do not lift the cap.
 ### Records
 
 `get_record` returns a person, family, or source. Citations include the source
-xref, page, quoted `dataText`, and `quay`. `includeSources` adds the cited
+xref, page, quoted `dataText`, `quay`, and the author's `commentary`; a
+citation of `kind` `commentary` cites no source. `includeSources` adds the cited
 source text. Source lookups include `citedBy`.
 
 Individual events such as baptism and burial appear in `otherEvents`.
@@ -423,11 +424,13 @@ a biography note; 2.0
 tightened date, tag, excerpt, grade and sex rules), `finding-file` 4.0 (embeds
 `finding` 4.0; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
-`persons[].xref`), `argument` 1.0, `changeset` 3.0 (`replacedCitations` drops
-`moveToNote` and `deleteVital` drops `deletedCitations`; 2.0 refused every
+`persons[].xref`), `argument` 1.0, `changeset` 3.1 (a citation takes
+`commentary`, and `@VOID@` as its source for commentary alone; 3.0 dropped
+`moveToNote` from `replacedCitations` and `deletedCitations` from
+`deleteVital`; 2.0 refused every
 legacy shape, including the `schemaVersion` key; 1.1 let `createOrUpdateParent` take
 `notDuplicateOf`), `cards` 1.0, `changeset-report` 2.0 (drops `warnings`) and
-`draft-report` 3.0 (embeds `changeset` 3.0; drops the `verification-note`
+`draft-report` 3.1 (embeds `changeset` 3.1; 3.0 dropped the `verification-note`
 decision kind). A schema
 document states structure only. `validate_finding` is the full check. In its default
 strict mode, ajv rejects the `x-schemaVersion` annotation. Register it with
@@ -828,7 +831,7 @@ both are generated from the table the validator reads, so they cannot drift.
 `draft_changeset` writes only this form.
 
 - A changeset carries no version. The published schema is versioned instead
-  (`x-schemaVersion`, now 2.0). A `schemaVersion` key left by an earlier
+  (`x-schemaVersion`, now 3.1). A `schemaVersion` key left by an earlier
   release is refused as an unknown field; draft such a changeset again with
   `draft_changeset`.
 - Every object takes only the fields the contract defines: the envelope,
@@ -916,6 +919,17 @@ references resolve to the same allocated xref. Library callers receive
   the existing ones, so a link can never overwrite another record's provenance.
 - Omit `fact` to edit a family-level citation with `createOrUpdateCitation`
   or `deleteCitation`. Use exact `note` text to address note citations.
+- A citation's `commentary` is a sentence or two of the author's own comment
+  on that source, such as why a date is read one way. It is written as the
+  citation's `NOTE` (standard GEDCOM 7) and printed after the source and its
+  extract in the footnote. Stating a new commentary replaces the old.
+  Discussion of a fact's evidence belongs here, not in a person's notes.
+- A citation with `"source": "@VOID@"` and only `commentary` is the author's
+  comment citing no source, written as `SOUR @VOID@` with a `NOTE`. Its
+  footnote holds only the comment. It is never evidence: it does not satisfy a
+  required citation, close a card, or hold a date against a finding. The same
+  text stated again is a no-op; `deleteCitation` with `"source": "@VOID@"` and
+  `commentary` removes it.
 - Validation rejects internal ids in stored prose: note text, citation pages
   and extracts, source titles and authors, and merge notes.
 

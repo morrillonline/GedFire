@@ -133,14 +133,19 @@ public static class ChangesetOpsCatalog
             "pages — state every citation of that source you want. Name a \"note\" (its exact text) to address the " +
             "citations under one of the record's notes instead of a fact. Omit both \"fact\" and \"note\" to address a " +
             "family record's own citations (the relationship provenance written by createOrUpdateSpouse/Child/Parent); " +
-            "that form works on family records only.",
+            "that form works on family records only. A citation may carry \"commentary\": a sentence or two of the author's " +
+            "own comment, written as the citation's NOTE and printed after the source in the footnote; a new commentary " +
+            "replaces the old. Source \"@VOID@\" with only \"commentary\" is the author's comment citing no source: it never " +
+            "counts as evidence, so it never satisfies a required citation, and stating the same text again is a no-op.",
             """
             { "op": "createOrUpdateCitation", "record": "@I2@", "fact": "BIRT",
-              "citations": [ { "source": "@S1@", "page": "p. 12", "quay": 3 } ] }
+              "citations": [ { "source": "@S1@", "page": "p. 12", "quay": 3, "commentary": "The clerk wrote the year only." },
+                             { "source": "@VOID@", "commentary": "His stone gives no year." } ] }
             """),
         new("deleteCitation", "delete", "Citation",
             "Remove one source's citation from a fact, from a note (named by its exact text via \"note\"), or — with " +
-            "neither named, on a family record — from the family's own citations. Absent structure or absent citation → no-op.",
+            "neither named, on a family record — from the family's own citations. Source \"@VOID@\" with \"commentary\" " +
+            "(its exact text) removes that commentary. Absent structure or absent citation → no-op.",
             """{ "op": "deleteCitation", "record": "@I2@", "fact": "BIRT", "source": "@S1@" }"""),
         new("createOrUpdateNote", "createOrUpdate", "Note",
             "Attach research reasoning or conflict analysis to a record (never a dated fact assertion — use " +
