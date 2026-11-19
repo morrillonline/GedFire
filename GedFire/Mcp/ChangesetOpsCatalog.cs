@@ -126,11 +126,10 @@ public static class ChangesetOpsCatalog
         new("createOrUpdateCitation", "createOrUpdate", "Citation",
             "Attach one or more source citations to a fact that already exists (a citation cannot create its fact — use " +
             "createOrUpdateVital for that). State each citation as it should read; nothing is removed or re-added by hand. " +
-            "A source already cited once on the fact is updated in place, so stating a new \"page\" corrects the page. To " +
-            "cite one source on several pages of the same fact, give one entry per page; an entry whose page matches an " +
-            "existing citation updates it, and an entry that matches none is added. If the fact already cites the source " +
-            "several times and the entries stated cannot be told apart from them, the op is rejected and names the existing " +
-            "pages — state every citation of that source you want. Name a \"note\" (its exact text) to address the " +
+            "One source may be cited on many pages of the same fact, each page its own citation: an entry whose page the " +
+            "fact already cites from that source updates that citation, and an entry on any other page is added beside the " +
+            "others. A page is never changed unless the entry names the page it corrects in \"replacesPage\" (an error when " +
+            "the fact cites no such page of the source). Name a \"note\" (its exact text) to address the " +
             "citations under one of the record's notes instead of a fact. Omit both \"fact\" and \"note\" to address a " +
             "family record's own citations (the relationship provenance written by createOrUpdateSpouse/Child/Parent); " +
             "that form works on family records only. A citation may carry \"commentary\": a sentence or two of the author's " +

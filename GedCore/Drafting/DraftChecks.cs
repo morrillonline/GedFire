@@ -16,6 +16,8 @@ internal static class DraftChecks
         IEnumerable<string>[] rules =
         [
             FindingErrors(findings, lookup),
+            SourceRefErrors(findings, citable, lookup),
+            PagelessErrors(findings, citable),
             NewRecordErrors(findings, complete),
             RemovalErrors(findings, lookup),
             BiographyNoteErrors(findings),
@@ -43,6 +45,54 @@ internal static class DraftChecks
             for (int i = 0; i < finding.Facts.Count; i++)
                 if (QuayError(finding, finding.Facts[i].Quay, finding.Facts[i].Class, finding.Facts[i].Information, $"findings[{f}].facts[{i}].quay") is { } error)
                     yield return error;
+        }
+    }
+
+    // A source named by xref must be one the document holds, under the title and author the finding gives,
+    // so a mistyped xref cannot send its citations to another source.
+    static IEnumerable<string> SourceRefErrors(IReadOnlyList<DraftFinding> findings, CitableFindings citable, IDraftLookup? lookup)
+    {
+        if (lookup is null) yield break;
+        var labelled = findings.Select((f, i) => (Finding: f, Path: $"findings[{i}].source.ref"))
+            .Concat(citable.CitedOnly.Select(f => (Finding: f, Path: $"finding \"{f.Id}\" source.ref")));
+        foreach (var (finding, path) in labelled)
+        {
+            if (finding.Source.Ref is not { } named) continue;
+            var source = lookup.SourceRecord(named);
+            if (source is null)
+                yield return $"{path} {named} is not a source in the document.";
+            else if (!SourceTitles.SameCollection(source.Title, finding.Source.Name)
+                     && !SourceTitles.SameCollection(source.Title, SourceTitles.Collection(finding.Source.Name)))
+                yield return $"{path} {named} is titled \"{source.Title}\", not \"{finding.Source.Name}\"; give the source's own title as source.name, or correct source.ref.";
+            else if (finding.Source.Author is { } author && !string.Equals(source.Author?.Trim(), author.Trim(), StringComparison.OrdinalIgnoreCase))
+                yield return $"{path} {named} has author \"{source.Author}\", not \"{author}\"; give the source's own author, or correct source.ref.";
+        }
+    }
+
+    // A finding without a locator cites a held citation that has no page, so only a citeOnly fact may cite it.
+    static IEnumerable<string> PagelessErrors(IReadOnlyList<DraftFinding> findings, CitableFindings citable)
+    {
+        const string Remedy = "a finding without source.locator can only add to a held citation that has no page, through a citeOnly fact";
+        for (int f = 0; f < findings.Count; f++)
+        {
+            var finding = findings[f];
+            if (finding.Source.Locator is null)
+            {
+                for (int i = 0; i < finding.Facts.Count; i++)
+                    if (finding.Facts[i].CitesFinding && !finding.Facts[i].CiteOnly)
+                        yield return $"findings[{f}].facts[{i}] cites its finding, which has no locator; {Remedy}.";
+                for (int r = 0; r < finding.Relations.Count; r++)
+                    if (!finding.Relations[r].IsRemoval)
+                        yield return $"findings[{f}].relations[{r}] cites its finding, which has no locator; {Remedy}.";
+            }
+            for (int i = 0; i < finding.Facts.Count; i++)
+                for (int c = 0; c < finding.Facts[i].Cites.Count; c++)
+                    if (!finding.Facts[i].CiteOnly && citable.Find(finding.Facts[i].Cites[c].Finding!) is { Source.Locator: null } cited)
+                        yield return $"findings[{f}].facts[{i}].cites[{c}] cites finding \"{cited.Id}\", which has no locator; {Remedy}.";
+            for (int n = 0; n < finding.Notes.Count; n++)
+                for (int c = 0; c < finding.Notes[n].Cites.Count; c++)
+                    if (citable.Cited(finding, finding.Notes[n].Cites[c]) is { Source.Locator: null } cited)
+                        yield return $"findings[{f}].notes[{n}].cites[{c}] cites finding \"{cited.Id}\", which has no locator; {Remedy}.";
         }
     }
 
@@ -318,7 +368,7 @@ internal static class DraftChecks
     static IEnumerable<(string Text, int Quay, string Path)> OwnClaims(DraftFinding finding, string path)
     {
         for (int i = 0; i < finding.Facts.Count; i++)
-            if (finding.Facts[i].Withdraw is null)
+            if (finding.Facts[i].CitesFinding)
                 yield return (finding.Facts[i].Excerpt ?? finding.Extract, finding.Facts[i].Quay, $"{path}.facts[{i}]");
         for (int r = 0; r < finding.Relations.Count; r++)
             if (!finding.Relations[r].IsRemoval)

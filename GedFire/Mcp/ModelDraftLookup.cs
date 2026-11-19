@@ -14,6 +14,9 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
             .Select(s => s.Xref)
             .FirstOrDefault();
 
+    public ExistingSource? SourceRecord(string xref) =>
+        model.Sources.TryGetValue(xref, out var source) ? new ExistingSource(source.Title, NullIfEmpty(source.Author)) : null;
+
     public string? PersonName(string xref) =>
         model.Individuals.TryGetValue(xref, out var person) && person.Fullname.Length > 0 ? person.Fullname : null;
 

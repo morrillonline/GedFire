@@ -25,8 +25,9 @@ public sealed class DraftChangesetTool
         "Compile findings into a changeset in the op dialect, so the mechanical parts are written the same way every " +
         "time: one source record per collection (an existing source with the same title and author is cited instead " +
                 "of minted; titles match ignoring case and punctuation, and a trailing \" - <person name>\" is dropped, so " +
-                "record-specific text belongs in the locator), one merged extract per (source, page, grade) in each item, the locator copied verbatim into the " +
-        "citation page; and a refusal, naming the field, for a QUAY the source and information " +
+                "record-specific text belongs in the locator; source.ref names the existing source to cite when several share a title " +
+                "and author, and is refused unless it is a source whose title and author agree), one merged extract per (source, page, grade) in each item, the locator copied verbatim into the " +
+        "citation page (a finding without a locator only adds, through citeOnly facts, to a held citation of its source that has no page); and a refusal, naming the field, for a QUAY the source and information " +
         "class cannot support, a target name that differs from the person's recorded name, or prose the server's " +
         "policy bans. It never writes a note of its own: a person's notes hold only their life story, as a Register-style report would show it. " +
         "You supply the judgement: each fact's record, tag, date, place (or a text value such as a NAME " +
@@ -50,6 +51,7 @@ public sealed class DraftChangesetTool
         "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +
         "commentary (a sentence or two on its record's evidence, written on its citation and printed in the fact's footnote; " +
         "every cite, on a fact or a note, takes its own; evidence discussion belongs in commentary, a note holds the life story), " +
+        "commentaryOnly with commentary to add only a comment citing no source (SOUR @VOID@) to a fact already held, with no quay, " +
         "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
         "way to a finding's date or bound that contradicts it only when uncited or every citation is graded below the finding; " +
         "a citation without a QUAY holds it. Otherwise the record's date is kept and an open decision names it, its citations " +

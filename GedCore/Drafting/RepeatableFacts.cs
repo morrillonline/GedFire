@@ -37,7 +37,7 @@ internal static class RepeatableFacts
     }
 
     static bool IsPlacedByDate(DraftFact fact) =>
-        fact.Withdraw is null && !fact.CiteOnly && IsRepeatable(fact.Tag) && fact.Date is not null && fact.Substructures.Count == 0;
+        fact.CitesFinding && !fact.CiteOnly && IsRepeatable(fact.Tag) && fact.Date is not null && fact.Substructures.Count == 0;
 
     // A bare year names every plain date in that year.
     static List<ExistingFact> OnDate(IReadOnlyList<ExistingFact> held, string date) =>

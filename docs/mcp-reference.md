@@ -416,22 +416,26 @@ that hold these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-Current versions: `finding` 4.1 (a fact and every cite take `commentary`; 4.0
+Current versions: `finding` 4.2 (a source may name an existing source by
+`ref` and omit `locator`, and a fact may be `commentaryOnly`; 4.1 let a fact
+and every cite take `commentary`; 4.0
 dropped `moveToNote` from `replacedCitations`; 3.3
 let a fact take `cites` and a cite name a
 finding of any target; 3.2 let a parent relation take `notDuplicateOf`;
 3.1 let a note `withdraw` the note its `match` names; 3.0 required `cites` on
 a biography note; 2.0
-tightened date, tag, excerpt, grade and sex rules), `finding-file` 4.1 (embeds
-`finding` 4.1; 2.0 refused unknown keys and a mismatched `draft.id`),
+tightened date, tag, excerpt, grade and sex rules), `finding-file` 4.2 (embeds
+`finding` 4.2; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
-`persons[].xref`), `argument` 1.0, `changeset` 3.1 (a citation takes
+`persons[].xref`), `argument` 1.0, `changeset` 3.2 (a citation takes
+`replacesPage`, and a new page of a cited source is added beside, never
+written over a held page; 3.1 let a citation take
 `commentary`, and `@VOID@` as its source for commentary alone; 3.0 dropped
 `moveToNote` from `replacedCitations` and `deletedCitations` from
 `deleteVital`; 2.0 refused every
 legacy shape, including the `schemaVersion` key; 1.1 let `createOrUpdateParent` take
 `notDuplicateOf`), `cards` 1.0, `changeset-report` 2.0 (drops `warnings`) and
-`draft-report` 3.1 (embeds `changeset` 3.1; 3.0 dropped the `verification-note`
+`draft-report` 3.2 (embeds `changeset` 3.2; 3.0 dropped the `verification-note`
 decision kind). A schema
 document states structure only. `validate_finding` is the full check. In its default
 strict mode, ajv rejects the `x-schemaVersion` annotation. Register it with
@@ -444,9 +448,9 @@ It may also carry `people`, `relations`, `notes`, and an identity `argument`.
 
 | Field | Content |
 |---|---|
-| `source` | `name`, `locator`, `class`, `information`; optional `author`, `url`, `accessed`. |
+| `source` | `name`, `locator`, `class`, `information`; optional `ref`, `author`, `url`, `accessed`. `locator` may be omitted only as described under "Naming a source by xref". |
 | `target` | `xref`; optional `card` and `name`. |
-| Each fact | `record`, `fact`, per-fact `quay`; date/place or text `value`; optional `excerpt`, `class`, `information`, `commentary`. |
+| Each fact | `record`, `fact`, per-fact `quay`; date/place or text `value`; optional `excerpt`, `class`, `information`, `commentary`. A `commentaryOnly` fact takes only `commentary` and date/place. |
 
 Use the tool schema for the full contract. The compiler returns the changeset,
 `decisions`, and `errors`. It rejects a target name that differs from the
@@ -463,6 +467,21 @@ Source-title matching ignores case and punctuation. It also drops a trailing
 ` - <person name>` segment without digits. Keep record-specific details in
 the locator; different year ranges and record types remain separate sources.
 The `decisions` list reports source reuse and creation.
+
+#### Naming a source by xref
+
+When the document holds several sources with one title and author, title
+matching cites the first of them. `source.ref` names the existing source to
+cite instead, such as `"ref": "@S01395@"`. The compiler refuses a `ref` that
+is not a source in the document, and one whose title or author differs from
+the finding's `name` and `author`, so a mistyped xref cannot move citations to
+another source.
+
+`locator` may be omitted to add to a held citation that has no page. Every
+fact of such a finding is `citeOnly`, no relation or note cites it, and the
+fact it selects must already cite that source without a page; otherwise the
+draft is refused. The citation is drafted without a `page` and updates the held
+one, so a finding cannot add a new citation that has no page.
 
 The compiler rejects a citation grade above these ceilings:
 
@@ -602,6 +621,11 @@ The warning requests source review, is not an error, and does not block applicat
   record, in a note or elsewhere. NAME corrections refuse `keep`, so old
   citations cannot attest the new name.
 - `citeOnly: true` cites an existing fact; date/place select its instance.
+- `commentaryOnly: true` with `commentary` adds only a comment citing no
+  source (`SOUR @VOID@` with a `NOTE`) to an existing fact; date/place select
+  its instance. It asserts nothing and does not cite the finding's source, so
+  it takes no `quay`, `value`, `excerpt`, `cites` or other claim field. Use it
+  when the comment concerns the fact as a whole rather than one record.
 - `replaceHeld: "<reason>"` writes a single-valued fact's date and place over
   the record's, even a more specific or better-cited one. A contradicted value's
   citations are removed unless `replacedCitations` says otherwise.
@@ -922,12 +946,14 @@ references resolve to the same allocated xref. Library callers receive
 - Updating a shared source makes a copy (or reuses an exact updated source).
   Only facts the same item cites point to the copy. The item must cite the fact
   needing the change. `ApplyResult.CopiedSources` reports the mapping.
-- A citation page belongs to the citation, not the source. A matching page
-  updates; another page adds a citation. With only one citation for that source
-  on a fact, the update corrects its page. `deleteCitation` can select a page.
-- Relationship provenance never corrects a page: a child, spouse, or parent
-  link citing a page the family does not already cite adds a citation beside
-  the existing ones, so a link can never overwrite another record's provenance.
+- A citation page belongs to the citation, not the source: one source may be
+  cited on many pages of one fact, each page its own footnote. A stated page
+  the structure already cites from that source updates that citation; any
+  other page adds a citation beside the others. A page is never changed unless
+  the citation names the page it corrects with `replacesPage`, such as
+  `{"source": "@S1@", "page": "p. 121", "replacesPage": "p. 112"}`; naming a
+  page the structure does not cite is an error. `deleteCitation` can select a
+  page.
 - Omit `fact` to edit a family-level citation with `createOrUpdateCitation`
   or `deleteCitation`. Use exact `note` text to address note citations.
 - A citation's `commentary` is a sentence or two of the author's own comment

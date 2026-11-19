@@ -9,7 +9,10 @@ namespace GedCore.Drafting;
 /// </summary>
 internal sealed class SourcePlan
 {
-    readonly Dictionary<(string Collection, string Author), string> _refs = [];
+    // A finding naming its source by xref is keyed by that xref alone; the others by collection and author.
+    readonly record struct SourceKey(string? Ref, string Collection, string Author);
+
+    readonly Dictionary<SourceKey, string> _refs = [];
 
     public JsonArray NewSources { get; } = [];
 
@@ -18,14 +21,16 @@ internal sealed class SourcePlan
     public string? CitedRefOf(DraftFinding finding) => _refs.GetValueOrDefault(KeyOf(finding));
 
     // Findings whose titles differ only in case, punctuation or a trailing person name cite one collection.
-    static (string, string) KeyOf(DraftFinding finding) =>
-        (SourceTitles.Identity(SourceTitles.Collection(finding.Source.Name)), (finding.Source.Author ?? "").ToLowerInvariant());
+    static SourceKey KeyOf(DraftFinding finding) =>
+        finding.Source.Ref is { } named
+            ? new SourceKey(named, "", "")
+            : new SourceKey(null, SourceTitles.Identity(SourceTitles.Collection(finding.Source.Name)), (finding.Source.Author ?? "").ToLowerInvariant());
 
     static HashSet<string> CitedFindings(IReadOnlyList<DraftFinding> drafted) =>
         [.. drafted.Where(CitesItself).Select(f => f.Id).Concat(drafted.SelectMany(f => f.CitedIds))];
 
     static bool CitesItself(DraftFinding finding) =>
-        finding.Facts.Any(x => x.Withdraw is null) || finding.Relations.Any(r => !r.IsRemoval)
+        finding.Facts.Any(x => x.CitesFinding) || finding.Relations.Any(r => !r.IsRemoval)
         || finding.Notes.Any(n => n.Cites.Any(c => c.Finding is null || c.Finding == finding.Id));
 
     /// <param name="drafted">The findings drafted into items.</param>
@@ -39,6 +44,13 @@ internal sealed class SourcePlan
         {
             var members = collection.ToList();
             var titles = members.GroupBy(m => SourceTitles.Identity(m.Source.Name), (_, g) => g.ToList()).ToList();
+
+            if (collection.Key.Ref is { } named)
+            {
+                plan._refs[collection.Key] = named;
+                ReportTitles(titles, t => $"title \"{t}\" → citing {named}, the source the finding names", DraftDecisionKinds.ReusedSource, decisions);
+                continue;
+            }
 
             if (FindExisting(members, catalog) is { } existing)
             {

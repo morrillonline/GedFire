@@ -1,31 +1,17 @@
 namespace GedCore.Apply;
 
 /// <summary>
-/// How a stated citation that matches no existing page is treated: an explicit
-/// citation edit corrects a wrong page in place, while relationship provenance
-/// never rewrites an existing citation — it is added beside it, so linking a
-/// relative to an already-cited family can never destroy provenance.
-/// </summary>
-internal enum CitationUpsertMode { CorrectPageInPlace, AddBeside }
-
-/// <summary>
 /// Brings the citations on one structure (a fact, a note, or a FAM) in line
-/// with the citations a request states, one source at a time. The request says
-/// what each citation should read; this works out which existing citation each
-/// one refers to, so nobody spells out what to remove or add.
-///
-/// For one source, the stated citations are matched to that source's existing
-/// citations on the structure:
-///   1. a stated citation whose page equals an existing citation's page (or
-///      that names no page, against an existing citation with none) updates
+/// with the citations a request states, one source at a time. One source may
+/// be cited on many pages of one structure, each page its own citation:
+///   1. a stated citation whose page equals an existing citation's page of
+///      that source (or that names no page, against one with none) updates
 ///      that citation's other fields;
-///   2. in <see cref="CitationUpsertMode.CorrectPageInPlace"/>, what is left
-///      over is paired in order and updated in place only when the counts are
-///      equal, which is how a wrong page is corrected; in
-///      <see cref="CitationUpsertMode.AddBeside"/> this step never runs;
-///   3. each remaining leftover becomes a new citation;
-///   4. in <see cref="CitationUpsertMode.CorrectPageInPlace"/>, a leftover that
-///      could pair with several existing citations is ambiguous and is rejected.
+///   2. a stated citation with <see cref="Citation.ReplacesPage"/> corrects
+///      the existing citation on that page: its page and other fields are
+///      rewritten; no existing citation on that page is an error;
+///   3. any other stated citation is added beside the existing ones.
+/// A page is never changed unless the request names the page it replaces.
 /// Nothing is ever removed here; removal is deleteCitation's job.
 ///
 /// Commentary-only citations (<see cref="GedRecord.VoidPointer"/>) have no
@@ -34,9 +20,7 @@ internal enum CitationUpsertMode { CorrectPageInPlace, AddBeside }
 /// </summary>
 internal static class CitationReconciler
 {
-    public static List<string> Upsert(
-        ApplyState state, GedRecord structure, IReadOnlyList<Citation> citations,
-        CitationUpsertMode mode = CitationUpsertMode.CorrectPageInPlace)
+    public static List<string> Upsert(ApplyState state, GedRecord structure, IReadOnlyList<Citation> citations)
     {
         var changes = new List<string>();
         foreach (var commentary in citations.Where(c => c.IsCommentaryOnly))
@@ -46,7 +30,7 @@ internal static class CitationReconciler
         {
             var swapped = group.Select(c => c.SwappedFrom).OfType<string>().ToHashSet(StringComparer.Ordinal);
             var existing = Resolve.CitationsOnStructure(structure, group.Key, swapped);
-            foreach (var (node, citation) in Plan(group.Key, existing, [.. group], mode))
+            foreach (var (node, citation) in Plan(group.Key, existing, [.. group]))
             {
                 string? change = node is null
                     ? NodeBuilder.AddCitation(state, structure, citation)
@@ -57,32 +41,21 @@ internal static class CitationReconciler
         return changes;
     }
 
-    static List<(GedRecord? Node, Citation Citation)> Plan(
-        string source, IReadOnlyList<GedRecord> existing, IReadOnlyList<Citation> stated, CitationUpsertMode mode)
+    static List<(GedRecord? Node, Citation Citation)> Plan(string source, IReadOnlyList<GedRecord> existing, IReadOnlyList<Citation> stated)
     {
         var plan = new List<(GedRecord? Node, Citation Citation)>();
         var unmatched = existing.ToList();
-        var leftover = new List<Citation>();
-
         foreach (var citation in stated)
         {
-            var match = unmatched.FirstOrDefault(node => SamePage(node, citation));
-            if (match is null) { leftover.Add(citation); continue; }
-            unmatched.Remove(match);
+            var match = citation.ReplacesPage is { } replaced
+                ? unmatched.FirstOrDefault(node => PageOf(node) == replaced)
+                  ?? throw new InvalidOperationException(
+                      $"citation {source}: replacesPage \"{replaced}\" names no citation of {source} on the structure " +
+                      $"(pages: {DescribePages(existing)})")
+                : unmatched.FirstOrDefault(node => SamePage(node, citation));
+            if (match is not null) unmatched.Remove(match);
             plan.Add((match, citation));
         }
-
-        if (mode == CitationUpsertMode.AddBeside || (leftover.Count > 0 && unmatched.Count == 0))
-            plan.AddRange(leftover.Select(c => ((GedRecord?)null, c)));
-        else if (leftover.Count > 0 && leftover.Count == unmatched.Count)
-            plan.AddRange(leftover.Select((c, i) => ((GedRecord?)unmatched[i], c)));
-        else if (leftover.Count > 0)
-            throw new InvalidOperationException(
-                $"citation {source}: the structure already cites it {existing.Count} time(s) " +
-                $"(pages: {DescribePages(existing)}) and the request states {stated.Count} " +
-                $"that do not line up — state every citation of {source} wanted on this structure " +
-                "with its page, or use deleteCitation to remove one");
-
         return plan;
     }
 

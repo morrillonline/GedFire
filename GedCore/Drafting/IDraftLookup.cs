@@ -5,7 +5,13 @@ public interface ISourceCatalog
 {
     /// <summary>The xref of an existing source with this title (compared by collection identity) and author, or null.</summary>
     string? FindSource(string title, string? author);
+
+    /// <summary>The source record with this xref, or null when the document holds no such source or the lookup cannot say.</summary>
+    ExistingSource? SourceRecord(string xref) => null;
 }
+
+/// <summary>A source record the document holds.</summary>
+public sealed record ExistingSource(string Title, string? Author);
 
 /// <summary>Names the people the document already holds.</summary>
 public interface IPersonNames

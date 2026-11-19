@@ -31,7 +31,7 @@ public sealed record DialectShape(string Name, string Description, IReadOnlyList
 public static class ChangesetDialect
 {
     /// <summary>The published changeset schema's version (its x-schemaVersion); changeset files do not carry it.</summary>
-    public const string SchemaVersion = "3.1";
+    public const string SchemaVersion = "3.2";
 
     /// <summary>The shape name an op array names: each element is the op its "op" field names.</summary>
     public const string Op = "op";
@@ -214,7 +214,8 @@ public static class ChangesetDialect
         new("citation", "One source citation, or the author's commentary alone.",
         [
             Xref("source", "The cited source: an existing xref, or a @NewSource…@ placeholder a newSources group defines. @VOID@ cites no source: the citation then holds only commentary, and never counts as evidence.", required: true),
-            Str("page", "Where in the source: the locator, copied verbatim."),
+            Str("page", "Where in the source: the locator, copied verbatim. A page the structure does not cite from this source adds a citation beside the others."),
+            Str("replacesPage", "The page of this source's existing citation on the structure that this one corrects; its page becomes page. Without it, a page is never changed."),
             Str("dataText", "The verbatim extract."),
             new("quay", DialectType.Integer, "The GEDCOM QUAY assessment, 0 to 3.") { Minimum = 0, Maximum = 3 },
             Str("commentary", "A sentence or two of the author's own comment on what this source says, written as the citation's NOTE and printed after the source in the footnote. Required, and the only field, when source is @VOID@."),

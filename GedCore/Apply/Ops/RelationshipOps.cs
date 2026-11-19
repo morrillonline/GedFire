@@ -13,8 +13,7 @@ namespace GedCore.Apply;
 /// GEDCOM 7 allows SOURCE_CITATION on the FAM record but only PHRASE under
 /// HUSB/WIFE/CHIL. Marriage citations attach on MARR, which is an event.
 /// A citation whose page the family does not already carry is added beside the
-/// existing citations (<see cref="CitationUpsertMode.AddBeside"/>), so a link
-/// can never overwrite another record's provenance.
+/// existing citations, so a link can never overwrite another record's provenance.
 /// </summary>
 public sealed class CreateOrUpdateSpouseOp : ChangeOp
 {
@@ -163,7 +162,7 @@ public sealed class CreateOrUpdateSpouseOp : ChangeOp
                 Value = Marriage, Citations = marriageCitations, DelegatedBy = Kind,
             }.Apply(state, log);
 
-        changes.AddRange(CitationReconciler.Upsert(state, fam, citations, CitationUpsertMode.AddBeside));
+        changes.AddRange(CitationReconciler.Upsert(state, fam, citations));
         if (Note is not null && Kin.UpsertNote(state, fam, Note) is string n) changes.Add(n);
 
         log.Add(changes.Count > 0
@@ -272,7 +271,7 @@ public sealed class CreateOrUpdateChildOp : ChangeOp
             fam = resolution.RequireFamily(Context);
 
         if (Kin.EnsureChild(state, fam, child.Xref) is string c) changes.Add(c);
-        changes.AddRange(CitationReconciler.Upsert(state, fam, citations, CitationUpsertMode.AddBeside));
+        changes.AddRange(CitationReconciler.Upsert(state, fam, citations));
 
         log.Add(changes.Count > 0
             ? $"{Context}: {string.Join("; ", changes)}"
@@ -377,7 +376,7 @@ public sealed class CreateOrUpdateParentOp : ChangeOp
 
         string roleTag = Role == "father" ? "HUSB" : "WIFE";
         if (Kin.SetPartner(state, fam, roleTag, parent.Xref) is string p) changes.Add(p);
-        changes.AddRange(CitationReconciler.Upsert(state, fam, citations, CitationUpsertMode.AddBeside));
+        changes.AddRange(CitationReconciler.Upsert(state, fam, citations));
 
         log.Add(changes.Count > 0
             ? $"{Context} on {fam.Xref}: {string.Join("; ", changes)}"
