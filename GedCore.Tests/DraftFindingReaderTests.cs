@@ -425,6 +425,41 @@ public class DraftFindingReaderTests
     }
 
     [Fact]
+    public void AFactsCommentary_AndItsCitesCommentary_AreRead()
+    {
+        var fact = Valid.Replace("\"quay\": 2 }",
+            "\"quay\": 2, \"commentary\": \"The register gives the year only.\", \"cites\": [ { \"finding\": \"F-9\", \"quay\": 1, \"commentary\": \"His stone gives 1899.\" } ] }");
+
+        var (findings, errors) = Read($"[{fact}]");
+
+        Assert.Empty(errors);
+        Assert.Equal("The register gives the year only.", findings[0].Facts[0].Commentary);
+        Assert.Equal("His stone gives 1899.", Assert.Single(findings[0].Facts[0].Cites).Commentary);
+    }
+
+    [Theory]
+    [InlineData("\"commentary\": \"Born at @I2@'s house.\"", "findings[0].facts[0].commentary contains a record id")]
+    [InlineData("\"commentary\": \"Two\\nparagraphs.\"", "findings[0].facts[0].commentary must be one paragraph")]
+    [InlineData("\"withdraw\": \"wrong man\", \"commentary\": \"x\"", "findings[0].facts[0].withdraw deletes the fact the record holds;")]
+    public void AFactsCommentary_IsOneParagraphWithNoRecordIds_AndNotOnAWithdrawal(string field, string error)
+    {
+        var fact = Valid.Replace("\"quay\": 2 }", $"\"quay\": 2, {field} }}");
+
+        Assert.Contains(Read($"[{fact}]").Errors, e => e.StartsWith(error));
+    }
+
+    [Fact]
+    public void ANoteCitesCommentary_IsRead()
+    {
+        var note = Valid.Replace("\"text\": \"A note.\"", "\"text\": \"A note.\", \"cites\": [ { \"quay\": 1, \"commentary\": \"The roll gives his rank.\" } ]");
+
+        var (findings, errors) = Read($"[{note}]");
+
+        Assert.Empty(errors);
+        Assert.Equal("The roll gives his rank.", Assert.Single(findings[0].Notes[0].Cites).Commentary);
+    }
+
+    [Fact]
     public void AWithdrawnNote_IsReadWithItsMatchAndReason()
     {
         var note = Valid.Replace("\"text\": \"A note.\"", "\"match\": \"Old.\", \"withdraw\": \"a duplicate\"");

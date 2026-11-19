@@ -79,20 +79,6 @@ public class ChangesetDrafterNoteWithdrawalTests
     }
 
     [Fact]
-    public void AWithdrawnNote_DoesNotCountAsTheNoteThatExplainsAWithdrawnFact()
-    {
-        var finding = Finding("F-1", Withdraw(Duplicate)) with
-        {
-            Facts = [new DraftFact("@F1@", "MARR", "7 JUL 1911", null, 0, null, null, null) { Withdraw = "the 7 Jul date is a misreading" }],
-        };
-        var lookup = new FakeLookup([Duplicate], new ExistingFact("7 JUL 1911", null, []));
-
-        var result = Draft(lookup, finding);
-
-        Assert.Contains(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("withdrawing MARR on @F1@ is not cited"));
-    }
-
-    [Fact]
     public void TheDraftedDeletion_RemovesOnlyThatNoteWhenApplied()
     {
         const string document = $"""

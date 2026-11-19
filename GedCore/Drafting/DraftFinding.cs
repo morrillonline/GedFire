@@ -33,6 +33,9 @@ public sealed record DraftFact(
 
     /// <summary>Other findings whose records also support this fact, each cited as its own record; none of them is drafted.</summary>
     public IReadOnlyList<DraftCite> Cites { get; init; } = [];
+
+    /// <summary>The author's comment on this finding's citation of the fact, printed after the source in its footnote.</summary>
+    public string? Commentary { get; init; }
 }
 
 /// <summary>An extra line under a fact, such as the TYPE of an EVEN.</summary>
@@ -62,8 +65,9 @@ public sealed record DraftNote(string Record, string Text)
 /// <summary>
 /// A citation of a finding's record: the finding it cites (on a note, the note's own when null), graded on its own,
 /// optionally with a narrower extract. The cited finding lends only its source, locator and extract; it is not drafted.
+/// <see cref="Commentary"/> is the author's comment printed after that source in the footnote.
 /// </summary>
-public sealed record DraftCite(string? Finding, int Quay, string? Excerpt);
+public sealed record DraftCite(string? Finding, int Quay, string? Excerpt, string? Commentary = null);
 
 public sealed record DraftTarget(string Xref, string? Card, string? Name);
 

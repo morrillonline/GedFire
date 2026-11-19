@@ -48,6 +48,8 @@ public sealed class DraftChangesetTool
         "file, which lends only its source, locator and extract and is not drafted; " +
         "a biography note must cite at least one; " +
         "a fact may carry substructures, a replacedCitations disposition, citeOnly to cite a fact already held, " +
+        "commentary (a sentence or two on its record's evidence, written on its citation and printed in the fact's footnote; " +
+        "every cite, on a fact or a note, takes its own; evidence discussion belongs in commentary, a note holds the life story), " +
         "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
         "way to a finding's date or bound that contradicts it only when uncited or every citation is graded below the finding; " +
         "a citation without a QUAY holds it. Otherwise the record's date is kept and an open decision names it, its citations " +

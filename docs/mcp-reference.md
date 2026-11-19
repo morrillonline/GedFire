@@ -416,13 +416,14 @@ that hold these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-Current versions: `finding` 4.0 (`replacedCitations` drops `moveToNote`; 3.3
+Current versions: `finding` 4.1 (a fact and every cite take `commentary`; 4.0
+dropped `moveToNote` from `replacedCitations`; 3.3
 let a fact take `cites` and a cite name a
 finding of any target; 3.2 let a parent relation take `notDuplicateOf`;
 3.1 let a note `withdraw` the note its `match` names; 3.0 required `cites` on
 a biography note; 2.0
-tightened date, tag, excerpt, grade and sex rules), `finding-file` 4.0 (embeds
-`finding` 4.0; 2.0 refused unknown keys and a mismatched `draft.id`),
+tightened date, tag, excerpt, grade and sex rules), `finding-file` 4.1 (embeds
+`finding` 4.1; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
 `persons[].xref`), `argument` 1.0, `changeset` 3.1 (a citation takes
 `commentary`, and `@VOID@` as its source for commentary alone; 3.0 dropped
@@ -445,7 +446,7 @@ It may also carry `people`, `relations`, `notes`, and an identity `argument`.
 |---|---|
 | `source` | `name`, `locator`, `class`, `information`; optional `author`, `url`, `accessed`. |
 | `target` | `xref`; optional `card` and `name`. |
-| Each fact | `record`, `fact`, per-fact `quay`; date/place or text `value`; optional `excerpt`, `class`, `information`. |
+| Each fact | `record`, `fact`, per-fact `quay`; date/place or text `value`; optional `excerpt`, `class`, `information`, `commentary`. |
 
 Use the tool schema for the full contract. The compiler returns the changeset,
 `decisions`, and `errors`. It rejects a target name that differs from the
@@ -590,7 +591,8 @@ The warning requests source review, is not an error, and does not block applicat
   `family`. `unlink-child` takes `family` and `child`; `unlink-parent` takes
   `person`, `role`, and optional `family`.
 - Removal ops carry no citation, `quay`, or `excerpt`. The draft raises an
-  `open` decision requesting a cited explanatory note. It refuses to remove a
+  `open` decision asking the reviewer to confirm the finding's evidence; the
+  removed link is never recorded in a note. It refuses to remove a
   child the family does not list.
 - A fact can carry `substructures`, such as an `EVEN` with a `TYPE`.
   Such an event adds an instance rather than matching by date.
@@ -604,9 +606,9 @@ The warning requests source review, is not an error, and does not block applicat
   the record's, even a more specific or better-cited one. A contradicted value's
   citations are removed unless `replacedCitations` says otherwise.
 - `withdraw: "<reason>"` deletes the record's fact with nothing in its place;
-  date/place select the instance, and its citations are removed with it. Like a
-  removal, it raises an `open` decision unless the finding adds a cited note.
-  The reason is shown to the reviewer in the changeset's findings table.
+  date/place select the instance, and its citations are removed with it. The
+  reason and the finding's evidence are shown to the reviewer in the
+  changeset's findings table; nothing about the removed value goes into a note.
 - A note's `match` names the exact text to rewrite. `cites` lists
   `{"finding", "quay", "excerpt"}` entries; omitting `finding` uses its own.
   The compiler joins notes on the same record within a changeset and retains
@@ -615,6 +617,15 @@ The warning requests source review, is not an error, and does not block applicat
   another finding whose record also supports the fact. The fact keeps its own
   finding's citation at its `quay` and gains one citation per entry; a cite
   of the fact's own finding is refused.
+- A fact's `commentary`, and the `commentary` of any cite (on a fact or a
+  note), is a sentence or two of the author's comment on that record's
+  evidence: why its reading is preferred over another record's, or that a date
+  is derived from an age. The compiler writes it as `commentary` on the
+  citation it drafts, so it prints after the source in that footnote. A
+  `citeOnly` fact's commentary lands on the existing fact. A note holds the
+  life story; discussion of the evidence behind it goes in its citations'
+  commentary. Commentary is one paragraph with no record ids, and a withdrawal
+  takes none.
 - A cite, on a note or a fact, may name any finding by id, whatever its target
   or status: another finding of the draft, or with `findingPaths` a finding
   staged as `<id>.json` beside the citing file. The cited finding lends only

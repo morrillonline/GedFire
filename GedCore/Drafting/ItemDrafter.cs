@@ -71,7 +71,7 @@ internal sealed class ItemDrafter(
         foreach (var cite in fact.Cites)
         {
             var cited = citable.Find(cite.Finding!)!;
-            var claim = fact with { Quay = cite.Quay, Excerpt = cite.Excerpt, Class = null, Information = null, Cites = [] };
+            var claim = fact with { Quay = cite.Quay, Excerpt = cite.Excerpt, Class = null, Information = null, Cites = [], Commentary = cite.Commentary };
             yield return new Asserted(cited, claim, new CiteKey(sources.RefFor(cited), cited.Source.Locator, cite.Quay));
         }
     }
@@ -95,7 +95,7 @@ internal sealed class ItemDrafter(
         var op = new JsonObject { ["op"] = "createOrUpdateNote", ["record"] = note.Record, ["text"] = note.Text };
         if (note.Match is not null) op["match"] = note.Match;
         if (note.Purpose is not null) op["purpose"] = note.Purpose;
-        var cites = note.Cites.Select(c => NoteClaim(owner, c).Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!).ToList();
+        var cites = CitationsWithCommentary(note.Cites.Select(c => (NoteClaim(owner, c).Cite, c.Commentary)), citations);
         AttachCitations(op, cites);
         return Backed(op, note.Cites.Select(c => c.Finding ?? owner.Id));
     }
@@ -159,7 +159,7 @@ internal sealed class ItemDrafter(
                 removals[op.ToJsonString()] = (op, [finding.Id]);
                 if (relation.IsRemoval)
                     decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
-                        $"{DescribeRemoval(relation)} is not cited; record the evidence in a note that cites the finding", [finding.Id]));
+                        $"{DescribeRemoval(relation)} cites nothing in the tree; confirm the finding's evidence in review. The removed link is not recorded in a note", [finding.Id]));
             }
         return removals.Values.Select(r => Backed(r.Op, r.Findings));
     }
@@ -211,9 +211,6 @@ internal sealed class ItemDrafter(
             string reasons = string.Join("; ", byFact.Select(w => w.Fact.Withdraw).Distinct());
             decisions.Add(new DraftDecision(DraftDecisionKinds.Resolved,
                 $"withdrawn: {tag} on {record} ({Describe(held[0].Date, held[0].Place, null)}), {reasons}", findingIds));
-            if (!group.Any(f => f.Notes.Any(n => n.Record == record && !n.IsWithdrawal)))
-                decisions.Add(new DraftDecision(DraftDecisionKinds.Open,
-                    $"withdrawing {tag} on {record} is not cited; record the evidence in a note that cites the finding", findingIds));
             yield return Backed(op, findingIds);
         }
     }
@@ -507,7 +504,7 @@ internal sealed class ItemDrafter(
             op["match"] = match;
         }
 
-        var cites = attached.Select(a => a.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!).ToList();
+        var cites = FactCitations(attached, citations);
         if (held is not null)
             cites.AddRange(RestatedCitations(
                 new FactKey(record, tag, null, null, null, "", null), held, cites, [.. attached.Select(a => a.Finding.Id).Distinct()], decisions));
@@ -554,7 +551,7 @@ internal sealed class ItemDrafter(
 
     JsonObject VitalOp(FactKey key, List<Asserted> facts, Placement placement, Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
     {
-        var cites = facts.Select(a => a.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!).ToList();
+        var cites = FactCitations(facts, citations);
         if (placement.Instance is { } instance)
             cites.AddRange(RestatedCitations(key, instance, cites, [.. facts.Select(a => a.Finding.Id).Distinct()], decisions));
 
@@ -582,10 +579,24 @@ internal sealed class ItemDrafter(
                 if (byFact.Key.Place is not null) match["place"] = byFact.Key.Place;
                 op["match"] = match;
             }
-            AttachCitations(op, [.. byFact.Select(a => a.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!)]);
+            AttachCitations(op, FactCitations([.. byFact], citations));
             yield return Backed(op, byFact.Select(a => a.Finding.Id));
         }
     }
+
+    static List<JsonNode> FactCitations(List<Asserted> facts, Dictionary<CiteKey, JsonObject> citations) =>
+        CitationsWithCommentary(facts.Select(a => (a.Cite, a.Fact.Commentary)), citations);
+
+    // One copy of each citation, carrying the commentary given to it; one source, page and grade is one citation,
+    // so commentaries several facts or cites give it are joined.
+    static List<JsonNode> CitationsWithCommentary(IEnumerable<(CiteKey Cite, string? Commentary)> cites, Dictionary<CiteKey, JsonObject> citations) =>
+        [.. cites.GroupBy(c => c.Cite).Select(group =>
+        {
+            var citation = JsonNode.Parse(citations[group.Key].ToJsonString())!;
+            var comments = group.Select(c => c.Commentary?.Trim()).Where(c => !string.IsNullOrEmpty(c)).Distinct().ToList();
+            if (comments.Count > 0) citation["commentary"] = string.Join(" ", comments);
+            return citation;
+        })];
 
     // A text value is written alone; otherwise the date and place.
     static void AddPayload(JsonObject op, FactKey key)

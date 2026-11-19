@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using GedCore.Apply;
 
 namespace GedCore.Drafting;
@@ -85,7 +86,7 @@ public sealed class DraftFindingReader
 
     DraftFact? ReadFact(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange", "cites")) return null;
+        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange", "cites", "commentary")) return null;
         int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
         string? tag = Text(el, "fact", path, required: true)?.ToUpperInvariant();
@@ -104,14 +105,15 @@ public sealed class DraftFindingReader
         string? replaceHeld = Text(el, "replaceHeld", path);
         string? withdraw = Text(el, "withdraw", path);
         var cites = ReadList(el, "cites", path, ReadFactCite);
+        string? commentary = Commentary(el, path);
         int quay = ReadQuay(el, path, "this fact (not inherited from the finding)");
 
         if (allowSurnameChange && (tag?.ToUpperInvariant() != "NAME" || value is null || citeOnly || withdraw is not null))
             _errors.Add($"{path}.allowSurnameChange applies only to a NAME fact with a value.");
         if (withdraw is not null)
         {
-            if (value is not null || substructures.Count > 0 || replaced is not null || citeOnly || replaceHeld is not null || cites.Count > 0)
-                _errors.Add($"{path}.withdraw deletes the fact the record holds; value, substructures, replacedCitations, citeOnly, replaceHeld and cites do not apply.");
+            if (value is not null || substructures.Count > 0 || replaced is not null || citeOnly || replaceHeld is not null || cites.Count > 0 || commentary is not null)
+                _errors.Add($"{path}.withdraw deletes the fact the record holds; value, substructures, replacedCitations, citeOnly, replaceHeld, cites and commentary do not apply.");
         }
         else if (citeOnly)
         {
@@ -133,6 +135,7 @@ public sealed class DraftFindingReader
             ReplaceHeld = replaceHeld,
             Withdraw = withdraw,
             Cites = cites,
+            Commentary = commentary,
         };
     }
 
@@ -248,12 +251,25 @@ public sealed class DraftFindingReader
 
     DraftCite? ReadCite(JsonElement el, string path, bool findingRequired, string graded)
     {
-        if (!IsObject(el, path, "finding", "quay", "excerpt")) return null;
+        if (!IsObject(el, path, "finding", "quay", "excerpt", "commentary")) return null;
         int before = _errors.Count;
         string? finding = Text(el, "finding", path, required: findingRequired);
         string? excerpt = Text(el, "excerpt", path);
+        string? commentary = Commentary(el, path);
         int quay = ReadQuay(el, path, graded);
-        return _errors.Count > before ? null : new DraftCite(finding, quay, excerpt);
+        return _errors.Count > before ? null : new DraftCite(finding, quay, excerpt, commentary);
+    }
+
+    // Commentary prints in a footnote: one paragraph, no record ids.
+    string? Commentary(JsonElement el, string path)
+    {
+        string? commentary = Text(el, "commentary", path);
+        if (commentary is null) return null;
+        if (commentary.Contains('\n') || commentary.Contains('\r'))
+            _errors.Add($"{path}.commentary must be one paragraph, with no line break.");
+        if (Regex.IsMatch(commentary, "@[^@\\s]+@"))
+            _errors.Add($"{path}.commentary contains a record id; name the person or source in words.");
+        return commentary;
     }
 
     List<T> ReadList<T>(JsonElement el, string name, string path, Func<JsonElement, string, T?> read) where T : class
