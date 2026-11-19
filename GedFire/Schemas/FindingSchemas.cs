@@ -98,7 +98,7 @@ public static class FindingSchemas
                   "replacedCitations": { "type": "string", "enum": ["keep", "drop"], "description": "What becomes of the citations on a fact whose value this replaces. Default keep for a value that refines the old one; drop for a contradicted value replaced by evidence or replaceHeld, and for NAME, which refuses keep. A corrected value and its citations leave the record." },
                   "citeOnly": { "type": "boolean", "description": "Only add this finding's citation to a fact the record already holds. date and place then select the instance when the record has several." },
                   "replaceHeld": { "type": "string", "minLength": 1, "description": "The reason to write this value over the one the record holds, even a more specific or better-cited one (a single-valued fact). A contradicted value's citations are removed unless replacedCitations says otherwise." },
-                  "withdraw": { "type": "string", "minLength": 1, "description": "The reason to delete the fact the record holds, with nothing in its place; date and place select the instance. Its citations are removed with it. Cite the evidence in a note." },
+                  "withdraw": { "type": "string", "minLength": 1, "description": "The reason to delete the fact the record holds, with nothing in its place; date and place select the instance. Its citations are removed with it. The reason and this finding's evidence travel in the changeset's findings table for the reviewer; nothing about the removed value is written into a note." },
                   "cites": {
                     "type": "array",
                     "description": "Other findings whose records also support this fact, whatever their target or status: another finding drafted with this one, or one staged as <id>.json beside this file. The fact keeps its own finding's citation at quay and gains one citation per entry, carrying the cited finding's source, locator and extract (or excerpt); nothing else is drafted from the cited finding. Not with withdraw.",
@@ -108,11 +108,13 @@ public static class FindingSchemas
                       "properties": {
                         "finding": { "type": "string", "minLength": 1, "description": "The id of the finding cited; not this fact's own finding." },
                         "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "The grade of the cited record for this fact, at most its source's ceiling. One quoted text carries one grade, so a differently graded cite needs its own excerpt." },
-                        "excerpt": { "type": "string", "description": "A narrower extract than the cited finding's, quoted word for word from it." }
+                        "excerpt": { "type": "string", "description": "A narrower extract than the cited finding's, quoted word for word from it." },
+                        "commentary": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$", "description": "A sentence or two on what this cited record shows for the fact, printed after its source in the fact's footnote. No record ids." }
                       },
                       "required": ["finding", "quay"]
                     }
-                  }
+                  },
+                  "commentary": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$", "description": "A sentence or two of the author's comment on this finding's evidence for the fact, such as why its reading is preferred over another record's, or that a date is derived from an age. Printed after the source in the fact's footnote; discussion of evidence belongs here, never in a note. No record ids. Not with withdraw." }
                 },
                 "required": ["record", "fact", "quay"]
               }
@@ -181,7 +183,8 @@ public static class FindingSchemas
                       "properties": {
                         "finding": { "type": "string", "description": "The id of the finding cited; default the note's own." },
                         "quay": { "type": "integer", "minimum": 0, "maximum": 3 },
-                        "excerpt": { "type": "string", "description": "A narrower extract than the cited finding's, quoted word for word from it." }
+                        "excerpt": { "type": "string", "description": "A narrower extract than the cited finding's, quoted word for word from it." },
+                        "commentary": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$", "description": "A sentence or two on what this cited record shows, printed after its source in the note's footnote. No record ids." }
                       },
                       "required": ["quay"]
                     }

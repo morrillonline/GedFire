@@ -325,7 +325,7 @@ public class ChangesetDrafterHeldDateTests
     }
 
     [Fact]
-    public void Withdraw_DeletesTheSelectedFactAndAsksForACitedNote()
+    public void Withdraw_DeletesTheSelectedFactAndAsksForNoNote()
     {
         var result = Draft(HoldingTag("BIRT", "ABT 1755", 0),
             Finding("F-1", "ABT 1755", tag: "BIRT", withdraw: "she bore children 1735-1739"));
@@ -336,20 +336,6 @@ public class ChangesetDrafterHeldDateTests
         Assert.Null(Str(delete, "deletedCitations"));
         Assert.Empty(OpsOf(result, "createOrUpdateVital"));
         Assert.Contains(result.Decisions, d => d.Kind == "resolved" && d.Detail.Contains("withdrawn: BIRT on @I1@ (ABT 1755), she bore children 1735-1739"));
-        Assert.Contains(result.Decisions, d => d.Kind == "open" && d.Detail.Contains("record the evidence in a note"));
-    }
-
-    [Fact]
-    public void Withdraw_WithACitedNote_RaisesNothingOpen()
-    {
-        var finding = Finding("F-1", null, tag: "BIRT", withdraw: "she bore children 1735-1739") with
-        {
-            Notes = [new DraftNote("@I1@", "Her recorded birth about 1755 cannot stand: she bore children 1735-1739.") { Cites = [new DraftCite(null, 2, null)] }],
-        };
-
-        var result = Draft(HoldingTag("BIRT", "ABT 1755"), finding);
-
-        Assert.Single(OpsOf(result, "deleteVital"));
         Assert.DoesNotContain(result.Decisions, d => d.Kind == "open");
     }
 

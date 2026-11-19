@@ -105,6 +105,27 @@ public class ChangesetDrafterNoteAndCitationTests
     }
 
     [Fact]
+    public void ABiographyNotesCitationCommentary_IsWrittenUnderThatCitation()
+    {
+        var pension = Finding("F-1", Source("Pension Files", "File 4471"), "Hiram served in the 3rd Maine.",
+            notes: [new DraftNote("@I1@", "Hiram served in the 3rd Maine Infantry.")
+            {
+                Purpose = "biography",
+                Cites = [new DraftCite(null, 2, null, "His declaration gives the regiment; the muster roll is not indexed.")],
+            }]);
+
+        var result = Draft(pension);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var applied = ChangesetApplier.Run(Encoding.UTF8.GetBytes(Document), Changeset.Parse(result.Changeset!.ToJsonString()), [1], dryRun: false);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        var note = Ged70.Ged70Parser.Read(new MemoryStream(applied.OutputBytes!)).ByXref["@I1@"].ChildrenByTag("NOTE")
+            .Single(n => n.FullValue() == "Hiram served in the 3rd Maine Infantry.");
+        Assert.Equal("His declaration gives the regiment; the muster roll is not indexed.",
+            Assert.Single(note.ChildrenByTag("SOUR")).FirstChild("NOTE")!.FullValue());
+    }
+
+    [Fact]
     public void ANoteCitingOneFinding_UsesTheCitationsArray()
     {
         var finding = Finding("F-1", Source("Register", "Register p. 2"), "Hiram, narrower. Hiram.",
@@ -315,6 +336,53 @@ public class ChangesetDrafterNoteAndCitationTests
         Assert.False(op.TryGetProperty("match", out _));
         Assert.Equal("memorial 1", op.GetProperty("citations")[0].GetProperty("page").GetString());
         AssertApplies(result);
+    }
+
+    // ---- commentary ----
+
+    [Fact]
+    public void AFactsCommentary_GoesOnItsOwnCitation_AndACitesCommentaryOnTheCitedRecordsCitation()
+    {
+        var marriage = Finding("F-2", Source("Marriage Returns", "Return 88"), "Hiram Test, aged 42, married Ada Vale.",
+            [Fact("BIRT", "1790", null) with { Record = "@I2@" }], xref: "@I2@");
+        var finding = Finding("F-1", Source("Register", "p. 2"), "Hiram born 1800.",
+            [Fact("BIRT", "ABT 1800", null) with
+            {
+                Commentary = "The register gives the year only.",
+                Cites = [new DraftCite("F-2", 2, "aged 42", "His age at marriage agrees.")],
+            }]);
+
+        var result = new ChangesetDrafter(new FakeLookup()).Draft([finding], cited: [marriage]);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var citations = Assert.Single(Ops(result)).GetProperty("citations").EnumerateArray().ToList();
+        Assert.Equal("The register gives the year only.", citations[0].GetProperty("commentary").GetString());
+        Assert.Equal("His age at marriage agrees.", citations[1].GetProperty("commentary").GetString());
+        AssertApplies(result);
+    }
+
+    [Fact]
+    public void ACiteOnlyFactsCommentary_IsWrittenAsTheCitationsNoteOnTheExistingFact()
+    {
+        var finding = Finding("F-1", Source("Find a Grave", "memorial 1"), "DEATH 1873",
+            [Fact("DEAT", null, null, quay: 1) with { CiteOnly = true, Commentary = "The stone gives the year only." }]);
+
+        var result = Draft(finding);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        var applied = ChangesetApplier.Run(Encoding.UTF8.GetBytes(Document), Changeset.Parse(result.Changeset!.ToJsonString()), [1], dryRun: false);
+        Assert.True(applied.Success, string.Join("; ", applied.Errors));
+        var death = Ged70.Ged70Parser.Read(new MemoryStream(applied.OutputBytes!)).ByXref["@I1@"].FirstChild("DEAT")!;
+        var cited = death.ChildrenByTag("SOUR").Single(s => s.FirstChild("PAGE")?.Value == "memorial 1");
+        Assert.Equal("The stone gives the year only.", cited.FirstChild("NOTE")!.FullValue());
+    }
+
+    [Fact]
+    public void AFactWithoutCommentary_DraftsNoCommentary()
+    {
+        var result = Draft(Finding("F-1", Source("Register", "p. 2"), "Hiram born 1800.", [Fact("BIRT", "1800", null)]));
+
+        Assert.False(Assert.Single(Ops(result)).GetProperty("citations")[0].TryGetProperty("commentary", out _));
     }
 
     [Fact]

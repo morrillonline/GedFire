@@ -170,7 +170,7 @@ public class ChangesetDrafterMoveTests
         var op = Assert.Single(Ops(result));
         Assert.Equal("deleteChild", Verb(op));
         Assert.False(op.TryGetProperty("citations", out _));
-        Assert.Contains(result.Decisions, d => d.Kind == DraftDecisionKinds.Open && d.Detail.Contains("removing @I4@ from @F1@ is not cited"));
+        Assert.Contains(result.Decisions, d => d.Kind == DraftDecisionKinds.Open && d.Detail.Contains("removing @I4@ from @F1@ cites nothing in the tree; confirm the finding's evidence in review"));
         Assert.True(Apply(result).Success);
     }
 
