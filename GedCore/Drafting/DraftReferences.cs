@@ -16,7 +16,7 @@ public static class DraftReferences
     public static IReadOnlyList<DraftReference> Of(DraftFinding finding)
     {
         var declared = finding.People.Select(p => p.Xref)
-            .Concat(finding.Relations.Where(r => !r.IsRemoval).Select(r => r.Family).OfType<string>())
+            .Concat(finding.Relations.Where(r => r.CitesFinding).Select(r => r.Family).OfType<string>())
             .ToHashSet(StringComparer.Ordinal);
         return [.. Named(finding)
             .Where(r => r.Xref.Length > 0 && r.Xref != Void)

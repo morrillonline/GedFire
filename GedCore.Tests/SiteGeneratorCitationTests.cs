@@ -94,6 +94,9 @@ public class SiteGeneratorCitationTests : IDisposable
         1 HUSB @I1@
         1 WIFE @I2@
         1 CHIL @I3@
+        1 SOUR @S1@
+        2 PAGE p. 52
+        2 NOTE The banns name him Watkin.
         0 @I3@ INDI
         1 NAME Levi /Ashworth/
         1 SEX M
@@ -123,5 +126,13 @@ public class SiteGeneratorCitationTests : IDisposable
 
         Assert.True(Count(html, "His sons disagreed about the month.") > 0, "the commentary is not rendered");
         Assert.DoesNotContain("@VOID@", html);
+    }
+
+    [Fact]
+    public void AFamilysOwnCitation_IsAFootnoteOnItsPage_WithItsCommentary()
+    {
+        string html = GenerateCommentaryHtml();
+
+        Assert.Contains(", 52. The banns name him Watkin.", html);
     }
 }

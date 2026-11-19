@@ -30,6 +30,12 @@ internal static class OpSummary
         [.. Citations(op).Select(c => c.TryGetProperty("quay", out var q) && q.TryGetInt32(out int grade) ? grade : (int?)null)
             .OfType<int>().Distinct().Order()];
 
+    /// <summary>The author's commentary on each citation the op carries, each naming the source and page it follows.</summary>
+    public static IReadOnlyList<string> Commentaries(JsonElement op) =>
+        [.. Citations(op).Where(c => Text(c, "commentary") is not null).Select(c => Text(c, "source") == DraftReferences.Void
+            ? $"Commentary citing no source: \"{Text(c, "commentary")}\""
+            : $"Commentary on {Text(c, "source")}{(Text(c, "page") is { } page ? $", {page}" : "")}: \"{Text(c, "commentary")}\"")];
+
     // The citations of the fact or note the op writes, and of the family a relationship op links.
     static IEnumerable<JsonElement> Citations(JsonElement op) =>
         new[] { "citations", "familyCitations" }

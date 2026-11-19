@@ -416,16 +416,17 @@ that hold these shapes are built from the same definitions.
   the major version and with it the `$id`.
 - Release notes name every schema version change.
 
-Current versions: `finding` 4.2 (a source may name an existing source by
-`ref` and omit `locator`, and a fact may be `commentaryOnly`; 4.1 let a fact
+Current versions: `finding` 4.3 (a spouse, child or parent relation takes
+`commentary`, `cites` and `commentaryOnly`; 4.2 let a source name an existing source by
+`ref` and omit `locator`, and a fact be `commentaryOnly`; 4.1 let a fact
 and every cite take `commentary`; 4.0
 dropped `moveToNote` from `replacedCitations`; 3.3
 let a fact take `cites` and a cite name a
 finding of any target; 3.2 let a parent relation take `notDuplicateOf`;
 3.1 let a note `withdraw` the note its `match` names; 3.0 required `cites` on
 a biography note; 2.0
-tightened date, tag, excerpt, grade and sex rules), `finding-file` 4.2 (embeds
-`finding` 4.2; 2.0 refused unknown keys and a mismatched `draft.id`),
+tightened date, tag, excerpt, grade and sex rules), `finding-file` 4.3 (embeds
+`finding` 4.3; 2.0 refused unknown keys and a mismatched `draft.id`),
 `record` 1.2 (documents `match_record`'s `weak` verdict; 1.1 added optional
 `persons[].xref`), `argument` 1.0, `changeset` 3.2 (a citation takes
 `replacesPage`, and a new page of a cited source is added beside, never
@@ -451,6 +452,7 @@ It may also carry `people`, `relations`, `notes`, and an identity `argument`.
 | `source` | `name`, `locator`, `class`, `information`; optional `ref`, `author`, `url`, `accessed`. `locator` may be omitted only as described under "Naming a source by xref". |
 | `target` | `xref`; optional `card` and `name`. |
 | Each fact | `record`, `fact`, per-fact `quay`; date/place or text `value`; optional `excerpt`, `class`, `information`, `commentary`. A `commentaryOnly` fact takes only `commentary` and date/place. |
+| Each relation | `kind` and the link's people and family; `quay` unless a removal or `commentaryOnly`; optional `excerpt`, `cites`, `commentary`. A `commentaryOnly` relation takes only the link and `commentary`. |
 
 Use the tool schema for the full contract. The compiler returns the changeset,
 `decisions`, and `errors`. It rejects a target name that differs from the
@@ -609,10 +611,24 @@ The warning requests source review, is not an error, and does not block applicat
 - A child relation with `from` moves the child from that existing family into
   `family`. `unlink-child` takes `family` and `child`; `unlink-parent` takes
   `person`, `role`, and optional `family`.
-- Removal ops carry no citation, `quay`, or `excerpt`. The draft raises an
+- Removal ops carry no citation, `quay`, `excerpt`, `cites` or `commentary`. The draft raises an
   `open` decision asking the reviewer to confirm the finding's evidence; the
   removed link is never recorded in a note. It refuses to remove a
   child the family does not list.
+- A spouse, child or parent relation is cited on its family
+  (`familyCitations`), and takes `commentary` and `cites` under the same rules
+  as a fact: its `commentary` is written on the finding's family citation, each
+  cite adds the cited finding's citation with its own `commentary`, and a cite
+  of the relation's own finding is refused. A record captured for someone else,
+  such as a wife's memorial, can so support a husband's link. Commentary that
+  several findings of one item give the same source and page on one family is
+  joined, so no op's comment replaces another's.
+- A relation with `commentaryOnly: true` and `commentary` adds only a comment
+  citing no source (`SOUR @VOID@` with a `NOTE`) to the family of a link the
+  tree already holds, through that link's op. It takes no `quay`, `excerpt`,
+  `cites`, `notDuplicateOf`, `from`, `husb` or `wife`, and is refused when the
+  tree does not hold the link. Use it to explain a conflicting reading whose
+  record is cited elsewhere.
 - A fact can carry `substructures`, such as an `EVEN` with a `TYPE`.
   Such an event adds an instance rather than matching by date.
 - `replacedCitations` chooses `keep` or `drop` for citations on
@@ -730,7 +746,9 @@ verify its reasoning.
 `outPath` writes the changeset to a new file; `overwrite: true` permits
 replacement. The changeset embeds evidence under top-level `findings`, and
 each operation names its supporting findings. The apply engine ignores this
-evidence metadata; the proposal renderer uses it.
+evidence metadata; the proposal renderer uses it. The proposal also lists,
+under each operation, the commentary on each citation it carries, family
+citations included.
 
 Each `findings` entry traces back to the finding it was compiled from. Its
 `id` is the draft's `id`, and so names the finding file. `extract` and the
@@ -955,7 +973,8 @@ references resolve to the same allocated xref. Library callers receive
   page the structure does not cite is an error. `deleteCitation` can select a
   page.
 - Omit `fact` to edit a family-level citation with `createOrUpdateCitation`
-  or `deleteCitation`. Use exact `note` text to address note citations.
+  or `deleteCitation`. Use exact `note` text to address note citations. A
+  family's own citations print as footnotes on its family page's title.
 - A citation's `commentary` is a sentence or two of the author's own comment
   on that source, such as why a date is read one way. It is written as the
   citation's `NOTE` (standard GEDCOM 7) and printed after the source and its

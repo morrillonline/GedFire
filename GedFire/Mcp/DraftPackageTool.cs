@@ -29,7 +29,8 @@ public sealed class DraftPackageTool
         "changeset files draft_changeset produced and that have already been validated (validate_changeset, " +
         "check_plausibility) and corrected, in the order they should be numbered, plus the proposal name and an " +
         "existing folder. Writes one markdown file, <folder>/<proposal>.md, the document the reviewer reads: for " +
-        "each changeset, numbered so the reviewer can approve or deny it on its own, the findings each operation " +
+        "each changeset, numbered so the reviewer can approve or deny it on its own, each operation with the author's " +
+        "commentary on each of its citations beneath it, the findings each operation " +
         "cites (resolved through the finding references the changeset carries), their verbatim extracts, source " +
         "and information classes, and quality grades, then, for each item, why him, why not others, conflicts " +
         "and cautions, and difficulty from the identity arguments those findings carry. It compiles nothing: a changeset that does not validate " +

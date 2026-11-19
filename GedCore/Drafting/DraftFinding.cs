@@ -93,7 +93,8 @@ public sealed record DraftPerson(string Xref, string Name, string? Sex);
 /// <see cref="Child"/> (Other is a child of Family, seeded by Husb and Wife; with From the child leaves that family),
 /// <see cref="Parent"/> (Other is Person's parent in Role), or a link the finding removes:
 /// <see cref="UnlinkChild"/> (Other leaves Family) and <see cref="UnlinkParent"/> (Person loses the parent in Role).
-/// A removal carries no citation: the evidence belongs in a note that cites the finding.
+/// A removal carries no citation. A <see cref="CommentaryOnly"/> relation adds only a comment citing no source to a link
+/// the tree already holds.
 /// </summary>
 public sealed record DraftRelation(
     string Kind, string Person, string Other, string? Family, string? Role, string? Husb, string? Wife, int Quay)
@@ -112,7 +113,19 @@ public sealed record DraftRelation(
     /// <summary>For a <see cref="Child"/> relation, the existing family the child is moved out of.</summary>
     public string? From { get; init; }
 
+    /// <summary>Other findings whose records also support this link, each cited on the family as its own record; none of them is drafted.</summary>
+    public IReadOnlyList<DraftCite> Cites { get; init; } = [];
+
+    /// <summary>The author's comment on this finding's citation of the link, printed after the source in the family's footnote.</summary>
+    public string? Commentary { get; init; }
+
+    /// <summary>The relation takes only <see cref="Commentary"/>, as a citation of no source on the family of a link the tree holds.</summary>
+    public bool CommentaryOnly { get; init; }
+
     public bool IsRemoval => Kind is UnlinkChild or UnlinkParent;
+
+    /// <summary>Whether this finding's own source is cited on the link.</summary>
+    public bool CitesFinding => !IsRemoval && !CommentaryOnly;
 }
 
 public sealed record DraftFinding(
@@ -123,9 +136,9 @@ public sealed record DraftFinding(
     public IReadOnlyList<string> ExistingPeople { get; init; } = [];
     public IReadOnlyList<DraftRelation> Relations { get; init; } = [];
 
-    /// <summary>The ids of the other findings this one's notes and facts cite.</summary>
+    /// <summary>The ids of the other findings this one's notes, facts and relations cite.</summary>
     public IEnumerable<string> CitedIds =>
-        Notes.SelectMany(n => n.Cites).Concat(Facts.SelectMany(f => f.Cites))
+        Notes.SelectMany(n => n.Cites).Concat(Facts.SelectMany(f => f.Cites)).Concat(Relations.SelectMany(r => r.Cites))
             .Select(c => c.Finding).OfType<string>().Where(id => id != Id).Distinct(StringComparer.Ordinal);
 
     /// <summary>Why the records concern this person and not a same-named rival, exactly as correlation wrote it; carried into the changeset, never judged.</summary>

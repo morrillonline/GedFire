@@ -20,7 +20,7 @@ internal sealed class ItemDrafter(
 
     sealed record Asserted(DraftFinding Finding, DraftFact Fact, CiteKey Cite);
 
-    sealed record AssertedRelation(DraftFinding Finding, DraftRelation Relation, CiteKey Cite);
+    sealed record AssertedRelation(DraftFinding Finding, DraftRelation Relation, CiteKey? Cite);
 
     // Where a vital op lands among the instances the record already holds of its tag.
     sealed record Placement(JsonObject? Match, bool Add, ExistingFact? Instance);
@@ -37,9 +37,9 @@ internal sealed class ItemDrafter(
         var asserted = group.SelectMany(f => f.Facts.Where(x => x.CitesFinding).SelectMany(x => Assert(f, x))).ToList();
         errors.AddRange(PagelessCitationErrors(asserted));
         var noteCites = group.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => NoteClaim(f, c)))).ToList();
-        var relations = group.SelectMany(f => f.Relations.Where(r => !r.IsRemoval).Select(r => new AssertedRelation(f, r, new CiteKey(sources.RefFor(f), f.Source.Locator, r.Quay)))).ToList();
+        var relations = group.SelectMany(f => f.Relations.Where(r => r.CitesFinding).SelectMany(r => AssertRelation(f, r))).ToList();
         var claims = asserted.Select(a => new Claim(a.Finding, a.Cite, a.Fact.Excerpt ?? a.Finding.Extract))
-            .Concat(relations.Select(r => new Claim(r.Finding, r.Cite, r.Relation.Excerpt ?? r.Finding.Extract)))
+            .Concat(relations.Select(r => new Claim(r.Finding, r.Cite!, r.Relation.Excerpt ?? r.Finding.Extract)))
             .Concat(noteCites)
             .ToList();
         var citations = BuildCitations(claims, decisions, errors);
@@ -49,8 +49,12 @@ internal sealed class ItemDrafter(
         var sexCorrections = vitals.Where(op => (string?)op["fact"] == "SEX"
             && !Placeholder.IsPlaceholder((string)op["record"]!)).ToHashSet();
         foreach (var correction in vitals.Where(sexCorrections.Contains)) ops.Add(correction);
-        foreach (var link in relations.GroupBy(r => (r.Relation.Kind, r.Relation.Person, r.Relation.Other, r.Relation.Family, r.Relation.Role)))
-            ops.Add(RelationOp([.. link], citations, decisions));
+        var comments = group.SelectMany(f => f.Relations.Where(r => r.CommentaryOnly).Select(r => new AssertedRelation(f, r, null)));
+        var links = relations.Concat(comments)
+            .GroupBy(r => (r.Relation.Kind, r.Relation.Person, r.Relation.Other, r.Relation.Family, r.Relation.Role))
+            .Select(link => RelationOp([.. link], citations, decisions)).ToList();
+        JoinFamilyCommentary(links);
+        foreach (var link in links) ops.Add(link);
         foreach (var removal in RemovalOps(group, decisions)) ops.Add(removal);
         foreach (var withdrawal in WithdrawalOps(withdrawals, group, decisions)) ops.Add(withdrawal);
         foreach (var vital in vitals.Where(op => !sexCorrections.Contains(op))) ops.Add(vital);
@@ -75,6 +79,18 @@ internal sealed class ItemDrafter(
             var cited = citable.Find(cite.Finding!)!;
             var claim = fact with { Quay = cite.Quay, Excerpt = cite.Excerpt, Class = null, Information = null, Cites = [], Commentary = cite.Commentary };
             yield return new Asserted(cited, claim, new CiteKey(sources.RefFor(cited), cited.Source.Locator, cite.Quay));
+        }
+    }
+
+    // A link is cited from its own finding at its grade, and from each finding it cites, as that finding's own record.
+    IEnumerable<AssertedRelation> AssertRelation(DraftFinding finding, DraftRelation relation)
+    {
+        yield return new AssertedRelation(finding, relation, new CiteKey(sources.RefFor(finding), finding.Source.Locator, relation.Quay));
+        foreach (var cite in relation.Cites)
+        {
+            var cited = citable.Find(cite.Finding!)!;
+            var claim = relation with { Quay = cite.Quay, Excerpt = cite.Excerpt, Cites = [], Commentary = cite.Commentary };
+            yield return new AssertedRelation(cited, claim, new CiteKey(sources.RefFor(cited), cited.Source.Locator, cite.Quay));
         }
     }
 
@@ -285,8 +301,28 @@ internal sealed class ItemDrafter(
         if (relation.Family is not null && Placeholder.IsPlaceholder(relation.Family)) _plannedFamilies.Add(relation.Family);
 
         if (relation.NotDuplicateOf.Count > 0) op["notDuplicateOf"] = new JsonArray([.. relation.NotDuplicateOf.Select(x => (JsonNode)x)]);
-        AttachCitations(op, [.. link.Select(l => l.Cite).Distinct().Select(c => JsonNode.Parse(citations[c].ToJsonString())!)], "familyCitations");
+        var cites = CitationsWithCommentary(link.Where(l => l.Cite is not null).Select(l => (l.Cite!, l.Relation.Commentary)), citations);
+        cites.AddRange(link.Where(l => l.Relation.CommentaryOnly).Select(l => l.Relation.Commentary!.Trim()).Distinct().Select(CommentaryCitation));
+        AttachCitations(op, cites, "familyCitations");
         return Backed(op, link.Select(l => l.Finding.Id));
+    }
+
+    // One source and page is one citation on a family, which the item's links may each cite;
+    // the commentary they give it is joined on every copy, so the last op to apply keeps all of it.
+    static void JoinFamilyCommentary(List<JsonObject> relationOps)
+    {
+        var shared = relationOps
+            .Where(op => op["family"] is not null && op["familyCitations"] is not null)
+            .SelectMany(op => op["familyCitations"]!.AsArray().Select(c => (Family: (string)op["family"]!, Citation: c!.AsObject())))
+            .Where(x => (string?)x.Citation["source"] != DraftReferences.Void)
+            .GroupBy(x => (x.Family, Source: (string?)x.Citation["source"], Page: (string?)x.Citation["page"]));
+        foreach (var citation in shared)
+        {
+            var comments = citation.Select(x => (string?)x.Citation["commentary"]).OfType<string>().Distinct().ToList();
+            comments = [.. comments.Where(c => !comments.Any(other => other != c && other.Contains(c, StringComparison.Ordinal)))];
+            if (comments.Count == 0) continue;
+            foreach (var (_, copy) in citation) copy["commentary"] = string.Join(" ", comments);
+        }
     }
 
     // HUSB/WIFE seed a family only at its creation; a later op on the same family must not repeat them.
@@ -596,11 +632,12 @@ internal sealed class ItemDrafter(
         foreach (var byFact in comments.GroupBy(c => (c.Fact.Record, c.Fact.Tag, Date: c.Fact.Date?.ToUpperInvariant(), c.Fact.Place)))
         {
             var op = CitationOp(byFact.Key.Record, byFact.Key.Tag, byFact.Key.Date, byFact.Key.Place);
-            AttachCitations(op, [.. byFact.Select(c => c.Fact.Commentary!.Trim()).Distinct()
-                .Select(text => (JsonNode)new JsonObject { ["source"] = DraftReferences.Void, ["commentary"] = text })]);
+            AttachCitations(op, [.. byFact.Select(c => c.Fact.Commentary!.Trim()).Distinct().Select(CommentaryCitation)]);
             yield return Backed(op, byFact.Select(c => c.Finding.Id));
         }
     }
+
+    static JsonNode CommentaryCitation(string text) => new JsonObject { ["source"] = DraftReferences.Void, ["commentary"] = text };
 
     // A citation op on one fact instance, selected by date and place when given.
     static JsonObject CitationOp(string record, string tag, string? date, string? place)

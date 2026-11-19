@@ -145,12 +145,12 @@ public static class FindingSchemas
             },
             "relations": {
               "type": "array",
-              "description": "Links this finding establishes or, with the unlink kinds, removes, in the changeset dialect's terms. Each added link is cited with the finding's source at its own quay; a child relation with from moves an existing child between families. Family xrefs for new families are placeholders such as @NewF1@; facts about the family (MARR) use that xref as record.",
+              "description": "Links this finding establishes or, with the unlink kinds, removes, in the changeset dialect's terms. Each added link is cited on its family with the finding's source at its own quay, and with each finding it cites; a child relation with from moves an existing child between families. Family xrefs for new families are placeholders such as @NewF1@; facts about the family (MARR) use that xref as record.",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "kind": { "type": "string", "enum": ["spouse", "child", "parent", "unlink-child", "unlink-parent"], "description": "unlink-child and unlink-parent remove an existing link; they take no quay or excerpt, because a removal op carries no citation: say why in a note that cites the finding." },
+                  "kind": { "type": "string", "enum": ["spouse", "child", "parent", "unlink-child", "unlink-parent"], "description": "unlink-child and unlink-parent remove an existing link; they take no quay, excerpt, cites or commentary, because a removal op carries no citation." },
                   "person": { "type": "string", "description": "spouse, parent and unlink-parent: the known person (the child, for parent and unlink-parent). An existing xref, or a person an earlier relation created." },
                   "spouse": { "type": "string", "description": "spouse: the partner, existing or declared in people." },
                   "child": { "type": "string", "description": "child and unlink-child: the child, existing or declared in people (an existing person for unlink-child, or for a child with from)." },
@@ -162,9 +162,28 @@ public static class FindingSchemas
                   "wife": { "type": "string", "description": "child: mother, used only when this relation creates the family." },
                   "notDuplicateOf": { "type": "array", "items": { "type": "string" }, "description": "spouse, child and parent: existing people already confirmed not to be the new person. A draft is refused when the person it attaches to already has a parent in the same role, or a spouse or child whose name agrees (the same surname and a given name in common, after abbreviations such as Wm are expanded); listing that relative here lets it through, for example to replace a parent knowingly." },
                   "excerpt": { "type": "string", "description": "A narrower extract than the finding's for this relation's citation, quoted word for word from extract." },
-                  "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "Required except for unlink-child and unlink-parent." }
+                  "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "Required except for unlink-child, unlink-parent and commentaryOnly." },
+                  "cites": {
+                    "type": "array",
+                    "description": "spouse, child and parent: other findings whose records also support this link, whatever their target or status: another finding drafted with this one, or one staged as <id>.json beside this file. The link keeps its own finding's citation at quay and its family gains one citation per entry, carrying the cited finding's source, locator and extract (or excerpt); nothing else is drafted from the cited finding.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "finding": { "type": "string", "minLength": 1, "description": "The id of the finding cited; not this relation's own finding." },
+                        "quay": { "type": "integer", "minimum": 0, "maximum": 3, "description": "The grade of the cited record for this link, at most its source's ceiling. One quoted text carries one grade, so a differently graded cite needs its own excerpt." },
+                        "excerpt": { "type": "string", "description": "A narrower extract than the cited finding's, quoted word for word from it." },
+                        "commentary": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$", "description": "A sentence or two on what this cited record shows for the link, printed after its source in the family's footnote. No record ids." }
+                      },
+                      "required": ["finding", "quay"]
+                    }
+                  },
+                  "commentary": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$", "description": "spouse, child and parent: a sentence or two of the author's comment on this finding's evidence for the link, such as an index misreading a name the image shows, written on the family citation and printed after the source in its footnote. Commentary that several findings of one item give the same source and page on one family is joined. No record ids." },
+                  "commentaryOnly": { "type": "boolean", "description": "spouse, child and parent: add only commentary to the family of a link the tree already holds, as a comment citing no source (SOUR @VOID@). Nothing is asserted and this finding's source is not cited, so quay, excerpt, cites, notDuplicateOf, from, husb and wife do not apply. Refused when the tree does not hold the link." }
                 },
-                "required": ["kind"]
+                "required": ["kind"],
+                "if": { "properties": { "commentaryOnly": { "const": true } }, "required": ["commentaryOnly"] },
+                "then": { "required": ["commentary"] }
               }
             },
             "notes": {

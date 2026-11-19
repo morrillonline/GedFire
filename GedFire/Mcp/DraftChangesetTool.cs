@@ -52,7 +52,9 @@ public sealed class DraftChangesetTool
         "commentary (a sentence or two on its record's evidence, written on its citation and printed in the fact's footnote; " +
         "every cite, on a fact or a note, takes its own; evidence discussion belongs in commentary, a note holds the life story), " +
         "commentaryOnly with commentary to add only a comment citing no source (SOUR @VOID@) to a fact already held, with no quay, " +
-        "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A record's date gives " +
+        "replaceHeld (a reason) to write over the record's value, or withdraw (a reason) to delete it. A spouse, child or parent " +
+        "relation takes cites and commentary the same way, on its family's citations, and commentaryOnly on a link the tree " +
+        "already holds. A record's date gives " +
         "way to a finding's date or bound that contradicts it only when uncited or every citation is graded below the finding; " +
         "a citation without a QUAY holds it. Otherwise the record's date is kept and an open decision names it, its citations " +
         "(source and page) and the finding's conflicting date, so you can write a conflict note or pass replaceHeld; a more " +

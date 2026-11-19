@@ -30,7 +30,7 @@ internal sealed class SourcePlan
         [.. drafted.Where(CitesItself).Select(f => f.Id).Concat(drafted.SelectMany(f => f.CitedIds))];
 
     static bool CitesItself(DraftFinding finding) =>
-        finding.Facts.Any(x => x.CitesFinding) || finding.Relations.Any(r => !r.IsRemoval)
+        finding.Facts.Any(x => x.CitesFinding) || finding.Relations.Any(r => r.CitesFinding)
         || finding.Notes.Any(n => n.Cites.Any(c => c.Finding is null || c.Finding == finding.Id));
 
     /// <param name="drafted">The findings drafted into items.</param>
