@@ -90,8 +90,10 @@ public sealed class SiteGenerator
                    " &nbsp;›&nbsp; " + H(husband.LastName) +
                    " &nbsp;›&nbsp; " + H(husband.Husbandname()) + "</nav>\r\n");
 
-        // Title
-        page.Write("<h1 class=\"fam-title\">" + H(fam.Description()) + "</h1>\r\n");
+        // Title; the family's own citations support its links.
+        page.Write("<h1 class=\"fam-title\">" + H(fam.Description()));
+        ExportSources(fam.Sources, page);
+        page.Write("</h1>\r\n");
 
         // Couple cards
         page.Write("<div class=\"couple\">\r\n");

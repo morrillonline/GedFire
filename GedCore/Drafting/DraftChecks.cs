@@ -20,6 +20,7 @@ internal static class DraftChecks
             PagelessErrors(findings, citable),
             NewRecordErrors(findings, complete),
             RemovalErrors(findings, lookup),
+            HeldLinkErrors(findings, lookup),
             BiographyNoteErrors(findings),
             CiteErrors(findings, citable),
             complete ? EmptyFindingErrors(findings) : [],
@@ -82,13 +83,17 @@ internal static class DraftChecks
                     if (finding.Facts[i].CitesFinding && !finding.Facts[i].CiteOnly)
                         yield return $"findings[{f}].facts[{i}] cites its finding, which has no locator; {Remedy}.";
                 for (int r = 0; r < finding.Relations.Count; r++)
-                    if (!finding.Relations[r].IsRemoval)
+                    if (finding.Relations[r].CitesFinding)
                         yield return $"findings[{f}].relations[{r}] cites its finding, which has no locator; {Remedy}.";
             }
             for (int i = 0; i < finding.Facts.Count; i++)
                 for (int c = 0; c < finding.Facts[i].Cites.Count; c++)
                     if (!finding.Facts[i].CiteOnly && citable.Find(finding.Facts[i].Cites[c].Finding!) is { Source.Locator: null } cited)
                         yield return $"findings[{f}].facts[{i}].cites[{c}] cites finding \"{cited.Id}\", which has no locator; {Remedy}.";
+            for (int r = 0; r < finding.Relations.Count; r++)
+                for (int c = 0; c < finding.Relations[r].Cites.Count; c++)
+                    if (citable.Find(finding.Relations[r].Cites[c].Finding!) is { Source.Locator: null } cited)
+                        yield return $"findings[{f}].relations[{r}].cites[{c}] cites finding \"{cited.Id}\", which has no locator; {Remedy}.";
             for (int n = 0; n < finding.Notes.Count; n++)
                 for (int c = 0; c < finding.Notes[n].Cites.Count; c++)
                     if (citable.Cited(finding, finding.Notes[n].Cites[c]) is { Source.Locator: null } cited)
@@ -200,10 +205,10 @@ internal static class DraftChecks
     // A cite may name any finding, whatever its target; the cited finding lends its record and is graded by its source.
     static IEnumerable<string> CiteErrors(IReadOnlyList<DraftFinding> findings, CitableFindings citable)
     {
-        foreach (var (owner, cite, path, onFact) in Cites(findings))
+        foreach (var (owner, cite, path, citedBy) in Cites(findings))
         {
-            if (onFact && cite.Finding == owner.Id)
-                yield return $"{path}.finding \"{cite.Finding}\" is the fact's own finding, which the fact already cites at its quay; a fact's cites name other findings.";
+            if (citedBy is not null && cite.Finding == owner.Id)
+                yield return $"{path}.finding \"{cite.Finding}\" is the {citedBy}'s own finding, which the {citedBy} already cites at its quay; a {citedBy}'s cites name other findings.";
             else if (citable.Cited(owner, cite) is not { } cited)
                 yield return $"{path}.finding \"{cite.Finding}\" is not a finding of this draft, nor a finding file beside it ({cite.Finding}.json).";
             else if (QuayError(cited, cite.Quay, null, null, $"{path}.quay") is { } error)
@@ -211,19 +216,56 @@ internal static class DraftChecks
         }
     }
 
-    // Every cite of the draft, on a note or on a fact, with the finding that wrote it and its path.
-    static IEnumerable<(DraftFinding Owner, DraftCite Cite, string Path, bool OnFact)> Cites(IReadOnlyList<DraftFinding> findings)
+    // Every cite of the draft, with the finding that wrote it, its path, and what cites its own finding besides ("fact" or
+    // "relation"; null for a note, whose cites name the findings it rests on).
+    static IEnumerable<(DraftFinding Owner, DraftCite Cite, string Path, string? CitedBy)> Cites(IReadOnlyList<DraftFinding> findings)
     {
         for (int f = 0; f < findings.Count; f++)
         {
             for (int n = 0; n < findings[f].Notes.Count; n++)
                 for (int c = 0; c < findings[f].Notes[n].Cites.Count; c++)
-                    yield return (findings[f], findings[f].Notes[n].Cites[c], $"findings[{f}].notes[{n}].cites[{c}]", false);
+                    yield return (findings[f], findings[f].Notes[n].Cites[c], $"findings[{f}].notes[{n}].cites[{c}]", null);
             for (int i = 0; i < findings[f].Facts.Count; i++)
                 for (int c = 0; c < findings[f].Facts[i].Cites.Count; c++)
-                    yield return (findings[f], findings[f].Facts[i].Cites[c], $"findings[{f}].facts[{i}].cites[{c}]", true);
+                    yield return (findings[f], findings[f].Facts[i].Cites[c], $"findings[{f}].facts[{i}].cites[{c}]", "fact");
+            for (int r = 0; r < findings[f].Relations.Count; r++)
+                for (int c = 0; c < findings[f].Relations[r].Cites.Count; c++)
+                    yield return (findings[f], findings[f].Relations[r].Cites[c], $"findings[{f}].relations[{r}].cites[{c}]", "relation");
         }
     }
+
+    // A comment citing no source goes on the family of a link the tree already holds; it never creates the link.
+    static IEnumerable<string> HeldLinkErrors(IReadOnlyList<DraftFinding> findings, IDraftLookup? lookup)
+    {
+        for (int f = 0; f < findings.Count; f++)
+            for (int r = 0; r < findings[f].Relations.Count; r++)
+            {
+                var relation = findings[f].Relations[r];
+                if (!relation.CommentaryOnly) continue;
+                string path = $"findings[{f}].relations[{r}].commentaryOnly";
+                if (PeopleOf(relation).Append(relation.Family).OfType<string>().FirstOrDefault(Placeholder.IsPlaceholder) is { } created)
+                    yield return $"{path}: {created} is a record this draft creates, so the tree holds no link to comment on.";
+                else if (lookup is not null && !HoldsLink(relation, lookup))
+                    yield return $"{path}: the tree holds no {DescribeLink(relation)}; a comment citing no source goes only on a link the tree holds.";
+            }
+    }
+
+    // A family the couple do not share is refused by SpouseFamilies, so a spouse link needs only some shared family here.
+    static bool HoldsLink(DraftRelation relation, IDraftLookup lookup) => relation.Kind switch
+    {
+        DraftRelation.Child => lookup.IsChildOf(relation.Other, relation.Family!) != false,
+        DraftRelation.Spouse => lookup.FamiliesOfCouple(relation.Person, relation.Other).Count > 0,
+        _ => lookup.FamiliesAsChild(relation.Person)
+            .Where(family => relation.Family is null || family == relation.Family)
+            .Any(family => lookup.Partner(family, relation.Role == "father" ? "HUSB" : "WIFE")?.Xref == relation.Other),
+    };
+
+    static string DescribeLink(DraftRelation relation) => relation.Kind switch
+    {
+        DraftRelation.Child => $"link of {relation.Other} as a child of {relation.Family}",
+        DraftRelation.Spouse => $"family of {relation.Person} and {relation.Other} as partners",
+        _ => $"link of {relation.Other} as the {relation.Role} of {relation.Person}{(relation.Family is null ? "" : $" in {relation.Family}")}",
+    };
 
     static IEnumerable<string> NewRecordErrors(IReadOnlyList<DraftFinding> findings, bool complete)
     {
@@ -262,7 +304,7 @@ internal static class DraftChecks
                 foreach (var (xref, role) in PartnersOf(relation))
                     if (declared.TryGetValue(xref, out var partner) && partner.Sex is null)
                         yield return $"{path} places {xref} as {role}, so its people entry needs sex (M or F) to type the role.";
-                if (!relation.IsRemoval && QuayError(finding, relation.Quay, null, null, $"{path}.quay") is { } error) yield return error;
+                if (relation.CitesFinding && QuayError(finding, relation.Quay, null, null, $"{path}.quay") is { } error) yield return error;
             }
 
             for (int i = 0; i < finding.Facts.Count; i++)
@@ -371,7 +413,7 @@ internal static class DraftChecks
             if (finding.Facts[i].CitesFinding)
                 yield return (finding.Facts[i].Excerpt ?? finding.Extract, finding.Facts[i].Quay, $"{path}.facts[{i}]");
         for (int r = 0; r < finding.Relations.Count; r++)
-            if (!finding.Relations[r].IsRemoval)
+            if (finding.Relations[r].CitesFinding)
                 yield return (finding.Relations[r].Excerpt ?? finding.Extract, finding.Relations[r].Quay, $"{path}.relations[{r}]");
     }
 

@@ -270,12 +270,50 @@ public class DraftFindingReaderTests
     [Theory]
     [InlineData("quay")]
     [InlineData("excerpt")]
+    [InlineData("commentary")]
+    [InlineData("cites")]
+    [InlineData("commentaryOnly")]
     public void ARemovalTakesNoCitationFields(string field)
     {
-        string value = field == "quay" ? "2" : "\"x\"";
+        string value = field switch { "quay" => "2", "cites" => "[]", "commentaryOnly" => "true", _ => "\"x\"" };
         var (_, errors) = Read($"[{WithRelations.Replace("\"kind\": \"spouse\", \"person\": \"@I1@\", \"spouse\": \"@NewI1@\", \"family\": \"@NewF1@\", \"quay\": 2", $"\"kind\": \"unlink-child\", \"child\": \"@I5@\", \"family\": \"@F1@\", \"{field}\": {value}")}]");
 
         Assert.Contains($"findings[0].relations[0].{field} does not apply to a unlink-child relation; its fields are kind, child, family.", errors);
+    }
+
+    [Fact]
+    public void ARelationsCommentary_AndItsCitesCommentary_AreRead()
+    {
+        var (findings, errors) = Read($"[{WithRelations.Replace("\"quay\": 2", "\"quay\": 2, \"commentary\": \"The index reads Watkin.\", \"cites\": [ { \"finding\": \"F-9\", \"quay\": 1, \"commentary\": \"Her stone names him.\" } ]")}]");
+
+        Assert.Empty(errors);
+        var relation = Assert.Single(findings[0].Relations);
+        Assert.Equal("The index reads Watkin.", relation.Commentary);
+        Assert.Equal(("F-9", 1, "Her stone names him."), (relation.Cites[0].Finding, relation.Cites[0].Quay, relation.Cites[0].Commentary));
+        Assert.True(relation.CitesFinding);
+    }
+
+    [Fact]
+    public void ACommentaryOnlyRelation_NeedsNoQuay_AndDoesNotCiteItsFinding()
+    {
+        var (findings, errors) = Read($"[{WithRelations.Replace("\"quay\": 2", "\"commentaryOnly\": true, \"commentary\": \"The census indexes her age as 30 for 50.\"")}]");
+
+        Assert.Empty(errors);
+        var relation = Assert.Single(findings[0].Relations);
+        Assert.True(relation.CommentaryOnly);
+        Assert.False(relation.CitesFinding);
+    }
+
+    [Theory]
+    [InlineData("\"commentaryOnly\": true", "findings[0].relations[0].commentaryOnly needs commentary")]
+    [InlineData("\"commentaryOnly\": true, \"commentary\": \"x\", \"quay\": 2", "findings[0].relations[0].commentaryOnly adds only a comment citing no source to a link the tree holds; quay do not apply.")]
+    [InlineData("\"quay\": 2, \"commentary\": \"Married at @I2@'s house.\"", "findings[0].relations[0].commentary contains a record id")]
+    [InlineData("\"quay\": 2, \"cites\": [ { \"quay\": 1 } ]", "findings[0].relations[0].cites[0].finding is required.")]
+    public void ARelationsCommentaryOrCitesThatBreakTheirRules_AreRefusedByField(string fields, string error)
+    {
+        var (_, errors) = Read($"[{WithRelations.Replace("\"quay\": 2", fields)}]");
+
+        Assert.Contains(errors, e => e.StartsWith(error, StringComparison.Ordinal));
     }
 
     [Fact]

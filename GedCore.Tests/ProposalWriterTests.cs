@@ -54,6 +54,23 @@ public class ProposalWriterTests
     }
 
     [Fact]
+    public void EachCitationsCommentary_IsPresentedBesideItsOp()
+    {
+        string link = """
+            { "op": "createOrUpdateChild", "family": "@F1@", "child": "@I2@", "findings": ["F-1"],
+              "familyCitations": [{ "source": "@S1@", "page": "Memorial #1", "dataText": "Died 1 Jan 1900.", "quay": 1, "commentary": "The index reads Watkin." },
+                                  { "source": "@VOID@", "commentary": "The image shows Walter." }] }
+            """;
+
+        string markdown = Write(Presented(json: Changeset(ops: link)));
+
+        Assert.Contains(
+            "1. `createOrUpdateChild`: Add child @I2@ to @F1@ (QUAY 1), evidence F-1\n" +
+            "   - Commentary on @S1@, Memorial #1: \"The index reads Watkin.\"\n" +
+            "   - Commentary citing no source: \"The image shows Walter.\"", markdown.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
     public void AnOpWithNoFindings_IsListedWithoutEvidence()
     {
         string note = """{ "op": "createOrUpdateNote", "record": "@I1@", "text": "needs independent verification:\nDEAT" }""";

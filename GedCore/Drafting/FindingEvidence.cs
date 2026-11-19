@@ -11,7 +11,7 @@ internal static class FindingEvidence
 {
     public static JsonObject Describe(DraftFinding finding, int item, string? sourceRef)
     {
-        var claims = finding.Facts.Where(f => !f.CommentaryOnly).Select(FactClaim).Concat(finding.Relations.Where(r => !r.IsRemoval).Select(RelationClaim));
+        var claims = finding.Facts.Where(f => !f.CommentaryOnly).Select(FactClaim).Concat(finding.Relations.Where(r => r.CitesFinding).Select(RelationClaim));
         var evidence = new JsonObject
         {
             ["id"] = finding.Id,

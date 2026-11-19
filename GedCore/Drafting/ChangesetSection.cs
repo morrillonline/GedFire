@@ -58,6 +58,7 @@ internal static class ChangesetSection
                 errors.Add($"{name}: item {number}, operation {index} cites finding {id}, which the changeset does not carry.");
             cited.AddRange(ids.SelectMany(id => findings.Where(f => Text(f, "id") == id)));
             markdown.AppendLine($"{index}. {OpLine(op, ids, people)}");
+            foreach (string commentary in OpSummary.Commentaries(op)) markdown.AppendLine($"   - {commentary}");
         }
         markdown.AppendLine();
 

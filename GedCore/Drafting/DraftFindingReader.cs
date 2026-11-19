@@ -207,7 +207,7 @@ public sealed class DraftFindingReader
 
     DraftRelation? ReadRelation(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "kind", "person", "spouse", "child", "parent", "role", "family", "from", "husb", "wife", "notDuplicateOf", "excerpt", "quay")) return null;
+        if (!IsObject(el, path, "kind", "person", "spouse", "child", "parent", "role", "family", "from", "husb", "wife", "notDuplicateOf", "excerpt", "quay", "cites", "commentary", "commentaryOnly")) return null;
         int before = _errors.Count;
         string? kind = Choice(el, "kind", path, RelationKinds, required: true);
         if (kind is null) return null;
@@ -223,18 +223,34 @@ public sealed class DraftFindingReader
         string? from = Text(el, "from", path);
         var notDuplicateOf = ReadStrings(el, "notDuplicateOf", path);
         RejectForeignFields(el, path, kind);
+        bool commentaryOnly = !removal && ReadFlag(el, "commentaryOnly", path);
+        string? commentary = removal ? null : Commentary(el, path);
+        List<DraftCite> cites = removal ? [] : ReadList(el, "cites", path, ReadRelationCite);
+        if (commentaryOnly) RelationCommentaryOnlyErrors(el, path, commentary);
 
-        int quay = removal ? 0 : ReadQuay(el, path, "this relationship");
+        int quay = removal || commentaryOnly ? 0 : ReadQuay(el, path, "this relationship");
 
         if (_errors.Count > before || other is null) return null;
         return new DraftRelation(kind, person ?? "", other, family, role, husb, wife, quay)
         {
             NotDuplicateOf = notDuplicateOf, Excerpt = Text(el, "excerpt", path), From = from,
+            Cites = cites, Commentary = commentary, CommentaryOnly = commentaryOnly,
         };
     }
 
+    // A comment on a held link cites no source and changes no link, so nothing that grades, quotes or seeds one applies.
+    void RelationCommentaryOnlyErrors(JsonElement el, string path, string? commentary)
+    {
+        if (commentary is null)
+            _errors.Add($"{path}.commentaryOnly needs commentary: the comment added to the family of the link the tree holds.");
+        string[] claimFields = ["quay", "excerpt", "cites", "notDuplicateOf", "from", "husb", "wife"];
+        var given = claimFields.Where(name => el.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null).ToList();
+        if (given.Count > 0)
+            _errors.Add($"{path}.commentaryOnly adds only a comment citing no source to a link the tree holds; {string.Join(", ", given)} do not apply.");
+    }
+
     // Each kind names its own partner field and takes only the fields its op reads.
-    // A removal is not cited, so it takes no quay or excerpt.
+    // A removal is not cited, so it takes no quay, excerpt, cites or commentary.
     void RejectForeignFields(JsonElement el, string path, string kind)
     {
         string[] allowed = kind switch
@@ -247,7 +263,7 @@ public sealed class DraftFindingReader
         };
         bool removal = kind is DraftRelation.UnlinkChild or DraftRelation.UnlinkParent;
         string[] named = removal
-            ? ["person", "spouse", "child", "parent", "role", "family", "from", "husb", "wife", "notDuplicateOf", "quay", "excerpt"]
+            ? ["person", "spouse", "child", "parent", "role", "family", "from", "husb", "wife", "notDuplicateOf", "quay", "excerpt", "cites", "commentary", "commentaryOnly"]
             : ["person", "spouse", "child", "parent", "role", "family", "from", "husb", "wife", "notDuplicateOf"];
         string fields = string.Join(", ", removal ? allowed : ["quay", .. allowed]);
         foreach (string name in named)
@@ -281,6 +297,9 @@ public sealed class DraftFindingReader
 
     // A fact already cites its own finding at its quay, so each of its cites names another finding.
     DraftCite? ReadFactCite(JsonElement el, string path) => ReadCite(el, path, findingRequired: true, "this fact citation");
+
+    // Likewise a relation already cites its own finding, so each of its cites names another finding.
+    DraftCite? ReadRelationCite(JsonElement el, string path) => ReadCite(el, path, findingRequired: true, "this relation citation");
 
     DraftCite? ReadCite(JsonElement el, string path, bool findingRequired, string graded)
     {
