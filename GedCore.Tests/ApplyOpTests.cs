@@ -666,7 +666,7 @@ public class ApplyOpTests : ApplyTestBase
     }
 
     [Fact]
-    public void Citation_SameSourceDifferentLocator_UpdatesInPlace()
+    public void Citation_SameSourceDifferentLocator_IsAddedBeside_AndReplacesPageCorrectsIt()
     {
         WriteBaseFile();
         RunExpectSuccess("""
@@ -676,17 +676,21 @@ public class ApplyOpTests : ApplyTestBase
                               "dataText": "born 1928", "quay": 2 }] } ] } ] }
             """);
 
+        RunExpectSuccess("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
+                "citations": [{ "source": "@S00001@", "page": "p. 7",
+                              "dataText": "born 1928", "quay": 2 }] } ] } ] }
+            """);
         var result = RunExpectSuccess("""
             { "items": [ { "item": 1, "ops": [
               { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
-                "citations": [{ "source": "@S00001@", "page": "p. 3, corrected",
-                              "dataText": "born 1928", "quay": 2 }] } ] } ] }
+                "citations": [{ "source": "@S00001@", "page": "p. 3, corrected", "replacesPage": "p. 2" }] } ] } ] }
             """);
 
-        var citations = ReadDoc().ByXref["@I00001@"].FirstChild("BIRT")!
-            .ChildrenByTag("SOUR").ToList();
-        Assert.Single(citations);   // updated in place, not duplicated
-        Assert.Equal("p. 3, corrected", citations[0].FirstChild("PAGE")!.Value);
+        var pages = ReadDoc().ByXref["@I00001@"].FirstChild("BIRT")!
+            .ChildrenByTag("SOUR").Where(s => s.Value == "@S00001@").Select(s => s.FirstChild("PAGE")?.Value).ToList();
+        Assert.Equal(["p. 3, corrected", "p. 7"], pages);
         Assert.Contains(result.Log, l => l.Contains("'p. 2' → 'p. 3, corrected'"));
     }
 

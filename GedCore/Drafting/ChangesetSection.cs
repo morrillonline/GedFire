@@ -85,7 +85,7 @@ internal static class ChangesetSection
         var source = finding.TryGetProperty("source", out var s) ? s : default;
         markdown.AppendLine($"##### {Text(finding, "id")}: {Text(source, "name")}").AppendLine();
         markdown.AppendLine($"- Source: {Text(source, "name")}{(Text(source, "author") is { } author ? $", by {author}" : "")}");
-        markdown.AppendLine($"- Locator: {Text(source, "locator")}");
+        markdown.AppendLine($"- Locator: {Text(source, "locator") ?? "none (adds to a held citation that has no page)"}");
         if (Text(source, "url") is { } url) markdown.AppendLine($"- URL: {url}");
         if (Text(source, "accessed") is { } accessed) markdown.AppendLine($"- Accessed: {accessed}");
         markdown.AppendLine($"- Source class: {Text(source, "class")}");

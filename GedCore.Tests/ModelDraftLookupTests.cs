@@ -1,4 +1,5 @@
 using GedCore.Apply;
+using GedCore.Drafting;
 using GedFire.Gen;
 using GedFire.Mcp;
 
@@ -41,6 +42,14 @@ public class ModelDraftLookupTests
     [Fact]
     public void FindSource_IsNotASubstringSearch() =>
         Assert.Null(Lookup().FindSource("Find a", null));
+
+    [Fact]
+    public void SourceRecord_GivesTitleAndAuthorOfASource_AndNullForAnyOtherXref()
+    {
+        Assert.Equal(new ExistingSource("County Register", "Clerk"), Lookup().SourceRecord("@S2@"));
+        Assert.Equal(new ExistingSource("Find a Grave", null), Lookup().SourceRecord("@S1@"));
+        Assert.Null(Lookup().SourceRecord("@I1@"));
+    }
 
     [Fact]
     public void FindSource_RequiresTheAuthorWhenGiven()

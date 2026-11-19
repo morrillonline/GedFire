@@ -16,6 +16,9 @@ public sealed record Citation(string Source, string? Page, string? DataText, int
     /// <summary>A sentence or two of the author's own comment, written as the citation's NOTE and printed after the source in the footnote.</summary>
     public string? Commentary { get; init; }
 
+    /// <summary>The page of this source's existing citation on the structure that this one corrects; without it a new page is added beside.</summary>
+    public string? ReplacesPage { get; init; }
+
     /// <summary>A citation of no source (<see cref="GedRecord.VoidPointer"/>): only the author's commentary. It is never evidence.</summary>
     public bool IsCommentaryOnly => Source == GedRecord.VoidPointer;
 
@@ -36,6 +39,7 @@ public sealed record Citation(string Source, string? Page, string? DataText, int
             ? q.GetInt32() : null)
     {
         Commentary = JsonRead.Str(el, "commentary"),
+        ReplacesPage = JsonRead.Str(el, "replacesPage"),
     };
 }
 

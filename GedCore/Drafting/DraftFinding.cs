@@ -5,9 +5,14 @@ namespace GedCore.Drafting;
 /// <summary>
 /// Where a finding came from. <see cref="Name"/> is the collection (one source record is
 /// minted per collection and author); <see cref="Locator"/> becomes each citation's page verbatim.
+/// A null locator cites a held citation that has no page.
 /// </summary>
 public sealed record DraftSource(
-    string Name, string? Author, string? Url, string Locator, string? Accessed, string Class, string Information);
+    string Name, string? Author, string? Url, string? Locator, string? Accessed, string Class, string Information)
+{
+    /// <summary>An existing source record named by xref, cited instead of the one its title and author would find.</summary>
+    public string? Ref { get; init; }
+}
 
 /// <summary>
 /// One fact the author asserts from a finding: the value is the author's judgement, the grade is
@@ -36,6 +41,15 @@ public sealed record DraftFact(
 
     /// <summary>The author's comment on this finding's citation of the fact, printed after the source in its footnote.</summary>
     public string? Commentary { get; init; }
+
+    /// <summary>
+    /// The fact takes only <see cref="Commentary"/>, as a citation of no source on the fact the record holds;
+    /// it asserts nothing and is not cited from this finding, so it has no grade.
+    /// </summary>
+    public bool CommentaryOnly { get; init; }
+
+    /// <summary>Whether this finding's own source is cited on the fact.</summary>
+    public bool CitesFinding => Withdraw is null && !CommentaryOnly;
 }
 
 /// <summary>An extra line under a fact, such as the TYPE of an EVEN.</summary>

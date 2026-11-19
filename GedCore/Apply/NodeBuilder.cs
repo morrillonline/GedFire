@@ -347,6 +347,8 @@ internal static class OpChecks
             if (HasLineBreak(cit.DataText))
                 errors.Add($"{context}: citation {cit.Source} dataText contains a line break — " +
                            "flatten it to a single line (join phrases with '. ')");
+            if (cit.ReplacesPage is not null && (cit.Page is null || cit.Page == cit.ReplacesPage))
+                errors.Add($"{context}: citation {cit.Source} replacesPage names the page to correct, so it needs a different \"page\"");
         }
         foreach (var dup in citations.Where(c => !c.IsCommentaryOnly).GroupBy(c => (c.Source, Page: c.Page ?? "")).Where(g => g.Count() > 1))
             errors.Add($"{context}: source {dup.Key.Source} cited twice on one structure" +
@@ -361,8 +363,8 @@ internal static class OpChecks
     {
         if (cit.Commentary is null)
             errors.Add($"{context}: a {GedRecord.VoidPointer} citation cites no source, so it needs \"commentary\"");
-        if (cit.Page is not null || cit.DataText is not null || cit.Quay is not null)
-            errors.Add($"{context}: a {GedRecord.VoidPointer} citation holds only commentary; page, dataText and quay belong to a cited source");
+        if (cit.Page is not null || cit.DataText is not null || cit.Quay is not null || cit.ReplacesPage is not null)
+            errors.Add($"{context}: a {GedRecord.VoidPointer} citation holds only commentary; page, replacesPage, dataText and quay belong to a cited source");
     }
 
     private static bool HasLineBreak(string? value) =>

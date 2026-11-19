@@ -31,6 +31,13 @@ public class CitationReconcilerTests : ApplyTestBase
             "citations": [ {{string.Join(", ", citations.Select(Json))}} ] } ] } ] }
         """;
 
+    static string CorrectOp(string source, string replacesPage, string page) =>
+        $$"""
+        { "items": [ { "item": 1, "ops": [
+          { "op": "createOrUpdateCitation", "record": "@I00001@", "fact": "BIRT",
+            "citations": [ { "source": "{{source}}", "page": "{{page}}", "replacesPage": "{{replacesPage}}" } ] } ] } ] }
+        """;
+
     static string Json((string Source, string? Page, int? Quay) c) =>
         "{ \"source\": \"" + c.Source + "\"" +
         (c.Page is null ? "" : $", \"page\": \"{c.Page}\"") +
@@ -43,16 +50,51 @@ public class CitationReconcilerTests : ApplyTestBase
     static string? Page(GedRecord citation) => citation.FirstChild("PAGE")?.Value;
 
     [Fact]
-    public void StatedPage_OnTheOnlyCitationOfASource_CorrectsThePageInPlace()
+    public void AnotherPage_OnTheOnlyCitationOfASource_IsAddedBesideIt()
     {
         WriteFile(LinesWithBirthCitations(("@S00001@", "112", 1)));
 
-        var result = RunExpectSuccess(CiteOp(("@S00001@", "121", null)));
+        RunExpectSuccess(CiteOp(("@S00001@", "121", null)));
 
-        var citation = Assert.Single(BirthCitations());
-        Assert.Equal("121", Page(citation));
-        Assert.Equal("1", citation.FirstChild("QUAY")!.Value);
+        Assert.Equal(["112", "121"], BirthCitations("@S00001@").Select(Page));
+        Assert.Equal("1", BirthCitations("@S00001@")[0].FirstChild("QUAY")!.Value);
+    }
+
+    [Fact]
+    public void ReplacesPage_CorrectsThatPageInPlace_KeepingTheCitationsOtherFields()
+    {
+        WriteFile(LinesWithBirthCitations(("@S00001@", "112", 1), ("@S00001@", "130", 2)));
+
+        var result = RunExpectSuccess(CorrectOp("@S00001@", "112", "121"));
+
+        Assert.Equal(["121", "130"], BirthCitations("@S00001@").Select(Page));
+        Assert.Equal("1", BirthCitations("@S00001@")[0].FirstChild("QUAY")!.Value);
         Assert.Contains(result.Log, l => l.Contains("PAGE '112' → '121'"));
+    }
+
+    [Fact]
+    public void ReplacesPage_NamingNoCitationOfTheSource_IsRejectedNamingThePages()
+    {
+        WriteFile(LinesWithBirthCitations(("@S00001@", "112", null)));
+        byte[] before = ReadBytes();
+
+        var result = Run(CorrectOp("@S00001@", "999", "121"));
+
+        Assert.False(result.Success);
+        Assert.Contains("replacesPage \"999\" names no citation of @S00001@ on the structure (pages: \"112\")", string.Join("; ", result.Errors));
+        Assert.Equal(before, ReadBytes());
+    }
+
+    [Theory]
+    [InlineData("\"replacesPage\": \"112\"")]
+    [InlineData("\"page\": \"112\", \"replacesPage\": \"112\"")]
+    public void ReplacesPage_WithoutADifferentPage_IsRefused(string fields)
+    {
+        WriteFile(LinesWithBirthCitations(("@S00001@", "112", null)));
+
+        var result = Run(CiteOp().Replace("\"citations\": [  ]", $"\"citations\": [ {{ \"source\": \"@S00001@\", {fields} }} ]"));
+
+        Assert.Contains("replacesPage names the page to correct, so it needs a different \"page\"", string.Join("; ", result.Errors));
     }
 
     [Fact]
@@ -68,15 +110,14 @@ public class CitationReconcilerTests : ApplyTestBase
     }
 
     [Fact]
-    public void NoPageStated_LeavesTheExistingPageAlone()
+    public void NoPageStated_AgainstACitationOnAPage_IsAddedBesideIt()
     {
         WriteFile(LinesWithBirthCitations(("@S00001@", "112", 1)));
 
         RunExpectSuccess(CiteOp(("@S00001@", null, 3)));
 
-        var citation = Assert.Single(BirthCitations());
-        Assert.Equal("112", Page(citation));
-        Assert.Equal("3", citation.FirstChild("QUAY")!.Value);
+        Assert.Equal(["112", null], BirthCitations("@S00001@").Select(Page));
+        Assert.Equal("1", BirthCitations("@S00001@")[0].FirstChild("QUAY")!.Value);
     }
 
     [Fact]
@@ -112,18 +153,13 @@ public class CitationReconcilerTests : ApplyTestBase
     }
 
     [Fact]
-    public void ManyExistingCitations_WithOneStatedThatMatchesNone_IsRejectedNamingThePages()
+    public void TenPagesOfOneSource_AreTenCitationsOfOneFact()
     {
-        WriteFile(LinesWithBirthCitations(("@S00001@", "112", null), ("@S00001@", "130", null)));
-        byte[] before = ReadBytes();
+        WriteFile(LinesWithBirthCitations(("@S00001@", "1", null), ("@S00001@", "2", null)));
 
-        var result = Run(CiteOp(("@S00001@", "121", null)));
+        foreach (int page in Enumerable.Range(3, 8)) RunExpectSuccess(CiteOp(("@S00001@", page.ToString(), null)));
 
-        Assert.False(result.Success);
-        string errors = string.Join("; ", result.Errors);
-        Assert.Contains("already cites it 2 time(s)", errors);
-        Assert.Contains("\"112\", \"130\"", errors);
-        Assert.Equal(before, ReadBytes());
+        Assert.Equal([.. Enumerable.Range(1, 10).Select(p => p.ToString())], BirthCitations("@S00001@").Select(Page));
     }
 
     [Fact]
@@ -157,7 +193,7 @@ public class CitationReconcilerTests : ApplyTestBase
         string nellieBefore = string.Join("|", NellieCensus().Select(n => n.Value + Page(n)));
         string sourceBefore = string.Join("|", ReadDoc().ByXref["@S00001@"].Children.Select(c => c.Tag + c.Value));
 
-        RunExpectSuccess(CiteOp(("@S00001@", "121", null)));
+        RunExpectSuccess(CorrectOp("@S00001@", "112", "121"));
 
         Assert.Equal("121", Page(Assert.Single(BirthCitations())));
         Assert.Equal(nellieBefore, string.Join("|", NellieCensus().Select(n => n.Value + Page(n))));

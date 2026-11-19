@@ -66,14 +66,33 @@ public sealed class DraftFindingReader
     DraftSource? ReadSource(JsonElement? el, string path)
     {
         if (el is not { } source
-            || !IsObject(source, path, "name", "author", "url", "locator", "accessed", "class", "information")) return null;
+            || !IsObject(source, path, "ref", "name", "author", "url", "locator", "accessed", "class", "information")) return null;
+        string? sourceRef = Text(source, "ref", path);
         string? name = Text(source, "name", path, required: true);
-        string? locator = Text(source, "locator", path, required: true);
+        string? locator = Locator(source, path);
         string? cls = Choice(source, "class", path, SourceClasses, required: true);
         string? info = Choice(source, "information", path, InformationClasses, required: true);
-        if (name is null || locator is null || cls is null || info is null) return null;
-        return new DraftSource(name, Text(source, "author", path), Text(source, "url", path), locator, Text(source, "accessed", path), cls, info);
+        if (sourceRef is not null && (!IsXref(sourceRef) || Placeholder.IsPlaceholder(sourceRef) || sourceRef == DraftReferences.Void))
+            _errors.Add($"{path}.ref must be the xref of a source the document holds, such as \"@S1@\", got \"{sourceRef}\".");
+        if (name is null || cls is null || info is null) return null;
+        return new DraftSource(name, Text(source, "author", path), Text(source, "url", path), locator, Text(source, "accessed", path), cls, info)
+        {
+            Ref = sourceRef,
+        };
     }
+
+    // An omitted locator cites a held citation that has no page; a blank one is a mistake.
+    string? Locator(JsonElement source, string path)
+    {
+        if (source.TryGetProperty("locator", out var given) && given.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(given.GetString()))
+        {
+            _errors.Add($"{path}.locator must be a non-blank string; omit it to cite a held citation that has no page.");
+            return null;
+        }
+        return Text(source, "locator", path);
+    }
+
+    static bool IsXref(string xref) => xref.Length > 2 && xref.StartsWith('@') && xref.EndsWith('@');
 
     DraftTarget? ReadTarget(JsonElement? el, string path)
     {
@@ -86,7 +105,7 @@ public sealed class DraftFindingReader
 
     DraftFact? ReadFact(JsonElement el, string path)
     {
-        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange", "cites", "commentary")) return null;
+        if (!IsObject(el, path, "record", "fact", "date", "place", "value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange", "cites", "commentary", "commentaryOnly")) return null;
         int before = _errors.Count;
         string? record = Text(el, "record", path, required: true);
         string? tag = Text(el, "fact", path, required: true)?.ToUpperInvariant();
@@ -106,11 +125,13 @@ public sealed class DraftFindingReader
         string? withdraw = Text(el, "withdraw", path);
         var cites = ReadList(el, "cites", path, ReadFactCite);
         string? commentary = Commentary(el, path);
-        int quay = ReadQuay(el, path, "this fact (not inherited from the finding)");
+        bool commentaryOnly = ReadFlag(el, "commentaryOnly", path);
+        int quay = commentaryOnly ? 0 : ReadQuay(el, path, "this fact (not inherited from the finding)");
 
         if (allowSurnameChange && (tag?.ToUpperInvariant() != "NAME" || value is null || citeOnly || withdraw is not null))
             _errors.Add($"{path}.allowSurnameChange applies only to a NAME fact with a value.");
-        if (withdraw is not null)
+        if (commentaryOnly) CommentaryOnlyErrors(el, path, commentary);
+        else if (withdraw is not null)
         {
             if (value is not null || substructures.Count > 0 || replaced is not null || citeOnly || replaceHeld is not null || cites.Count > 0 || commentary is not null)
                 _errors.Add($"{path}.withdraw deletes the fact the record holds; value, substructures, replacedCitations, citeOnly, replaceHeld, cites and commentary do not apply.");
@@ -136,7 +157,19 @@ public sealed class DraftFindingReader
             Withdraw = withdraw,
             Cites = cites,
             Commentary = commentary,
+            CommentaryOnly = commentaryOnly,
         };
+    }
+
+    // A comment citing no source carries no claim, so nothing that grades, quotes or changes the fact applies.
+    void CommentaryOnlyErrors(JsonElement el, string path, string? commentary)
+    {
+        if (commentary is null)
+            _errors.Add($"{path}.commentaryOnly needs commentary: the comment added to the fact the record holds.");
+        string[] claimFields = ["value", "quay", "class", "information", "excerpt", "substructures", "replacedCitations", "citeOnly", "replaceHeld", "withdraw", "allowSurnameChange", "cites"];
+        var given = claimFields.Where(name => el.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null).ToList();
+        if (given.Count > 0)
+            _errors.Add($"{path}.commentaryOnly adds only a comment citing no source to a fact the record holds; {string.Join(", ", given)} do not apply.");
     }
 
     DraftSubstructure? ReadSubstructure(JsonElement el, string path)

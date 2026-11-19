@@ -449,6 +449,52 @@ public class DraftFindingReaderTests
     }
 
     [Fact]
+    public void ASourceRef_IsRead_AndALocatorMayBeOmitted()
+    {
+        var finding = Valid.Replace("\"locator\": \"Memorial #1\"", "\"ref\": \"@S2@\"");
+
+        var (findings, errors) = Read($"[{finding}]");
+
+        Assert.Empty(errors);
+        Assert.Equal("@S2@", findings[0].Source.Ref);
+        Assert.Null(findings[0].Source.Locator);
+    }
+
+    [Theory]
+    [InlineData("\"ref\": \"S2\"", "findings[0].source.ref must be the xref of a source the document holds")]
+    [InlineData("\"ref\": \"@NewSource1@\"", "findings[0].source.ref must be the xref of a source the document holds")]
+    [InlineData("\"ref\": \"@VOID@\"", "findings[0].source.ref must be the xref of a source the document holds")]
+    [InlineData("\"locator\": \" \"", "findings[0].source.locator must be a non-blank string; omit it to cite a held citation that has no page.")]
+    public void ASourceRefThatIsNotAnExistingXref_OrABlankLocator_IsRefused(string field, string error)
+    {
+        var finding = Valid.Replace("\"locator\": \"Memorial #1\"", field);
+
+        Assert.StartsWith(error, Assert.Single(Read($"[{finding}]").Errors));
+    }
+
+    [Fact]
+    public void ACommentaryOnlyFact_IsReadWithoutAQuay()
+    {
+        var fact = Valid.Replace("\"quay\": 2 }", "\"commentaryOnly\": true, \"commentary\": \"The stone gives the year only.\" }");
+
+        var (findings, errors) = Read($"[{fact}]");
+
+        Assert.Empty(errors);
+        Assert.True(findings[0].Facts[0].CommentaryOnly);
+        Assert.False(findings[0].Facts[0].CitesFinding);
+    }
+
+    [Theory]
+    [InlineData("\"commentaryOnly\": true", "findings[0].facts[0].commentaryOnly needs commentary")]
+    [InlineData("\"commentaryOnly\": true, \"commentary\": \"x\", \"quay\": 2, \"citeOnly\": true", "findings[0].facts[0].commentaryOnly adds only a comment citing no source to a fact the record holds; quay, citeOnly do not apply.")]
+    public void ACommentaryOnlyFact_NeedsCommentary_AndTakesNoClaimFields(string fields, string error)
+    {
+        var fact = Valid.Replace("\"quay\": 2 }", $"{fields} }}");
+
+        Assert.StartsWith(error, Assert.Single(Read($"[{fact}]").Errors));
+    }
+
+    [Fact]
     public void ANoteCitesCommentary_IsRead()
     {
         var note = Valid.Replace("\"text\": \"A note.\"", "\"text\": \"A note.\", \"cites\": [ { \"quay\": 1, \"commentary\": \"The roll gives his rank.\" } ]");

@@ -12,7 +12,7 @@ namespace GedCore.Drafting;
 internal sealed class ItemDrafter(
     SourcePlan sources, IRecordHistory history, CitableFindings citable, IReadOnlyDictionary<string, DraftPerson> newPeople)
 {
-    sealed record CiteKey(string Source, string Locator, int Quay);
+    sealed record CiteKey(string Source, string? Locator, int Quay);
 
     sealed record Claim(DraftFinding Finding, CiteKey Cite, string Extract);
 
@@ -34,7 +34,8 @@ internal sealed class ItemDrafter(
     {
         _itemPeople.Clear();
         var withdrawals = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is not null).Select(x => (Finding: f, Fact: x))).ToList();
-        var asserted = group.SelectMany(f => f.Facts.Where(x => x.Withdraw is null).SelectMany(x => Assert(f, x))).ToList();
+        var asserted = group.SelectMany(f => f.Facts.Where(x => x.CitesFinding).SelectMany(x => Assert(f, x))).ToList();
+        errors.AddRange(PagelessCitationErrors(asserted));
         var noteCites = group.SelectMany(f => f.Notes.SelectMany(n => n.Cites.Select(c => NoteClaim(f, c)))).ToList();
         var relations = group.SelectMany(f => f.Relations.Where(r => !r.IsRemoval).Select(r => new AssertedRelation(f, r, new CiteKey(sources.RefFor(f), f.Source.Locator, r.Quay)))).ToList();
         var claims = asserted.Select(a => new Claim(a.Finding, a.Cite, a.Fact.Excerpt ?? a.Finding.Extract))
@@ -54,6 +55,7 @@ internal sealed class ItemDrafter(
         foreach (var withdrawal in WithdrawalOps(withdrawals, group, decisions)) ops.Add(withdrawal);
         foreach (var vital in vitals.Where(op => !sexCorrections.Contains(op))) ops.Add(vital);
         foreach (var citation in CitationOps([.. asserted.Where(a => a.Fact.CiteOnly)], citations)) ops.Add(citation);
+        foreach (var commentary in CommentaryOps(group)) ops.Add(commentary);
         foreach (var withdrawal in NoteWithdrawalOps(group, decisions)) ops.Add(withdrawal);
         foreach (var finding in group)
             foreach (var note in finding.Notes.Where(n => !n.IsWithdrawal)) ops.Add(NoteOp(note, finding, citations));
@@ -124,22 +126,39 @@ internal sealed class ItemDrafter(
             var extracts = byKey.Select(c => c.Extract).Distinct().ToList();
             if (extracts.Count > 1)
                 decisions.Add(new DraftDecision(DraftDecisionKinds.MergedCitation,
-                    $"{extracts.Count} extracts merged into one dataText for {byKey.Key.Source}, page \"{byKey.Key.Locator}\"",
+                    $"{extracts.Count} extracts merged into one dataText for {byKey.Key.Source}, {PageOf(byKey.Key)}",
                     [.. byKey.Select(c => c.Finding.Id).Distinct()]));
 
-            result[byKey.Key] = new JsonObject
-            {
-                ["source"] = byKey.Key.Source,
-                ["page"] = byKey.Key.Locator,
-                ["dataText"] = string.Join(" … ", extracts),
-                ["quay"] = byKey.Key.Quay,
-            };
+            var citation = new JsonObject { ["source"] = byKey.Key.Source };
+            if (byKey.Key.Locator is not null) citation["page"] = byKey.Key.Locator;
+            citation["dataText"] = string.Join(" … ", extracts);
+            citation["quay"] = byKey.Key.Quay;
+            result[byKey.Key] = citation;
         }
 
         foreach (var clash in result.GroupBy(c => (c.Key.Source, c.Key.Locator, Text: (string)c.Value["dataText"]!)).Where(g => g.Count() > 1))
-            errors.Add($"the citations of {clash.Key.Source} on page \"{clash.Key.Locator}\" carry the same extract at different grades; give each differently graded fact its own excerpt or locator.");
+            errors.Add($"the citations of {clash.Key.Source} on {PageOf(clash.First().Key)} carry the same extract at different grades; give each differently graded fact its own excerpt or locator.");
         return result;
     }
+
+    static string PageOf(CiteKey cite) => cite.Locator is null ? "no page" : $"page \"{cite.Locator}\"";
+
+    // A citation without a page only adds to a held citation of its source that has none: stated without a page,
+    // it would otherwise take over a held citation of that source on another page.
+    IEnumerable<string> PagelessCitationErrors(List<Asserted> asserted)
+    {
+        foreach (var a in asserted.Where(a => a.Cite.Locator is null).DistinctBy(a => (a.Finding.Id, a.Fact.Record, a.Fact.Tag, a.Fact.Date, a.Fact.Place)))
+        {
+            var held = history.FactsOn(a.Fact.Record, a.Fact.Tag).Where(f => Selects(a.Fact, f));
+            if (!held.Any(f => f.Citations.Any(c => c.Source == a.Cite.Source && c.Page is null)))
+                yield return $"finding \"{a.Finding.Id}\" has no locator, but the {a.Fact.Tag} on {a.Fact.Record} it cites holds no citation of {a.Cite.Source} without a page; a citation without a page only adds to such a citation, so give source.locator.";
+        }
+    }
+
+    // The held instances a citeOnly fact's date and place select, as the citation op's match will.
+    static bool Selects(DraftFact fact, ExistingFact held) =>
+        (fact.Date is null || held.Date is not null && NodeBuilder.PadDay(held.Date.ToUpperInvariant()) == NodeBuilder.PadDay(fact.Date.ToUpperInvariant()))
+        && (fact.Place is null || held.Place == fact.Place);
 
     // Links come out after the ones the item adds, so a moved child is in its new family before it leaves the old one.
     // A removal op carries no citation; a plain unlink is flagged so the author records the evidence in a cited note.
@@ -495,14 +514,7 @@ internal sealed class ItemDrafter(
         string record, string tag, ExistingFact? held, List<Asserted> attached,
         Dictionary<CiteKey, JsonObject> citations, List<DraftDecision> decisions)
     {
-        var op = new JsonObject { ["op"] = "createOrUpdateCitation", ["record"] = record, ["fact"] = tag };
-        if (held is not null && (held.Date is not null || held.Place is not null))
-        {
-            var match = new JsonObject();
-            if (held.Date is not null) match["date"] = held.Date;
-            if (held.Place is not null) match["place"] = held.Place;
-            op["match"] = match;
-        }
+        var op = CitationOp(record, tag, held?.Date, held?.Place);
 
         var cites = FactCitations(attached, citations);
         if (held is not null)
@@ -571,17 +583,37 @@ internal sealed class ItemDrafter(
     {
         foreach (var byFact in asserted.GroupBy(a => (a.Fact.Record, a.Fact.Tag, Date: a.Fact.Date?.ToUpperInvariant(), a.Fact.Place)))
         {
-            var op = new JsonObject { ["op"] = "createOrUpdateCitation", ["record"] = byFact.Key.Record, ["fact"] = byFact.Key.Tag };
-            if (byFact.Key.Date is not null || byFact.Key.Place is not null)
-            {
-                var match = new JsonObject();
-                if (byFact.Key.Date is not null) match["date"] = byFact.Key.Date;
-                if (byFact.Key.Place is not null) match["place"] = byFact.Key.Place;
-                op["match"] = match;
-            }
+            var op = CitationOp(byFact.Key.Record, byFact.Key.Tag, byFact.Key.Date, byFact.Key.Place);
             AttachCitations(op, FactCitations([.. byFact], citations));
             yield return Backed(op, byFact.Select(a => a.Finding.Id));
         }
+    }
+
+    // Comments citing no source, added to facts the record already holds, one op per fact instance.
+    static IEnumerable<JsonObject> CommentaryOps(IReadOnlyList<DraftFinding> group)
+    {
+        var comments = group.SelectMany(f => f.Facts.Where(x => x.CommentaryOnly).Select(x => (Finding: f, Fact: x)));
+        foreach (var byFact in comments.GroupBy(c => (c.Fact.Record, c.Fact.Tag, Date: c.Fact.Date?.ToUpperInvariant(), c.Fact.Place)))
+        {
+            var op = CitationOp(byFact.Key.Record, byFact.Key.Tag, byFact.Key.Date, byFact.Key.Place);
+            AttachCitations(op, [.. byFact.Select(c => c.Fact.Commentary!.Trim()).Distinct()
+                .Select(text => (JsonNode)new JsonObject { ["source"] = DraftReferences.Void, ["commentary"] = text })]);
+            yield return Backed(op, byFact.Select(c => c.Finding.Id));
+        }
+    }
+
+    // A citation op on one fact instance, selected by date and place when given.
+    static JsonObject CitationOp(string record, string tag, string? date, string? place)
+    {
+        var op = new JsonObject { ["op"] = "createOrUpdateCitation", ["record"] = record, ["fact"] = tag };
+        if (date is not null || place is not null)
+        {
+            var match = new JsonObject();
+            if (date is not null) match["date"] = date;
+            if (place is not null) match["place"] = place;
+            op["match"] = match;
+        }
+        return op;
     }
 
     static List<JsonNode> FactCitations(List<Asserted> facts, Dictionary<CiteKey, JsonObject> citations) =>

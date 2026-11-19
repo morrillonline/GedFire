@@ -96,7 +96,7 @@ public class ChangesetContractTests
     {
         var report = CheckOps("""{ "op": "createOrUpdateNote", "record": "@I1@", "text": "A note.", "citations": [ { "source": "@S1@", "pg": "p. 1" } ] }""");
 
-        Assert.Contains(report.Errors, e => e.StartsWith("items[0].ops[0].citations[0].pg: unknown field; a citation takes source, page, dataText, quay"));
+        Assert.Contains(report.Errors, e => e.StartsWith("items[0].ops[0].citations[0].pg: unknown field; a citation takes source, page, replacesPage, dataText, quay"));
     }
 
     // R3: the fact's tag fixes its payload.

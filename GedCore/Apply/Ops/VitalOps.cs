@@ -152,13 +152,13 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
         log.Add($"{LogContext}: created" + string.Concat(citations.Select(c => $"; {NodeBuilder.DescribeCitation(c)}")));
     }
 
-    /// <summary>How an op changes an instance it lands on, and how the log names it.</summary>
-    private sealed record FactUpdate(string Outcome, CitationUpsertMode Citations)
+    /// <summary>How the log names what an op did to an instance it lands on.</summary>
+    private sealed record FactUpdate(string Outcome)
     {
-        public static readonly FactUpdate Update = new("updated", CitationUpsertMode.CorrectPageInPlace);
+        public static readonly FactUpdate Update = new("updated");
 
-        // An add that finds its instance already held only cites it: another changeset's citation there is kept, not corrected.
-        public static readonly FactUpdate CiteExisting = new("cited existing", CitationUpsertMode.AddBeside);
+        // An add that finds its instance already held only cites it.
+        public static readonly FactUpdate CiteExisting = new("cited existing");
     }
 
     private void UpdateFact(ApplyState state, GedRecord target, GedRecord existingFact,
@@ -188,7 +188,7 @@ public sealed class CreateOrUpdateVitalOp : ChangeOp
                 state.Touch(target);
                 changes.Add($"{sub.Tag} added '{sub.Value}'");
             }
-        changes.AddRange(CitationReconciler.Upsert(state, existingFact, citations, style.Citations));
+        changes.AddRange(CitationReconciler.Upsert(state, existingFact, citations));
 
         log.Add(changes.Count > 0
             ? $"{LogContext}: {style.Outcome} ({string.Join("; ", changes)})"

@@ -47,15 +47,16 @@ public static class FindingSchemas
               "type": "object",
               "additionalProperties": false,
               "properties": {
+                "ref": { "type": "string", "pattern": "^@[^@]+@$", "description": "An existing source record's xref, cited instead of the source the name and author would find; use it when the document holds several sources with this title and author. name (and author, when given) must agree with the record's." },
                 "name": { "type": "string", "description": "The collection, e.g. \"Find a Grave\"; one source record is made per name and author." },
                 "author": { "type": "string" },
                 "url": { "type": "string", "description": "Written on the source record only when every finding of the collection gives the same one." },
-                "locator": { "type": "string", "description": "Copied verbatim into each citation's page." },
+                "locator": { "type": "string", "minLength": 1, "description": "Copied verbatim into each citation's page. Omit it only to add to a held citation of this source that has no page: every fact then has citeOnly, and the fact it selects must already cite the source without a page." },
                 "accessed": { "type": "string" },
                 "class": { "type": "string", "enum": ["original", "image copy", "derivative", "authored", "user-contributed"] },
                 "information": { "type": "string", "enum": ["primary", "secondary", "undetermined"] }
               },
-              "required": ["name", "locator", "class", "information"]
+              "required": ["name", "class", "information"]
             },
             "target": {
               "type": "object",
@@ -114,9 +115,13 @@ public static class FindingSchemas
                       "required": ["finding", "quay"]
                     }
                   },
-                  "commentary": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$", "description": "A sentence or two of the author's comment on this finding's evidence for the fact, such as why its reading is preferred over another record's, or that a date is derived from an age. Printed after the source in the fact's footnote; discussion of evidence belongs here, never in a note. No record ids. Not with withdraw." }
+                  "commentary": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n]*$", "description": "A sentence or two of the author's comment on this finding's evidence for the fact, such as why its reading is preferred over another record's, or that a date is derived from an age. Printed after the source in the fact's footnote; discussion of evidence belongs here, never in a note. No record ids. Not with withdraw." },
+                  "commentaryOnly": { "type": "boolean", "description": "Add only commentary to the fact the record holds, as a comment citing no source (SOUR @VOID@); date and place select the instance. Nothing is asserted and this finding's source is not cited, so quay, value, excerpt, cites and the other claim fields do not apply." }
                 },
-                "required": ["record", "fact", "quay"]
+                "required": ["record", "fact"],
+                "if": { "properties": { "commentaryOnly": { "const": true } }, "required": ["commentaryOnly"] },
+                "then": { "required": ["commentary"] },
+                "else": { "required": ["quay"] }
               }
             },
             "existingPeople": {
