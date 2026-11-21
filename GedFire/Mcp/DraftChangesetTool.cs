@@ -102,13 +102,13 @@ public sealed class DraftChangesetTool
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "Where to write the changeset. Refused when the file already exists, unless overwrite is true, or when the draft has errors."
+              "description": "Where to write the changeset. Refused when it is this server's GEDCOM file, when the file already exists, unless overwrite is true, or when the draft has errors."
             },
             "reportPath": {
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "Write the full result JSON to this file and return only a digest inline (pass verbose: true for both), so a script can read the exact result without it also filling the caller's context. The folder must exist. Refused, before any work is done, when the file already exists unless overwrite is true, or when it is outPath."
+              "description": "Write the full result JSON to this file and return only a digest inline (pass verbose: true for both), so a script can read the exact result without it also filling the caller's context. The folder must exist. Refused, before any work is done, when it is this server's GEDCOM file, when the file already exists unless overwrite is true, or when it is outPath."
             },
             "overwrite": {
               "type": "boolean",
@@ -213,7 +213,9 @@ public sealed class DraftChangesetTool
             return CallToolResults.Error(error!);
         if (path is not null && string.IsNullOrWhiteSpace(path))
             return CallToolResults.Error("outPath must not be blank.");
-        if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, arguments.Verbose, out var report, out error))
+        if (path is not null && GedcomOverwriteGuard.Refusal(path.Trim(), "outPath", _session.DocumentPath) is { } refusal)
+            return CallToolResults.Error(refusal);
+        if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, arguments.Verbose, _session.DocumentPath, out var report, out error))
             return CallToolResults.Error(error!);
         if (report is not null && path is not null && Path.GetFullPath(path.Trim()) == report.FullPath)
             return CallToolResults.Error("reportPath must differ from outPath.");

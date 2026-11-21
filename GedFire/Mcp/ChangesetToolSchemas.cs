@@ -95,7 +95,7 @@ static class ChangesetToolSchemas
               "type": "string",
               "minLength": 1,
               "pattern": "\\S",
-              "description": "Write the full result JSON to this file and return only a digest of counts inline (pass verbose: true for both), so a script can read the exact result without it also filling the caller's context. The folder must exist. Refused, before any work is done, when the file already exists unless overwrite is true."
+              "description": "Write the full result JSON to this file and return only a digest of counts inline (pass verbose: true for both), so a script can read the exact result without it also filling the caller's context.               The folder must exist. Refused, before any work is done, when it is this server's GEDCOM file, or when the file already exists unless overwrite is true."
             }
             """);
         schema["properties"]!["overwrite"] = JsonNode.Parse("""

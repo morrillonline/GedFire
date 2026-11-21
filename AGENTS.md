@@ -18,6 +18,12 @@ Keep domain behavior in `GedCore` when it does not depend on command-line or sit
 - Use synthetic people, places, sources, media, and identifiers in fixtures and examples.
 - This application should never send information from the current GEDCOM file outbound to a third party.
 
+## Living People
+
+- Living people are restricted in exactly one place: when the web pages are written (`gedfire generate`). That is the only restriction.
+- No other action is restricted for living people: reading, searching, matching, selecting targets, drafting, validating, applying, and exporting all work on the whole GEDCOM. A tool that shows or uses a living person's data is working as intended.
+- Do not report that as a defect, and do not propose per-tool redaction or a privacy-aware view of the document.
+
 ## Build And Test
 
 Use the .NET 10 SDK, and run commands from the repository root.
@@ -65,7 +71,6 @@ Before declaring that a change is ready to commit, run the full test suite to en
 - A fact that was wrong and has been corrected has no place in the genealogical record. Remove the old value and the citations that supported it; do not keep them in a note.
 - With fixes and enhancements, make heavy use of unit tests to ensure correctness and no regressions.
 - Always respect the MCP read-only option when enabled. "Read-only" means exactly one thing: the GEDCOM file is not modified. That is the only intent. Do not read more into the word, such as a rule that no tool may write any other file, and do not extend it to other behavior.
-- Always respect the MCP enforce-privacy option when enabled.
 
 ## Documentation
 

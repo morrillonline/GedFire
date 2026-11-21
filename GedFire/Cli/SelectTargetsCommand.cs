@@ -31,6 +31,7 @@ public sealed class SelectTargetsCommand : SynchronousOptionCommand
             return context.Fail("--surnames must list at least one surname");
 
         if (context.FileMissing(input)) return 1;
+        if (GedcomOverwriteGuard.Refusal(output, "--output", input) is { } refusal) return context.Fail(refusal);
 
         var model = ModelBuilder.Build(context.ReadDocument(input));
         var suppressedCards = new List<SuppressedCard>();

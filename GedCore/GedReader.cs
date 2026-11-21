@@ -10,8 +10,34 @@ namespace GedCore;
 /// </summary>
 public static class GedReader
 {
+    static readonly TimeSpan BusyWait = TimeSpan.FromSeconds(1);
+    static readonly TimeSpan BusyRetry = TimeSpan.FromMilliseconds(20);
+
     /// <summary>Read a GEDCOM file of either supported version.</summary>
-    public static GedDocument ReadFile(string path) => Read(File.ReadAllBytes(path));
+    public static GedDocument ReadFile(string path) => Read(ReadAllBytes(path));
+
+    /// <summary>
+    /// Reads a GEDCOM file's bytes, waiting out the moment another program has it locked, such as a writer
+    /// putting a new version in place. A file still locked after the wait throws <see cref="IOException"/>.
+    /// </summary>
+    public static byte[] ReadAllBytes(string path)
+    {
+        DateTime deadline = DateTime.UtcNow + BusyWait;
+        while (true)
+        {
+            try
+            {
+                return File.ReadAllBytes(path);
+            }
+            catch (IOException ex) when (IsLocked(ex) && DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(BusyRetry);
+            }
+        }
+    }
+
+    static bool IsLocked(IOException ex) =>
+        ex is not (FileNotFoundException or DirectoryNotFoundException or PathTooLongException or DriveNotFoundException);
 
     /// <summary>Parse GEDCOM bytes of either supported version.</summary>
     public static GedDocument Read(byte[] bytes) =>

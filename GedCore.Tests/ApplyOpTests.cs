@@ -386,22 +386,23 @@ public class ApplyOpTests : ApplyTestBase
         Assert.DoesNotContain(indi.Children, c => c.Tag == "NOTE");   // no note created
     }
 
+    // A date can still reach the file through a substructure, which the contract does not read as a date.
     [Fact]
-    public void Vital_ReplacedCitationsMoveToNote_IsRefusedAndNothingIsWritten()
+    public void Vital_ASubstructureDateThatIsNotGedcom_IsRefusedAndNothingIsWritten()
     {
-        SeedBirtWithExistingCitation();
-        var before = ReadBytes();
+        byte[] before = WriteBaseFile();
 
         var result = Run("""
             { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "BIRT",
-                "date": "2 APR 1928", "replacedCitations": "moveToNote" } ] } ] }
+              { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "EVEN", "value": "Pension", "date": "1900",
+                "substructures": [ { "tag": "SDATE", "value": "about 1900" } ] } ] } ] }
             """);
 
         Assert.False(result.Success);
-        Assert.Contains(result.Errors, e => e.Contains("replacedCitations must be keep or drop"));
+        Assert.Contains(result.Errors, e => e.Contains("GED017") && e.Contains("'about 1900' is not a GEDCOM 7 date"));
         Assert.Equal(before, ReadBytes());
     }
+
     [Fact]
     public void Note_WithCitation_AttachesSourceUnderNote_AndReportsMintedXref()
     {

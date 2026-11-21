@@ -407,6 +407,58 @@ public class ChangesetReportTests : IDisposable
         Assert.True(ReadReport(report)["success"]!.GetValue<bool>());
     }
 
+    // ---- the GEDCOM is never an output file ----
+
+    [Fact]
+    public async Task Validate_AReportPathThatIsTheGedcom_IsRefusedAndTheGedcomIsUntouched()
+    {
+        string ged = WriteGed();
+        byte[] before = File.ReadAllBytes(ged);
+        var tool = new ValidateChangesetTool(ged, new ToolGate());
+
+        var result = await tool.HandleAsync(
+            new ValidateChangesetArguments(WriteChangeset(), "all", ReportPath: Json(ged), Overwrite: Json(true)), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("reportPath", Text(result));
+        Assert.Contains("is the GEDCOM file itself", Text(result));
+        Assert.Equal(before, File.ReadAllBytes(ged));
+    }
+
+    [Fact]
+    public async Task Apply_AReportPathThatIsTheGedcom_IsRefusedBeforeAnythingIsApplied()
+    {
+        string ged = WriteGed();
+        byte[] before = File.ReadAllBytes(ged);
+        var tool = new ApplyChangesetTool(ged, new ToolGate(), readOnly: false);
+
+        var result = await tool.HandleAsync(WriteChangeset(), "all", Json(ged), Json(true), CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("is the GEDCOM file itself", Text(result));
+        Assert.Equal(before, File.ReadAllBytes(ged));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Draft_AnOutPathOrReportPathThatIsTheGedcom_IsRefusedAndTheGedcomIsUntouched(bool asOutPath)
+    {
+        var session = _sessions.Open(File.ReadAllText(WriteGed()), out string ged);
+        byte[] before = File.ReadAllBytes(ged);
+        var tool = new DraftChangesetTool(session, new ToolGate());
+
+        var result = await tool.HandleAsync(
+            new DraftChangesetArguments(
+                Findings_(), default, default, asOutPath ? Json(ged) : default, Json(true), asOutPath ? default : Json(ged)),
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains(asOutPath ? "outPath" : "reportPath", Text(result));
+        Assert.Contains("is the GEDCOM file itself", Text(result));
+        Assert.Equal(before, File.ReadAllBytes(ged));
+    }
+
     // ---- advertised schemas ----
 
     [Fact]
@@ -482,6 +534,47 @@ public class ChangesetReportTests : IDisposable
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Structured(validated).GetRawText()), JsonNode.Parse(Structured(applied).GetRawText())));
         Assert.Equal(["items[0].ops[0].citation: use \"citations\", an array"],
             Structured(applied).GetProperty("errors").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(before, File.ReadAllBytes(ged));
+    }
+
+    [Fact]
+    public async Task AnInvalidDate_FailsValidation_AndApplyChecksAgainAndWritesNothing()
+    {
+        string ged = WriteGed();
+        byte[] before = File.ReadAllBytes(ged);
+        string path = WriteChangeset("""
+            { "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT", "date": "March 5, 1900" } ] } ] }
+            """);
+
+        var validated = await new ValidateChangesetTool(ged, new ToolGate()).HandleAsync(path, "all", CancellationToken.None);
+        var applied = await new ApplyChangesetTool(ged, new ToolGate(), readOnly: false).HandleAsync(path, "all", CancellationToken.None);
+
+        foreach (var result in new[] { validated, applied })
+        {
+            Assert.False(Structured(result).GetProperty("success").GetBoolean());
+            Assert.StartsWith("items[0].ops[0].date: \"March 5, 1900\" is not a GEDCOM date",
+                Assert.Single(Structured(result).GetProperty("errors").EnumerateArray()).GetString());
+        }
+        Assert.Equal(before, File.ReadAllBytes(ged));
+    }
+
+    // Apply reads and checks the changeset file itself, so a file changed after it was validated is checked as it now stands.
+    [Fact]
+    public async Task AChangesetEditedAfterItValidated_IsCheckedAgainByApply()
+    {
+        string ged = WriteGed();
+        byte[] before = File.ReadAllBytes(ged);
+        const string valid = """
+            { "items": [ { "item": 1, "ops": [ { "op": "createOrUpdateVital", "record": "@I00001@", "fact": "DEAT", "date": "5 MAR 1900" } ] } ] }
+            """;
+        string path = WriteChangeset(valid);
+        var validated = await new ValidateChangesetTool(ged, new ToolGate()).HandleAsync(path, "all", CancellationToken.None);
+        File.WriteAllText(path, valid.Replace("5 MAR 1900", "5th March 1900"));
+
+        var applied = await new ApplyChangesetTool(ged, new ToolGate(), readOnly: false).HandleAsync(path, "all", CancellationToken.None);
+
+        Assert.True(Structured(validated).GetProperty("success").GetBoolean());
+        Assert.False(Structured(applied).GetProperty("success").GetBoolean());
         Assert.Equal(before, File.ReadAllBytes(ged));
     }
 }

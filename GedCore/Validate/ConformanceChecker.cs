@@ -78,6 +78,8 @@ public static class ConformanceChecker
         CheckFamilyEventsOnPersons(doc, diags);
         cancellationToken.ThrowIfCancellationRequested();
         CheckGarbledText(doc, diags);
+        cancellationToken.ThrowIfCancellationRequested();
+        CheckDates(doc, diags);
 
         return [.. diags.OrderBy(d => d.Severity).ThenBy(d => d.Code, StringComparer.Ordinal)];
     }
@@ -308,9 +310,8 @@ public static class ConformanceChecker
 
     private static void CheckRemoved70Structures(GedDocument doc, List<GedDiagnostic> diags)
     {
+        if (!IsVersion7(doc)) return;   // a 5.5 document is not diagnosed
         var head = doc.Records.FirstOrDefault(r => r.Tag == "HEAD");
-        string? vers = head?.FirstChild("GEDC")?.FirstChild("VERS")?.Value;
-        if (vers is null || !vers.StartsWith('7')) return;   // a 5.5 document is not diagnosed
 
         foreach (var rec in AllRecords(doc))
         {
@@ -449,8 +450,35 @@ public static class ConformanceChecker
     }
 
     // -------------------------------------------------------------------
+    // GED017 — DATE and SDATE payloads (7.x files only)
+    // -------------------------------------------------------------------
+
+    private static void CheckDates(GedDocument doc, List<GedDiagnostic> diags)
+    {
+        if (!IsVersion7(doc)) return;   // 5.5 dates follow another grammar
+
+        foreach (var rec in AllRecords(doc).Where(r => r.Tag is "DATE" or "SDATE"))
+            if (DateFault(rec) is { } fault)
+                diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Error, "GED017", fault, OwningXref(rec), rec.Tag));
+    }
+
+    private static string? DateFault(GedRecord date)
+    {
+        string value = date.Value;
+        // An empty date is allowed only as the carrier of a PHRASE.
+        if (value.Length == 0)
+            return date.FirstChild("PHRASE") is null ? $"{date.Tag} has no payload and no PHRASE" : null;
+        if (!GedDateSyntax.IsValid(value))
+            return $"{date.Tag} payload '{value}' is not a GEDCOM 7 date";
+        return value == value.ToUpperInvariant() ? null
+            : $"{date.Tag} payload '{value}' must be upper case: '{value.ToUpperInvariant()}'";
+    }
+
+    // -------------------------------------------------------------------
     // Shared helpers
     // -------------------------------------------------------------------
+
+    private static bool IsVersion7(GedDocument doc) => doc.Version?.StartsWith('7') ?? false;
 
     /// <summary>Every record in the document, at every nesting level, in document order.</summary>
     private static IEnumerable<GedRecord> AllRecords(GedDocument doc)

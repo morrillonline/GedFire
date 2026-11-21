@@ -23,7 +23,7 @@ historical records -> findings -> changesets -> review -> GEDCOM -> website
 ```
 
 GedFire handles the mechanics. You and your reviewer judge the evidence.
-The server exposes nineteen typed tools; only `apply_changeset` can modify
+The server exposes seventeen typed tools; only `apply_changeset` can modify
 the bound GEDCOM. Other tools can write drafts and reports to separate files.
 [Review and permission limits](#safety-and-review) matter: GedFire validates
 changes, but it does not collect or authenticate your approval.
@@ -43,7 +43,7 @@ Start with a copy of your GEDCOM. Configure your
 [MCP client](#connect-an-ai-client) to launch:
 
 ```powershell
-gedfire mcp --input "C:\Genealogy\family.ged" --read-only --enforce-privacy
+gedfire mcp --input "C:\Genealogy\family.ged" --read-only
 ```
 
 Replace the input path with your file's absolute path. Let the client launch
@@ -53,9 +53,8 @@ communicates through the process streams, not a network connection.
 Ask your agent: **"How many people and families are in this file?"**
 It should call `get_document_stats` and report both counts.
 
-`--read-only` blocks GEDCOM changes, not drafting or report files.
-`--enforce-privacy` masks protected and plausibly living individuals in tool
-output. Keep both flags until you understand the
+`--read-only` blocks GEDCOM changes, not drafting or report files. Keep it
+until you understand the
 [safety and privacy limits](#safety-and-review).
 
 ## Try the fictional demo
@@ -123,7 +122,7 @@ Add this to `.vscode/mcp.json` in your workspace:
       "command": "gedfire",
       "args": [
         "mcp", "--input", "C:\\Genealogy\\family.ged",
-        "--read-only", "--enforce-privacy"
+        "--read-only"
       ]
     }
   }
@@ -146,7 +145,7 @@ These clients use an `mcpServers` entry:
       "command": "gedfire",
       "args": [
         "mcp", "--input", "C:\\Genealogy\\family.ged",
-        "--read-only", "--enforce-privacy"
+        "--read-only"
       ]
     }
   }
@@ -168,7 +167,7 @@ Add this to `.codex/config.toml` in the project or `~/.codex/config.toml`:
 ```toml
 [mcp_servers.gedfire]
 command = "gedfire"
-args = ["mcp", "--input", "C:\\Genealogy\\family.ged", "--read-only", "--enforce-privacy"]
+args = ["mcp", "--input", "C:\\Genealogy\\family.ged", "--read-only"]
 ```
 
 ### Options and troubleshooting
@@ -180,7 +179,6 @@ double-quoted strings require escaped backslashes on Windows.
 | Option | Effect |
 |---|---|
 | `--read-only` | Refuse every `apply_changeset` call. Leave all other tools available, including draft and report output. |
-| `--enforce-privacy` | Mask protected and plausibly living people in tool output. See [privacy limits](#privacy). |
 | `--policy <json>` | Enforce editorial rules during changeset validation and apply. See the [example policy](docs/policy.example.json) and [policy reference](docs/mcp-reference.md#changeset-policy-file). |
 
 Restart or reload your client after changing its configuration. If startup
@@ -292,8 +290,12 @@ The error names the offending fields and lists the accepted ones.
 
 - Dry-run and apply use the same validation. If an operation fails validation,
   GedFire writes nothing.
-- Path-based apply holds an exclusive file lock from the initial read through
-  the verified write to prevent competing GedFire writers from racing.
+- Apply takes a machine-wide write lock on the GEDCOM from the initial read
+  through the write, so competing GedFire writers run one at a time and each
+  builds on the one before it. The new file is written to a temporary copy
+  and swapped in whole, so an interrupted write leaves the GEDCOM exactly as
+  it was. A writer that cannot get the lock fails and writes nothing. The
+  lock leaves no file behind.
 - Before creating a person, validation rejects high-confidence duplicates
   among existing and planned people. Ambiguous candidates do not block creation.
 - A new parent, spouse, or child is refused when the person it attaches to
@@ -302,6 +304,8 @@ The error names the offending fields and lists the accepted ones.
 - Before writing, GedFire checks a byte-stable reparse/format round trip,
   pointer resolution, and expected record-count changes.
 - `--read-only` refuses apply calls even if the client approves them.
+- A draft, report, index, or archive is never written over the GEDCOM itself.
+  An output path that names it is refused, with or without `--read-only`.
 - A configured policy can reject a changeset at both preview and apply.
 
 Keep backups or version history. Structural validation cannot catch every
@@ -329,16 +333,16 @@ GedFire makes no network requests and sends no telemetry. Your chosen client
 may send tool results to a model provider; local processing does not make the
 whole conversation local.
 
-`--enforce-privacy` uses the site's privacy filter. It masks individuals with
-`RESN CONFIDENTIAL` or `RESN PRIVACY`, plus plausibly living people: no
-death-class fact and a birth within the last 100 years. Their tool views become
+MCP tools work on the whole GEDCOM, living people included. Living people are
+masked in one place only: the family pages `gedfire generate` writes. There,
+individuals with `RESN CONFIDENTIAL` or `RESN PRIVACY`, plus plausibly living
+people (no death-class fact and a birth within the last 100 years), become
 `Living <Surname>` placeholders without dates, places, notes, or media.
 
 The filter uses recorded facts, not verified living status. Placeholders still
 reveal surnames. Without a birth year or explicit restriction, the age
-heuristic does not mask a person. The flag does not promise to redact every
-mention in other records or user-supplied text. Inspect your data and your
-client's privacy settings before sharing results.
+heuristic does not mask a person. Inspect your data and your client's privacy
+settings before sharing results.
 
 ## Installation
 
@@ -376,7 +380,7 @@ The CLI uses the same engine as the MCP server.
 | `select-targets` | Draw people with research gaps for study surnames, with every card that pays for each. |
 | `date-calc` | Normalize dual dates or calculate dates and ages. |
 | `find-person` / `get-record` / `get-document-stats` | Run one lookup and print JSON without starting a server. |
-| `schema` | Print a versioned JSON Schema of the finding-file contract (`finding`, `finding-file`, `record`, `argument`). |
+| `schema` | Print a versioned JSON Schema of a GedFire file contract (`finding`, `finding-file`, `record`, `argument`, `changeset`, `cards`, `changeset-report`, `draft-report`). |
 | `pack` / `unpack` | Create or extract a GEDZIP archive. |
 | `mcp` | Start the local-only stdio MCP server; no HTTP or remote transport. |
 | `tools list` / `tools describe` / `tools call` | Discover or invoke any MCP tool directly using the same JSON schemas and handlers. |
@@ -391,7 +395,7 @@ Every MCP tool is also available as a one-shot command, without a server or AI c
 ```text
 gedfire tools list
 gedfire tools describe find_person
-gedfire tools call find_person --input family.ged --args request.json --out result.json --enforce-privacy
+gedfire tools call find_person --input family.ged --args request.json --out result.json
 ```
 
 The arguments file contains exactly the MCP tool's arguments object, for example:
@@ -405,7 +409,7 @@ JSON on stdout unless `--out` names a new file; existing output files are
 refused. Diagnostics go to stderr. The exit code is 0 on success and 1 on
 errors or failed validation/plausibility checks.
 
-`--policy`, `--read-only`, and `--enforce-privacy` have the same meaning as on
+`--policy` and `--read-only` have the same meaning as on
 `mcp`. Read-only prevents GEDCOM changes, not separate draft or report files.
 Discovery needs no GEDCOM. Calls to `date_calc`, `describe_changeset_ops` and
 `describe_schemas` need no `--input`. Without `--input`, `validate_finding`

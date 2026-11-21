@@ -101,10 +101,10 @@ public static class PlausibilityChecker
         {
             if (indi.Xref is null) continue;
 
-            int? birth = YearOf(indi.ChildrenByTag("BIRT").LastOrDefault());
+            int? birth = YearOf(indi.FirstChild("BIRT"));
             int? bapt = YearOf(indi.ChildrenByTag("BAPT").LastOrDefault())
                         ?? YearOf(indi.ChildrenByTag("CHR").LastOrDefault());
-            int? death = YearOf(indi.ChildrenByTag("DEAT").LastOrDefault());
+            int? death = YearOf(indi.FirstChild("DEAT"));
             int? buri = YearOf(indi.ChildrenByTag("BURI").LastOrDefault())
                         ?? YearOf(indi.ChildrenByTag("PROB").LastOrDefault());
 
@@ -138,7 +138,7 @@ public static class PlausibilityChecker
                 if (spouseXref is null || spouseXref == GedRecord.VoidPointer) continue;
                 if (!doc.ByXref.TryGetValue(spouseXref, out var spouse) || spouse.Tag != "INDI") continue;
 
-                int? spouseDeath = YearOf(spouse.ChildrenByTag("DEAT").LastOrDefault());
+                int? spouseDeath = YearOf(spouse.FirstChild("DEAT"));
                 if (spouseDeath is int sd && marr.Value > sd)
                     diags.Add(new GedDiagnostic(GedDiagnosticSeverity.Warning, "GEN101",
                         $"MARR ({marr}) on {fam.Xref} recorded after {spouseXref}'s own DEAT ({sd})",
@@ -177,7 +177,7 @@ public static class PlausibilityChecker
             {
                 if (chilLink.Value == GedRecord.VoidPointer) continue;
                 if (!indiByXref.TryGetValue(chilLink.Value, out var child)) continue;
-                int? childBirth = YearOf(child.ChildrenByTag("BIRT").LastOrDefault());
+                int? childBirth = YearOf(child.FirstChild("BIRT"));
                 if (childBirth is null) continue;
 
                 CheckParentAge(diags, fam, chilLink.Value, childBirth.Value, motherBirth, "mother", wifeXref, 17, 50);
@@ -200,7 +200,7 @@ public static class PlausibilityChecker
 
     private static int? ParentBirthYear(Dictionary<string, GedRecord> indiByXref, string? xref) =>
         xref is not null && xref != GedRecord.VoidPointer && indiByXref.TryGetValue(xref, out var rec)
-            ? YearOf(rec.ChildrenByTag("BIRT").LastOrDefault())
+            ? YearOf(rec.FirstChild("BIRT"))
             : null;
 
     // -------------------------------------------------------------------
@@ -220,7 +220,7 @@ public static class PlausibilityChecker
                 if (spouseXref is null || spouseXref == GedRecord.VoidPointer) continue;
                 if (!doc.ByXref.TryGetValue(spouseXref, out var spouse) || spouse.Tag != "INDI") continue;
 
-                int? spouseBirth = YearOf(spouse.ChildrenByTag("BIRT").LastOrDefault());
+                int? spouseBirth = YearOf(spouse.FirstChild("BIRT"));
                 if (spouseBirth is not int sb) continue;
 
                 int age = marr.Value - sb;
@@ -258,7 +258,7 @@ public static class PlausibilityChecker
 
     private static int? SpouseBirthYear(GedDocument doc, string? xref) =>
         xref is not null && xref != GedRecord.VoidPointer && doc.ByXref.TryGetValue(xref, out var indi) && indi.Tag == "INDI"
-            ? YearOf(indi.ChildrenByTag("BIRT").LastOrDefault())
+            ? YearOf(indi.FirstChild("BIRT"))
             : null;
 
     // -------------------------------------------------------------------
@@ -277,7 +277,7 @@ public static class PlausibilityChecker
                 .Where(c => c.Value != GedRecord.VoidPointer)
                 .Select(c => doc.ByXref.GetValueOrDefault(c.Value))
                 .Where(child => child is { Tag: "INDI" })
-                .Select(child => YearOf(child!.ChildrenByTag("BIRT").LastOrDefault()))
+                .Select(child => YearOf(child!.FirstChild("BIRT")))
                 .Where(y => y is not null)
                 .Select(y => y!.Value)
                 .ToList();
@@ -357,10 +357,10 @@ public static class PlausibilityChecker
         foreach (var indi in doc.Records.Where(r => r.Tag == "INDI"))
         {
             if (indi.Xref is null) continue;
-            int? birth = YearOf(indi.ChildrenByTag("BIRT").LastOrDefault());
+            int? birth = YearOf(indi.FirstChild("BIRT"));
             if (birth is not int by) continue;
 
-            int? deathOrBurialYear = YearOf(indi.ChildrenByTag("DEAT").LastOrDefault());
+            int? deathOrBurialYear = YearOf(indi.FirstChild("DEAT"));
             string sourceTag = "DEAT";
             if (deathOrBurialYear is null)
             {
@@ -387,8 +387,8 @@ public static class PlausibilityChecker
         foreach (var indi in doc.Records.Where(r => r.Tag == "INDI"))
         {
             if (indi.Xref is null) continue;
-            int? birth = YearOf(indi.ChildrenByTag("BIRT").LastOrDefault());
-            int? death = YearOf(indi.ChildrenByTag("DEAT").LastOrDefault());
+            int? birth = YearOf(indi.FirstChild("BIRT"));
+            int? death = YearOf(indi.FirstChild("DEAT"));
             if (birth is not int by || death is not int dy) continue;
 
             int age = dy - by;

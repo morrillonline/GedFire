@@ -85,7 +85,7 @@ public sealed class ApplyChangesetTool
                 "This server was started with --read-only: apply_changeset is disabled. Restart `gedfire mcp` " +
                 "without --read-only to enable it, or use validate_changeset to preview the same changeset.");
 
-        if (!ReportFile.TryRead(reportPath, overwrite, verbose, out var report, out string? error))
+        if (!ReportFile.TryRead(reportPath, overwrite, verbose, _absoluteGedcomPath, out var report, out string? error))
             return CallToolResults.Error(error!);
 
         return ChangesetToolSupport.Execute(

@@ -16,6 +16,9 @@ public sealed record DialectField(string Name, DialectType Type, string Descript
     public int? Minimum { get; init; }
     public int? Maximum { get; init; }
     public int? MinItems { get; init; }
+
+    /// <summary>The string is written to the file as a DATE payload, so it must be a GEDCOM 7 date.</summary>
+    public bool GedcomDate { get; init; }
 }
 
 /// <summary>One object of the changeset dialect: an op, or a structure an op or the envelope holds.</summary>
@@ -38,7 +41,7 @@ public static class ChangesetDialect
 
     public const string Envelope = "changeset";
 
-    const string XrefPattern = "^@[^@]+@$";
+    public const string XrefPattern = "^@[^@]+@$";
 
     static DialectField Str(string name, string description, bool required = false) =>
         new(name, DialectType.String, description) { Required = required };
@@ -67,7 +70,7 @@ public static class ChangesetDialect
         "The fact's text payload, a string: the name for NAME, the sex for SEX, the description for OCCU, RESI, EVEN and the other attributes. An event such as BIRT takes date and place instead.");
 
     static readonly DialectField Date = Str("date",
-        "A GEDCOM 7 date, for an event or a dated attribute. A text fact such as NAME takes no date.");
+        "A GEDCOM 7 date in upper case, such as \"5 MAR 1806\", \"ABT 1806\" or \"BET 1806 AND 1810\", for an event or a dated attribute; any other form is refused. A text fact such as NAME takes no date.") with { GedcomDate = true };
 
     static readonly DialectField Place = Str("place",
         "The place, for an event or a placed attribute. A text fact such as NAME takes no place.");

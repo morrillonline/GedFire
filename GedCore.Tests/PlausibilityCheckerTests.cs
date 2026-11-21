@@ -43,6 +43,28 @@ public class PlausibilityCheckerTests
     }
 
     [Fact]
+    public void GEN101_JudgesTheFirstBirthAndDeath_NotALaterOne()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 BIRT
+            2 DATE 1801
+            1 BIRT
+            2 DATE 1980
+            1 DEAT
+            2 DATE 1870
+            1 DEAT
+            2 DATE 1790
+            0 TRLR
+            """);
+
+        Assert.DoesNotContain(PlausibilityChecker.Check(doc), d => d.Code == "GEN101");
+    }
+
+    [Fact]
     public void GEN101_MarriageAfterSpouseDeath_IsFlagged()
     {
         var doc = Parse("""

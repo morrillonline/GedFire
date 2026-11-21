@@ -97,11 +97,14 @@ public sealed class GedIndividual
     public string LastNameRaw { get; set; } = "";
     public string Title       { get; set; } = "";
     public bool   IsMale      { get; set; }
-    // Whether a SEX record was actually present (any value, not just "M").
-    // IsMale alone cannot distinguish "recorded female" from "sex never
-    // stated" — both leave it false. Matching's nickname-map selection
-    // needs that distinction, so it is tracked here rather than guessed.
+    // Whether SEX records M or F. With X, U, any other value, or no SEX at
+    // all, IsMale is false and says nothing, so a caller that needs
+    // "recorded female" must check this first.
     public bool   SexRecorded { get; set; }
+    // The sex as recorded when GEDCOM gives it a definite meaning: M, F, or X
+    // (not only male or only female). Null for U (cannot be determined),
+    // any other value, or no SEX at all.
+    public string? Sex        { get; set; }
     public string Fullname    { get; set; } = "";
     // Person-level NOTE/SNOTE structures in GEDCOM document order. GEDCOM
     // does not give a note a structured date, so source order is the reliable

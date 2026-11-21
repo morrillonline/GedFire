@@ -23,7 +23,8 @@ public sealed class ValidateDocumentTool
     public const string Description =
         "Run GEDCOM 7 conformance checks against this server's bound document -- the same checks `gedfire " +
         "validate` performs -- and return the findings structured instead of as plain-text lines. Reports tag " +
-        "charset and level-hierarchy problems, dangling or misdirected pointers, family events on a person, text " +
+        "charset and level-hierarchy problems, dangling or misdirected pointers, family events on a person, dates " +
+        "that are not GEDCOM 7 dates, text " +
         "garbled by an encoding mix-up (UTF-8 read as Windows-1252, e.g. \"Ã©\" for \"é\"), and other structural " +
         "conformance issues, each anchored to the record and tag it concerns. Call this to sanity-check the " +
         "whole document -- for example before starting a research session on a file from an unfamiliar source, " +

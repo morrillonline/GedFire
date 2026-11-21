@@ -135,4 +135,70 @@ public class SiteGeneratorCitationTests : IDisposable
 
         Assert.Contains(", 52. The banns name him Watkin.", html);
     }
+
+    // Nothing a source or citation says is markup: it is shown as written, never run.
+    const string MarkupGed = """
+        0 HEAD
+        1 GEDC
+        2 VERS 7.0
+        0 @S1@ SOUR
+        1 AUTH Clerk <img src=x onerror=alert(1)>
+        1 TITL Register of <illegible> & Sons
+        0 @I1@ INDI
+        1 NAME Cornelius /Ashworth/
+        2 NOTE Known as <script>alert(3)</script> the elder
+        1 SEX M
+        1 BIRT
+        2 DATE 1741
+        2 SOUR @S1@
+        3 PAGE p. <40>
+        3 DATA
+        4 TEXT born <script>alert(2)</script> at home
+        3 NOTE The clerk wrote <b>the year</b> only.
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Beatrice /Fenwick/
+        1 SEX F
+        1 FAMS @F1@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        1 CHIL @I3@
+        0 @I3@ INDI
+        1 NAME Levi /Ashworth/
+        1 SEX M
+        1 FAMC @F1@
+        0 TRLR
+        """;
+
+    string GenerateMarkupHtml()
+    {
+        var model = ModelBuilder.Build(GedCore.Ged70.Ged70Parser.Parse(MarkupGed));
+        new SiteGenerator(model, Template).Generate(_outDir);
+        return string.Join("\n", Directory.EnumerateFiles(_outDir, "*.html", SearchOption.AllDirectories).Select(File.ReadAllText));
+    }
+
+    [Fact]
+    public void MarkupInAFootnote_IsShownAsTextInEveryPartOfTheCitation()
+    {
+        string html = GenerateMarkupHtml();
+
+        Assert.Contains("Clerk &lt;img src=x onerror=alert(1)&gt;", html);
+        Assert.Contains("Register of &lt;illegible&gt; &amp; Sons", html);
+        Assert.Contains("&lt;40&gt;", html);
+        Assert.Contains("born &lt;script&gt;alert(2)&lt;/script&gt; at home", html);
+        Assert.Contains("The clerk wrote &lt;b&gt;the year&lt;/b&gt; only.", html);
+        Assert.DoesNotContain("<img", html);
+        Assert.DoesNotContain("<illegible>", html);
+        Assert.DoesNotContain("<b>the year</b>", html);
+    }
+
+    [Fact]
+    public void MarkupInANoteOnAName_IsShownAsTextInThePageBody()
+    {
+        string html = GenerateMarkupHtml();
+
+        Assert.Contains("Known as &lt;script&gt;alert(3)&lt;/script&gt; the elder", html);
+        Assert.DoesNotContain("<script", html);
+    }
 }

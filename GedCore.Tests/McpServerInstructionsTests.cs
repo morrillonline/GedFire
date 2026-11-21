@@ -7,46 +7,35 @@ public class McpServerInstructionsTests
     [Fact]
     public void Default_StatesXrefScopeAndTheWritePathOnly()
     {
-        string text = McpServerInstructions.Build(readOnly: false, enforcePrivacy: false);
+        string text = McpServerInstructions.Build(readOnly: false);
 
         Assert.Contains("belongs only to the single GEDCOM document", text);
         Assert.Contains("apply_changeset is the only tool that writes", text);
         Assert.DoesNotContain("--read-only", text);
-        Assert.DoesNotContain("--enforce-privacy", text);
     }
 
     [Fact]
     public void ReadOnly_AddsTheRefusalNotice()
     {
-        string text = McpServerInstructions.Build(readOnly: true, enforcePrivacy: false);
+        string text = McpServerInstructions.Build(readOnly: true);
 
         Assert.Contains("--read-only: every call to apply_changeset is refused", text);
-        Assert.DoesNotContain("--enforce-privacy", text);
     }
 
     [Fact]
     public void Policy_AddsTheEnforcementNotice()
     {
-        string withPolicy = McpServerInstructions.Build(readOnly: false, enforcePrivacy: false, hasPolicy: true);
-        string without = McpServerInstructions.Build(readOnly: false, enforcePrivacy: false);
+        string withPolicy = McpServerInstructions.Build(readOnly: false, hasPolicy: true);
+        string without = McpServerInstructions.Build(readOnly: false);
 
         Assert.Contains("policy file", withPolicy);
         Assert.DoesNotContain("policy file", without);
     }
 
     [Fact]
-    public void EnforcePrivacy_AddsThePlaceholderNotice()
-    {
-        string text = McpServerInstructions.Build(readOnly: false, enforcePrivacy: true);
-
-        Assert.Contains("--enforce-privacy", text);
-        Assert.Contains("withheld, not absent", text);
-    }
-
-    [Fact]
     public void EveryAdvertisedReadOnlyToolIsNamed()
     {
-        string text = McpServerInstructions.Build(readOnly: false, enforcePrivacy: false);
+        string text = McpServerInstructions.Build(readOnly: false);
 
         foreach (string tool in new[]
         {

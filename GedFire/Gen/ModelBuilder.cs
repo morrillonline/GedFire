@@ -118,12 +118,16 @@ public static class ModelBuilder
             var indi = new GedIndividual { Xref = rec.Xref ?? "" };
             string? parentXref = null;
             List<string>? spouseXrefs = null;
+            bool named = false;
 
+            // A person has one name, one birth, one death and one parent family here. GEDCOM
+            // prefers the first of several, so any later one is left unread.
             foreach (var child in rec.Children)
             {
                 switch (child.Tag)
                 {
-                    case "NAME":
+                    case "NAME" when !named:
+                        named = true;
                         SetFullname(indi, child.FullValue());
                         // Read the NAME's narrative children in document order so a
                         // migrated inline note (a 2 NOTE) keeps its position among the
@@ -137,8 +141,9 @@ public static class ModelBuilder
                         }
                         break;
                     case "SEX":
-                        indi.IsMale = child.Value.Equals("M", StringComparison.OrdinalIgnoreCase);
-                        indi.SexRecorded = true;
+                        indi.Sex = child.Value.ToUpperInvariant() is "M" or "F" or "X" ? child.Value.ToUpperInvariant() : null;
+                        indi.IsMale = indi.Sex == "M";
+                        indi.SexRecorded = indi.Sex is "M" or "F";
                         if (string.Equals(indi.FirstMiddle(), "unknown", StringComparison.OrdinalIgnoreCase))
                             SetFullname(indi, indi.FirstMiddle() + " /" + indi.LastNameRaw + "/");
                         break;
@@ -148,10 +153,10 @@ public static class ModelBuilder
                     case "RESN":
                         indi.Restriction = child.Value.Trim().ToUpperInvariant();
                         break;
-                    case "BIRT":
+                    case "BIRT" when indi.Birth is null:
                         indi.Birth = ParseEvent(child, "BIRT");
                         break;
-                    case "DEAT":
+                    case "DEAT" when indi.Death is null:
                         indi.Death = ParseEvent(child, "DEAT");
                         break;
                     case "WILL":
@@ -172,7 +177,7 @@ public static class ModelBuilder
                             (spouseXrefs ??= []).Add(child.Value);
                         break;
                     case "FAMC":
-                        if (child.Value.Length > 0) parentXref = child.Value;
+                        if (parentXref is null && child.Value.Length > 0 && !child.IsVoidPointer) parentXref = child.Value;
                         break;
                     case "OBJE":
                         AddMediaLink(child, _indiMediaLinks, indi);

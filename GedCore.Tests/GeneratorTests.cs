@@ -38,7 +38,8 @@ public class GeneratorTests : IDisposable
     public void Dispose() => Directory.Delete(_outDir, recursive: true);
 
     // -------------------------------------------------------------------------
-    // Family page — ImmigrantNameJohn-2000-2022.html
+    // Family page — deAllenLtCmndrJosephJohn-2000-2022.html, named for each
+    // partner's first NAME; their later NAME lines are not read.
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -51,8 +52,10 @@ public class GeneratorTests : IDisposable
     public void FamilyPage_HasFamTitle()
     {
         Assert.Contains("class=\"fam-title\"", FamilyHtml);
-        Assert.Contains("John Immigrant Name", FamilyHtml);
-        Assert.Contains("Professional Name", FamilyHtml);
+        Assert.Contains("Joseph \"John\" de Allen", FamilyHtml);
+        Assert.Contains("Maiden Name", FamilyHtml);
+        Assert.DoesNotContain("Immigrant Name", FamilyHtml);
+        Assert.DoesNotContain("Professional Name", FamilyHtml);
     }
 
     [Fact]
@@ -149,7 +152,7 @@ public class GeneratorTests : IDisposable
     // Helpers
     // -------------------------------------------------------------------------
 
-    string FamilyFile => Path.Combine(_outDir, "ImmigrantNameJohn-2000-2022.html");
+    string FamilyFile => Path.Combine(_outDir, "deAllenLtCmndrJosephJohn-2000-2022.html");
     string IndexFile  => Path.Combine(_outDir, "index0.html");
 
     string? _familyHtml;

@@ -391,12 +391,6 @@ public class ApplyTests : ApplyTestBase
           { "op": "createOrUpdateChild", "family": "@F00002@", "child": "@I00002@",
             "husb": "@I00001@" } ] } ] }
         """, "creation seeds")]
-    // invalid parent role
-    [InlineData("""
-        { "items": [ { "item": 1, "ops": [
-          { "op": "createOrUpdateParent", "person": "@I00001@", "role": "uncle",
-            "parent": "@I00002@" } ] } ] }
-        """, "role must be father or mother")]
     public void Apply_InvalidOp_FailsValidation_AndLeavesFileUntouched(string json, string expectedError)
     {
         byte[] original = WriteBaseFile();

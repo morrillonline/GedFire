@@ -24,8 +24,8 @@ namespace GedCore.Apply;
 ///   4. otherwise the result is serialized and verified in memory (parse →
 ///      re-serialize byte-stable, pointer resolution, signed record-count
 ///      deltas, no newly created source left uncited) and the file on disk is
-///      only written after every check passes — there is no window where a
-///      bad state exists on disk;
+///      only replaced after every check passes, in one step from a verified
+///      temporary copy — there is no window where a bad state exists on disk;
 ///   5. a newSources[] entry is only created when some selected item actually
 ///      cites it (or nothing in the whole changeset cites it, i.e. it's
 ///      prepared ahead of citing it) — excluding an item via --items also
@@ -42,51 +42,26 @@ public static class ChangesetApplier
     private static readonly Regex PointerPayload = new(@"^@[A-Za-z0-9_]+@$", RegexOptions.Compiled);
 
     /// <summary>
-    /// Apply a changeset to a file on disk, holding one file handle from the
-    /// initial read through verified replacement. A mutating run takes
-    /// FileShare.None, denying every other handle for the whole call, so a
-    /// concurrent path-based apply against the same file throws IOException
-    /// immediately instead of racing this one -- callers should treat that as
-    /// a normal apply failure, not let it propagate unhandled. A dry run only
-    /// needs read access since nothing is written, so it takes FileShare.Read
-    /// instead: it never blocks another dry run (validate_changeset,
-    /// check_plausibility, or another process/session bound to the same
-    /// file), and it still won't be admitted while a real write is in
-    /// progress. It does still exclude a concurrent writer for as long as it
-    /// holds the handle, same as before -- reading a half-written file would
-    /// be worse than a rejected apply.
+    /// Apply a changeset to a file on disk. A mutating run holds the file's
+    /// write lock (see <see cref="LockedGedcomFile"/>) from the initial read
+    /// through the replacement, so concurrent writers run one at a time and
+    /// each applies to what the one before it wrote; a writer that cannot
+    /// get the lock, or cannot replace the file, throws IOException with the
+    /// file untouched -- callers should treat that as a normal apply
+    /// failure, not let it propagate unhandled. A dry run takes no lock and
+    /// holds the file only for as long as it takes to read it, so it is
+    /// never held up by a writer and barely holds one up.
     /// </summary>
     public static ApplyResult Run(string gedcomPath, Changeset changeset,
                                   IReadOnlyCollection<int> itemNumbers, bool dryRun, DateTime? utcNow = null,
                                   CancellationToken cancellationToken = default)
     {
-        using var handle = new FileStream(gedcomPath, FileMode.Open,
-            dryRun ? FileAccess.Read : FileAccess.ReadWrite,
-            dryRun ? FileShare.Read : FileShare.None);
+        if (dryRun)
+            return Run(GedReader.ReadAllBytes(gedcomPath), changeset, itemNumbers, dryRun: true, utcNow, cancellationToken);
 
-        byte[] originalBytes = new byte[handle.Length];
-        handle.ReadExactly(originalBytes);
-
-        var result = Run(originalBytes, changeset, itemNumbers, dryRun, utcNow, cancellationToken);
-        if (!result.Success || result.OutputBytes is null) return result;
-
-        handle.Seek(0, SeekOrigin.Begin);
-        handle.Write(result.OutputBytes);
-        handle.SetLength(result.OutputBytes.Length);
-        handle.Flush(flushToDisk: true);
-
-        handle.Seek(0, SeekOrigin.Begin);
-        byte[] writtenBytes = new byte[result.OutputBytes.Length];
-        handle.ReadExactly(writtenBytes);
-        if (!writtenBytes.SequenceEqual(result.OutputBytes))
-        {
-            result.Errors.Add("re-read after write does not match written bytes");
-            handle.Seek(0, SeekOrigin.Begin);
-            handle.Write(originalBytes);
-            handle.SetLength(originalBytes.Length);
-            handle.Flush(flushToDisk: true);
-            result.Success = false;
-        }
+        using var file = LockedGedcomFile.Open(gedcomPath, cancellationToken);
+        var result = Run(file.ReadAllBytes(), changeset, itemNumbers, dryRun: false, utcNow, cancellationToken);
+        if (result.Success && result.OutputBytes is not null) file.Replace(result.OutputBytes);
         return result;
     }
 
@@ -96,8 +71,8 @@ public static class ChangesetApplier
     /// <paramref name="cancellationToken"/> is checked between phases and
     /// inside the op-apply loops and the two checkers' own per-record loops
     /// -- see those methods -- so a cancelled MCP request actually stops
-    /// work here instead of running to completion regardless (the file
-    /// handle above is released cleanly either way, since the resulting
+    /// work here instead of running to completion regardless (the write
+    /// lock above is released cleanly either way, since the resulting
     /// OperationCanceledException unwinds through its `using`).
     /// </summary>
     public static ApplyResult Run(byte[] originalBytes, Changeset changeset,

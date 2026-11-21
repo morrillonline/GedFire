@@ -251,18 +251,6 @@ public class ToolsCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Call_PrivacyFiltersTheInitialDocument()
-    {
-        string document = Document(Ged.Replace("1 SEX F", "1 SEX F\n1 RESN CONFIDENTIAL"));
-
-        var result = await Run(["call", "get_record", "--input", document, "--enforce-privacy", "--args", "-"],
-            """{"xref":"@I1@"}""");
-
-        Assert.Equal(0, result.Exit);
-        Assert.DoesNotContain("Mara", result.Output);
-    }
-
-    [Fact]
     public async Task Call_ApplyUsesTheExistingEngineAndReturnsStructuredJson()
     {
         string document = Document();

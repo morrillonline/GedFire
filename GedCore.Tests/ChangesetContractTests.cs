@@ -226,4 +226,91 @@ public class ChangesetContractTests
         Assert.Contains(report.Errors, e => e.StartsWith("items[0].ops[0].op: unknown op \"createOrUpdateThing\""));
         Assert.Contains("items[0].ops[1]: required field \"text\" is missing", report.Errors);
     }
+
+    // A date is written to the file as given, so it must be a GEDCOM 7 date.
+
+    static string Birth(string date) =>
+        $$"""{ "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "{{date}}" }""";
+
+    [Theory]
+    [InlineData("March 5, 1806")]
+    [InlineData("1806-03-05")]
+    [InlineData("5/3/1806")]
+    [InlineData("30 FEB 1806")]
+    [InlineData("1699/00")]
+    [InlineData("about 1806")]
+    public void ADateThatIsNotGedcom_IsRefusedByPath(string date)
+    {
+        var report = CheckOps(Birth(date));
+
+        Assert.StartsWith($"items[0].ops[0].date: \"{date}\" is not a GEDCOM date", Assert.Single(report.Errors));
+    }
+
+    [Theory]
+    [InlineData("5 MAR 1806")]
+    [InlineData("05 MAR 1806")]
+    [InlineData("MAR 1806")]
+    [InlineData("1806")]
+    [InlineData("ABT 1806")]
+    [InlineData("BEF 1806")]
+    [InlineData("BET 1806 AND 1810")]
+    [InlineData("FROM 1806 TO 1810")]
+    [InlineData("JULIAN 5 MAR 1700")]
+    public void AGedcomDate_IsAccepted(string date) =>
+        Assert.Empty(CheckOps(Birth(date)).Errors);
+
+    [Fact]
+    public void ALowerCaseDate_IsRefusedWithTheUpperCaseForm() =>
+        Assert.Equal(["items[0].ops[0].date: write the date in upper case: \"ABT 5 MAR 1806\""], CheckOps(Birth("abt 5 Mar 1806")).Errors);
+
+    [Fact]
+    public void ADateIsCheckedWhereverAFactIsWritten()
+    {
+        var report = CheckOps($$"""
+            { "op": "createOrUpdateSpouse", "person": "@I1@", "spouse": "@NewI1@", "family": "@NewF1@",
+              "marriage": { "date": "June 1899", "citations": [{{Cite}}] } },
+            { "op": "mergePerson", "survivor": "@I1@", "duplicate": "@I2@", "facts": [ { "fact": "BIRT", "date": "c. 1880" } ] }
+            """, """{ "xref": "@NewI1@", "name": "Ada /Test/", "facts": [ { "fact": "BIRT", "date": "1880?" } ] }""");
+
+        Assert.Equal(
+            ["items[0].people[0].facts[0].date", "items[0].ops[0].marriage.date", "items[0].ops[1].facts[0].date"],
+            report.Errors.Select(e => e[..e.IndexOf(':')]));
+    }
+
+    // A match names what the file holds, which may be the very date the op is there to correct.
+    [Fact]
+    public void AMatchDate_IsNotHeldToGedcomSyntax() =>
+        Assert.Empty(CheckOps("""
+            { "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "date": "5 MAR 1806", "match": { "date": "March 5, 1806" } }
+            """).Errors);
+
+    // The limits the dialect declares are refused here, before any op is read.
+
+    [Theory]
+    [InlineData("""{ "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "1806", "citations": [ { "source": "@S1@", "quay": 7 } ] }""",
+        "items[0].ops[0].citations[0].quay: must be 0 to 3, not 7")]
+    [InlineData("""{ "op": "createOrUpdateVital", "record": "@I1@", "fact": "CENS", "date": "1806", "mode": "append" }""",
+        "items[0].ops[0].mode: must be \"upsert\" or \"add\", not \"append\"")]
+    [InlineData("""{ "op": "mergePerson", "survivor": "@I1@", "duplicate": "@I2@", "facts": [ { "fact": "BIRT", "keep": "surviver" } ] }""",
+        "items[0].ops[0].facts[0].keep: must be \"survivor\" or \"duplicate\" or \"value\", not \"surviver\"")]
+    [InlineData("""{ "op": "deleteNote", "record": "I1", "text": "A note." }""",
+        "items[0].ops[0].record: must be an xref such as \"@I1@\", not \"I1\"")]
+    [InlineData("""{ "op": "createOrUpdateMedia", "files": [] }""",
+        "items[0].ops[0].files: needs at least 1 entry")]
+    [InlineData("""{ "op": "createOrUpdateVital", "record": "@I1@", "fact": "BIRT", "date": "2 APR 1928", "replacedCitations": "moveToNote" }""",
+        "items[0].ops[0].replacedCitations: must be \"keep\" or \"drop\", not \"moveToNote\"")]
+    [InlineData("""{ "op": "createOrUpdateParent", "person": "@I1@", "role": "uncle", "parent": "@I2@" }""",
+        "items[0].ops[0].role: must be \"father\" or \"mother\", not \"uncle\"")]
+    public void AValueOutsideTheDialectsLimits_IsRefusedByPath(string op, string error) =>
+        Assert.Equal([error], CheckOps(op).Errors);
+
+    [Fact]
+    public void ANewPersonsSex_MustBeOneOfTheFourValues()
+    {
+        var report = CheckOps(
+            """{ "op": "createOrUpdateChild", "family": "@F1@", "child": "@NewI1@" }""",
+            """{ "xref": "@NewI1@", "name": "Ada /Test/", "sex": "Female" }""");
+
+        Assert.Equal(["items[0].people[0].sex: must be \"M\" or \"F\" or \"U\" or \"X\", not \"Female\""], report.Errors);
+    }
 }

@@ -40,8 +40,8 @@ or stdin with `--args -`; omitting `--args` supplies `{}`. All tools require
 field names are case-sensitive. Relative paths, including paths inside the
 arguments object, resolve against the process's working directory.
 
-`--policy <file>`, `--read-only` and `--enforce-privacy` use the same policy,
-apply gate and privacy filtering as the MCP server. Read-only does not prevent
+`--policy <file>` and `--read-only` use the same policy and apply gate as the
+MCP server. Read-only does not prevent
 separate draft, proposal or report files. No resident MCP server, protocol
 handshake or network connection is needed.
 
@@ -65,6 +65,13 @@ digest, CLI `--out` receives that digest; request `verbose: true` when the tool
 supports it to return the complete result too.
 
 ## Lookups
+
+### Document overview
+
+`get_document_stats` takes no arguments. It returns `personCount` and
+`familyCount`, the document's declared `gedVersion` (null when the header
+declares none), and `gedFireVersion`, the running tool's own version. Call it
+to confirm the server is bound to the file you expect.
 
 ### Hinted lookups
 
@@ -122,6 +129,13 @@ source text. Source lookups include `citedBy`.
 Individual events such as baptism and burial appear in `otherEvents`.
 A burial without a death also supplies `approximateDeath`; `death` stays
 null. Families carry their own `citations`.
+
+A person has one name, one birth, one death and one parent family. When the
+file holds several, GedFire reads the first, which GEDCOM calls the preferred
+one, and leaves the rest unread. `sex` is `M`, `F` or `X` as recorded; `X`
+means not only male or only female. A recorded `U` (cannot be determined) is
+reported as null. Matching against a record that says male or female treats
+both `X` and `U` as no evidence.
 
 `get_records` accepts up to 500 xrefs and preserves request order. With
 `includeSources`, it returns one top-level `sources` array. `fields` selects
@@ -884,7 +898,7 @@ both are generated from the table the validator reads, so they cannot drift.
 `draft_changeset` writes only this form.
 
 - A changeset carries no version. The published schema is versioned instead
-  (`x-schemaVersion`, now 3.1). A `schemaVersion` key left by an earlier
+  (`x-schemaVersion`, now 3.2). A `schemaVersion` key left by an earlier
   release is refused as an unknown field; draft such a changeset again with
   `draft_changeset`.
 - Every object takes only the fields the contract defines: the envelope,
@@ -920,6 +934,13 @@ full path and the fix; nothing is read leniently and results carry no warnings:
 - an inline person object in `spouse`, `child` or `parent`, a placeholder its
   item's `people` does not declare, a `people` entry no op names, a `people`
   entry with a real xref, and one person declared twice;
+- a `date` that is not a GEDCOM 7 date in upper case
+  (`items[0].ops[0].date: "March 5, 1806" is not a GEDCOM date; …`). A date
+  inside `match` is exempt: it names what the file holds, which may be the
+  very value the op corrects;
+- a value outside the limits the contract declares for its field: an
+  enumerated field such as `sex`, `mode`, `keep` or `role`, a `quay` outside
+  0 to 3, a malformed xref, and an empty `files` or required `citations` array;
 - a field of the wrong type, a missing required field, and an unknown op.
 
 ## Changeset application
@@ -934,7 +955,10 @@ and year, for a fuller date inside it) — a warning only, since losing
 specificity is not recommended except when correcting an error. A conflicting
 or more detailed replacement is not flagged, and nothing is blocked.
 `validate_document` checks whole-file
-GEDCOM 7 conformance separately; `warningsAsErrors` promotes warnings.
+GEDCOM 7 conformance separately; `warningsAsErrors` promotes warnings. It
+reports every `DATE` or `SDATE` that is not a GEDCOM 7 date as an error
+(GED017), so a file holding one does not pass. Apply runs the same checks on
+its result and refuses a changeset that would add such an error.
 
 `validate_changeset` and `check_plausibility` accept an optional `after`: a
 list of `{changesetPath, items}` applied in memory, in order, before the
@@ -1007,8 +1031,9 @@ returns it inline as well. The saved files follow the `changeset-report` and
 `draft-report` schemas.
 
 The parent folder must exist. Existing files require `overwrite: true`.
-A draft's `outPath` and `reportPath` must differ. GedFire checks these paths
-before work, including before apply can modify the GEDCOM.
+A draft's `outPath` and `reportPath` must differ. A `reportPath` or `outPath`
+that names the bound GEDCOM is refused, with or without `overwrite`. GedFire
+checks these paths before work, including before apply can modify the GEDCOM.
 
 Reports cover successful and failed work, including policy refusal. Bad
 arguments or read-only apply refusal return errors without writing a report.

@@ -27,10 +27,10 @@ internal static class PersonRecordIndex
             if (indi.Xref is null) continue;
             var (given, surname) = SplitName(indi.FirstChild("NAME")?.FullValue());
 
-            PersonMatchEvent? birth = EventOf(indi.ChildrenByTag("BIRT").LastOrDefault());
-            PersonMatchEvent? death = EventOf(indi.ChildrenByTag("DEAT").LastOrDefault());
+            PersonMatchEvent? birth = EventOf(indi.FirstChild("BIRT"));
+            PersonMatchEvent? death = EventOf(indi.FirstChild("DEAT"));
 
-            string? famcXref = indi.ChildrenByTag("FAMC").LastOrDefault()?.Value;
+            string? famcXref = indi.ChildrenByTag("FAMC").FirstOrDefault(f => f.Value.Length > 0 && !f.IsVoidPointer)?.Value;
             var famc = famcXref is not null ? families.FirstOrDefault(f => f.Xref == famcXref) : null;
             PersonMatchParents? parents = null;
             if (famc is not null)

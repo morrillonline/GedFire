@@ -21,10 +21,12 @@ public static class ReportFile
 
     /// <summary>
     /// True with <paramref name="request"/> null when no report was asked for; false with an error naming the
-    /// argument when a value cannot be read, or the path cannot be used or already exists and overwrite is not true.
+    /// argument when a value cannot be read, the path is the GEDCOM at <paramref name="gedcomPath"/>, or the path
+    /// cannot be used or already exists and overwrite is not true.
     /// </summary>
     public static bool TryRead(
-        JsonElement reportPath, JsonElement overwrite, JsonElement verbose, out ReportRequest? request, out string? error)
+        JsonElement reportPath, JsonElement overwrite, JsonElement verbose, string gedcomPath,
+        out ReportRequest? request, out string? error)
     {
         request = null;
         if (!ToolArguments.TryReadOptionalString(reportPath, "reportPath", out string? path, out error)) return false;
@@ -38,6 +40,11 @@ public static class ReportFile
         }
 
         string fullPath = Path.GetFullPath(path.Trim());
+        if (GedcomOverwriteGuard.Refusal(fullPath, "reportPath", gedcomPath) is { } refusal)
+        {
+            error = refusal;
+            return false;
+        }
         if (!Directory.Exists(Path.GetDirectoryName(fullPath)))
         {
             error = $"reportPath {fullPath}: its folder does not exist.";

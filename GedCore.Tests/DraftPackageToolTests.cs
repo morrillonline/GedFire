@@ -218,6 +218,22 @@ public class DraftPackageToolTests : IDisposable
     }
 
     [Fact]
+    public async Task AProposalThatWouldBeTheGedcom_IsRefusedAndTheGedcomIsUntouched()
+    {
+        string ged = Write(Path.Combine("out", "tree.md"), Ged);
+        byte[] before = File.ReadAllBytes(ged);
+        var tool = new DraftPackageTool(ged, new ToolGate());
+
+        var result = await tool.HandleAsync(
+            new DraftPackageArguments(Json(new[] { Path.Combine(_dir, "a.changes.json") }), Json(_out), Json("tree"), Json(true)),
+            CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains("is the GEDCOM file itself", Text(result));
+        Assert.Equal(before, File.ReadAllBytes(ged));
+    }
+
+    [Fact]
     public async Task ABadRequest_IsRefusedNamingTheField()
     {
         string a = await Drafted("a.changes.json", Finding("F-1", "@I1@", "DEAT", "26 Mar 2013"));

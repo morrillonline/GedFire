@@ -105,7 +105,7 @@ public sealed class RecordMapper
         indi.Xref,
         PersonDisplay.FullName(indi),
         OrNull(indi.Title),
-        indi.SexRecorded ? (indi.IsMale ? "M" : "F") : null,
+        indi.Sex,
         MapEvent(indi.Birth),
         MapEvent(indi.Death),
         MapEvent(indi.Will),

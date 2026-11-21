@@ -496,3 +496,86 @@ public class GedModelHelperTests
         Assert.Equal("John Smith", fam.Description());
     }
 }
+
+// ---------------------------------------------------------------------------
+// A person has one name, birth, death and parent family: the first of several
+// ---------------------------------------------------------------------------
+
+public class FirstOfSeveralTests
+{
+    static GedIndividual Person(string gedText) => ModelBuilder.Build(Ged55Parser.Parse(gedText)).Individuals["@I1@"];
+
+    [Fact]
+    public void TheFirstName_IsThePersonsName_AndALaterNameIsNotRead()
+    {
+        var person = Person("""
+            0 @I1@ INDI
+            1 NAME Barnaby /Quillfeather/
+            2 SOUR @S1@
+            1 NAME Barney /Quill/
+            2 SOUR @S2@
+            0 @S1@ SOUR
+            1 TITL Parish register
+            0 @S2@ SOUR
+            1 TITL Tavern ledger
+            """);
+
+        Assert.Equal("Barnaby Quillfeather", person.Fullname);
+        Assert.Equal("Quillfeather", person.LastNameRaw);
+        Assert.Equal("Parish register", Assert.Single(person.NameSources).Title);
+    }
+
+    [Fact]
+    public void TheFirstBirthAndDeath_AreKept()
+    {
+        var person = Person("""
+            0 @I1@ INDI
+            1 NAME Barnaby /Quillfeather/
+            1 BIRT
+            2 DATE 4 MAR 1801
+            1 BIRT
+            2 DATE ABT 1805
+            1 DEAT
+            2 DATE 9 SEP 1870
+            1 DEAT
+            2 DATE AFT 1869
+            """);
+
+        Assert.Equal("4 MAR 1801", person.Birth!.Date);
+        Assert.Equal("9 SEP 1870", person.Death!.Date);
+    }
+
+    [Fact]
+    public void TheFirstParentFamily_IsKept_SkippingAVoidPointer()
+    {
+        var model = ModelBuilder.Build(Ged55Parser.Parse("""
+            0 @I1@ INDI
+            1 NAME Barnaby /Quillfeather/
+            1 FAMC @VOID@
+            1 FAMC @F1@
+            1 FAMC @F2@
+            0 @F1@ FAM
+            1 CHIL @I1@
+            0 @F2@ FAM
+            1 CHIL @I1@
+            """));
+
+        Assert.Equal("@F1@", model.Individuals["@I1@"].FamChild!.Xref);
+    }
+
+    [Theory]
+    [InlineData("M", "M", true, true)]
+    [InlineData("F", "F", false, true)]
+    [InlineData("X", "X", false, false)]
+    [InlineData("U", null, false, false)]
+    public void MFAndX_AreRecorded_AndOnlyMAndFCountAsMaleOrFemale(string recorded, string? sex, bool isMale, bool maleOrFemale)
+    {
+        var person = Person($"""
+            0 @I1@ INDI
+            1 NAME Ottoline /Marrowby/
+            1 SEX {recorded}
+            """);
+
+        Assert.Equal((sex, isMale, maleOrFemale), (person.Sex, person.IsMale, person.SexRecorded));
+    }
+}

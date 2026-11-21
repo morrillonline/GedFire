@@ -13,7 +13,7 @@ public sealed class ToolsCommand : ICliCommand
         Usage: gedfire tools list
                gedfire tools describe <tool>
                gedfire tools call <tool> [--input <ged>] [--args <json|->] [--out <json|->]
-                   [--policy <json>] [--read-only] [--enforce-privacy]
+                   [--policy <json>] [--read-only]
         """;
 
     public string Name => "tools";
@@ -48,7 +48,7 @@ public sealed class ToolsCommand : ICliCommand
 
     static async Task<int> CallAsync(string name, string[] args, CommandContext context)
     {
-        var options = CommandLine.Parse(args, ["--input", "--args", "--out", "--policy"], ["--read-only", "--enforce-privacy"]);
+        var options = CommandLine.Parse(args, ["--input", "--args", "--out", "--policy"], ["--read-only"]);
         if (options.Error is not null) return context.Fail($"{options.Error}\n{Usage}");
         if (McpToolCollectionFactory.RequiresDocument(name) && options.Value("--input") is null)
             return context.Fail($"{name} requires --input <ged>.\n{Usage}");
@@ -91,7 +91,7 @@ public sealed class ToolsCommand : ICliCommand
             return McpToolCollectionFactory.CreateStandalone(name);
 
         string absolutePath = Path.GetFullPath(path);
-        var session = DocumentSession.Open(absolutePath, options.Has("--enforce-privacy"));
+        var session = DocumentSession.Open(absolutePath);
         return McpToolCollectionFactory.Create(name, new ToolContext(session, absolutePath)
         {
             ReadOnly = options.Has("--read-only"),

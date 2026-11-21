@@ -11,19 +11,18 @@ public sealed class McpCommand : OptionCommand
 {
     public override string Name => "mcp";
 
-    protected override string Usage => "Usage: gedfire mcp --input <ged> [--policy <json>] [--read-only] [--enforce-privacy]";
+    protected override string Usage => "Usage: gedfire mcp --input <ged> [--policy <json>] [--read-only]";
 
     protected override IReadOnlyCollection<string> ValueOptions => ["--input", "--policy"];
 
     protected override IReadOnlyCollection<string> RequiredOptions => ["--input"];
 
-    protected override IReadOnlyCollection<string> Switches => ["--read-only", "--enforce-privacy"];
+    protected override IReadOnlyCollection<string> Switches => ["--read-only"];
 
     protected override async Task<int> ExecuteAsync(CommandLine commandLine, CommandContext context)
     {
         string input = commandLine.Require("--input");
         bool readOnly = commandLine.Has("--read-only");
-        bool enforcePrivacy = commandLine.Has("--enforce-privacy");
         if (context.FileMissing(input)) return 1;
         string? policyPath = commandLine.Value("--policy");
         if (policyPath is not null && context.FileMissing(policyPath)) return 1;
@@ -34,7 +33,7 @@ public sealed class McpCommand : OptionCommand
         try
         {
             nicknames = NicknameDirectory.LoadEmbedded();
-            session = DocumentSession.Open(absoluteInput, enforcePrivacy);
+            session = DocumentSession.Open(absoluteInput);
         }
         catch (Exception ex)
         {
@@ -63,7 +62,7 @@ public sealed class McpCommand : OptionCommand
             Policy = policy,
         });
 
-        await RunServerAsync(tools, McpServerInstructions.Build(readOnly, enforcePrivacy, policy is not null)).ConfigureAwait(false);
+        await RunServerAsync(tools, McpServerInstructions.Build(readOnly, policy is not null)).ConfigureAwait(false);
         return 0;
     }
 
