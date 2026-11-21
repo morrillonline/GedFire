@@ -118,7 +118,7 @@ sealed class PriorChangesets
     {
         if (_applied is { } applied) return applied;
         var log = new List<string>();
-        var (document, failed) = ApplyInOrder(ReadShared(gedcomPath), log, cancellationToken);
+        var (document, failed) = ApplyInOrder(GedReader.ReadAllBytes(gedcomPath), log, cancellationToken);
         return (_applied = (document, log, failed)).Value;
     }
 
@@ -140,14 +140,5 @@ sealed class PriorChangesets
             log.Add($"after[{i}] {prior.Path} (items {prior.Items}): applied in memory");
         }
         return (document, null);
-    }
-
-    // Read the way a dry run reads: alongside other readers, never while a write holds the file.
-    static byte[] ReadShared(string path)
-    {
-        using var handle = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        byte[] bytes = new byte[handle.Length];
-        handle.ReadExactly(bytes);
-        return bytes;
     }
 }

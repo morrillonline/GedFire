@@ -35,8 +35,9 @@ public sealed class ValidateChangesetTool
         "those earlier changesets are applied, in order, in memory; nothing is written, and an earlier changeset that does " +
         "not apply fails the run with its own errors. The changeset is first held to the changeset contract, version " +
         $"{GedCore.Contract.ChangesetDialect.SchemaVersion} (describe_schemas, changeset): an unknown " +
-        "field, a singular citation, an object value, a payload the fact's tag does not take, an inline person, or an undeclared " +
-        "or unnamed new person fails the run with errors naming each path and its fix, exactly as apply_changeset refuses it. " +
+        "field, a singular citation, an object value, a payload the fact's tag does not take, an inline person, an undeclared " +
+        "or unnamed new person, a date that is not a GEDCOM 7 date, or a value outside its field's allowed values or range " +
+        "fails the run with errors naming each path and its fix, exactly as apply_changeset refuses it. " +
         "A changeset written by an earlier release is drafted again with draft_changeset.";
 
     public static readonly string InputSchemaJson = ChangesetToolSchemas.InputSchemaWithCardsJson;
@@ -95,7 +96,7 @@ public sealed class ValidateChangesetTool
             return CallToolResults.Error(error!);
         if (!PointsCardReader.TryRead(cards, out var cardList, out error))
             return CallToolResults.Error(error!);
-        if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, arguments.Verbose, out var report, out error))
+        if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, arguments.Verbose, _absoluteGedcomPath, out var report, out error))
             return CallToolResults.Error(error!);
         if (!PriorChangesets.TryRead(arguments.After, out var after, out error))
             return CallToolResults.Error(error!);

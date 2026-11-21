@@ -344,23 +344,23 @@ public sealed class SiteGenerator
 
         bool isImage = file.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
         string? displayTitle = link.DisplayTitle;
-        string alt = H(displayTitle ?? "Photograph");
+        string title = displayTitle ?? "Photograph";
 
         var sb = new StringBuilder();
         sb.Append("<figure class=\"").Append(asPortrait ? "portrait" : "media").Append("\">");
         if (isImage)
         {
-            sb.Append("<img src=\"").Append(Attr(src)).Append("\" alt=\"").Append(alt).Append('"');
+            sb.Append("<img src=\"").Append(Attr(src)).Append("\" alt=\"").Append(Attr(title)).Append('"');
             if (link.Crop != null)
                 sb.Append(" data-crop=\"").Append(CropAttr(link.Crop)).Append('"');
             sb.Append('>');
         }
         else
         {
-            sb.Append("<a href=\"").Append(Attr(src)).Append("\">").Append(alt).Append("</a>");
+            sb.Append("<a href=\"").Append(Attr(src)).Append("\">").Append(H(title)).Append("</a>");
         }
         if (displayTitle != null)
-            sb.Append("<figcaption>").Append(alt).Append("</figcaption>");
+            sb.Append("<figcaption>").Append(H(title)).Append("</figcaption>");
         sb.Append("</figure>\r\n");
         return sb.ToString();
     }
@@ -729,9 +729,10 @@ public sealed class SiteGenerator
         // (Sole user in the data: the "Personal note" pseudo-source @S00257@,
         // whose NOTE is FTM boilerplate, not display content.)
 
+        // Everything a citation says comes from the file, so all of it is escaped: none of it is markup.
         if (allowInline && sref.IsNote)
         {
-            if (body.Length > 0) page.Write(HtmlLineBreaks(body) + " ");
+            if (body.Length > 0) page.Write(HtmlLineBreaks(H(body)) + " ");
         }
         else if (body.Length > 0)
         {
@@ -748,7 +749,7 @@ public sealed class SiteGenerator
         }
 
         if (citation.Length > 0)
-            page.AddFootnote(citation);
+            page.AddFootnote(H(citation));
     }
 
     void ExportSources(List<GedSourceRef> sources, WebPage page)

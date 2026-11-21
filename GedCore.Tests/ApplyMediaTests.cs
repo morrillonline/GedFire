@@ -215,19 +215,6 @@ public class ApplyMediaTests : ApplyTestBase
     }
 
     [Fact]
-    public void Validation_EmptyFiles_FailsCleanly()
-    {
-        WriteBaseFile();
-        var result = Run("""
-            { "items": [ { "item": 1, "ops": [
-              { "op": "createOrUpdateMedia", "files": [] } ] } ] }
-            """, dryRun: true);
-
-        Assert.False(result.Success);
-        Assert.Contains(result.Errors, e => e.Contains("files required"));
-    }
-
-    [Fact]
     public void Validation_MalformedMediaType_FailsCleanly()
     {
         WriteBaseFile();

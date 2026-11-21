@@ -17,6 +17,7 @@ public sealed class PackCommand : SynchronousOptionCommand
         string input = commandLine.Require("--input");
         string output = commandLine.Require("--output");
         if (context.FileMissing(input)) return 1;
+        if (GedcomOverwriteGuard.Refusal(output, "--output", input) is { } refusal) return context.Fail(refusal);
 
         var document = context.ReadDocument(input);
         try

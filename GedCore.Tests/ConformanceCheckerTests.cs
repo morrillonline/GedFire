@@ -4,7 +4,7 @@ using GedCore.Validate;
 namespace GedCore.Tests;
 
 /// <summary>
-/// One test per GED001-GED016 rule, each built from a minimal in-memory
+/// One test per GED001-GED017 rule, each built from a minimal in-memory
 /// document exhibiting exactly that
 /// violation, plus two "clean document" tests proving the checker doesn't
 /// false-positive on real, valid GEDCOM 7 content.
@@ -501,6 +501,83 @@ public class ConformanceCheckerTests
         Assert.Equal("NOTE", diag.Tag);
         Assert.Contains("\"Ã© MÃ¼\"", diag.Message);
         Assert.Contains("\"é Mü\"", diag.Message);
+    }
+
+    [Fact]
+    public void GED017_DatesThatAreNotGedcom7_AreErrorsNamingThePayload()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            0 @I1@ INDI
+            1 BIRT
+            2 DATE March 5, 1806
+            1 DEAT
+            2 DATE 9 Sep 1870
+            1 BURI
+            2 DATE
+            1 CENS
+            2 SDATE 1699/00
+            0 TRLR
+            """);
+
+        var diags = ConformanceChecker.Check(doc).Where(d => d.Code == "GED017").ToList();
+
+        Assert.All(diags, d => Assert.Equal((GedDiagnosticSeverity.Error, "@I1@"), (d.Severity, d.Xref)));
+        Assert.Equal(
+            [
+                "DATE payload 'March 5, 1806' is not a GEDCOM 7 date",
+                "DATE payload '9 Sep 1870' must be upper case: '9 SEP 1870'",
+                "DATE has no payload and no PHRASE",
+                "SDATE payload '1699/00' is not a GEDCOM 7 date",
+            ],
+            diags.Select(d => d.Message));
+    }
+
+    [Fact]
+    public void GED017_ValidDatesAndAPhraseOnlyDate_AreNotFlagged()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 7.0
+            1 DATE 21 NOV 2026
+            2 TIME 16:00:00Z
+            0 @I1@ INDI
+            1 BIRT
+            2 DATE 05 MAR 1806
+            1 CHR
+            2 DATE ABT 1806
+            1 RESI
+            2 DATE FROM 1830 TO 1840
+            1 CENS
+            2 DATE BET 1 JUN 1850 AND 30 JUN 1850
+            1 DEAT
+            2 DATE
+            3 PHRASE in the winter after the great storm
+            1 BURI
+            2 DATE JULIAN 12 FEB 1700
+            0 TRLR
+            """);
+
+        Assert.DoesNotContain(ConformanceChecker.Check(doc), d => d.Code == "GED017");
+    }
+
+    [Fact]
+    public void GED017_A55Document_IsNotHeldToGedcom7Dates()
+    {
+        var doc = Parse("""
+            0 HEAD
+            1 GEDC
+            2 VERS 5.5.1
+            0 @I1@ INDI
+            1 BIRT
+            2 DATE 12 FEB 1699/00
+            0 TRLR
+            """);
+
+        Assert.DoesNotContain(ConformanceChecker.Check(doc), d => d.Code == "GED017");
     }
 
     // -------------------------------------------------------------------

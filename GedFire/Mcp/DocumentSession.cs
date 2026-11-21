@@ -11,10 +11,8 @@ namespace GedFire.Mcp;
 // swap, actionable errors. The only code that ever replaces the snapshot.
 //
 // Two different races land here, and only one of them is transient:
-//   - the file is *locked* right now -- apply_changeset's own
-//     ChangesetApplier.Run holds one exclusive (FileShare.None) handle for
-//     its whole read-validate-write-verify cycle, and many external editors
-//     briefly lock a file while saving. This is expected, says nothing
+//   - the file is *locked* right now -- many external editors briefly
+//     lock a file while saving. This is expected, says nothing
 //     about the file's eventual contents, and is worth waiting out (see
 //     ReadAndParseAsync's retry budget) rather than surfacing a spurious
 //     "failed to parse" for a file that will read fine a moment later.
@@ -25,53 +23,44 @@ namespace GedFire.Mcp;
 //     about it, since a second full read is comparatively expensive.
 // A parse failure that is neither of those (genuinely malformed content) is
 // still terminal immediately, on the first attempt, exactly as before.
-//
-// When enforcePrivacy is set, every reload runs the model through the same
-// PrivacyFilter `gedfire generate` applies before publishing a site: RESN
-// CONFIDENTIAL/PRIVACY individuals and plausibly-living ones collapse to a
-// placeholder before any tool -- and the MatchIndex built from it -- ever
-// sees the real data. The caller applies the filter to the *initial*
-// snapshot itself before construction; this class only owns it from the
-// first reload onward.
 // ---------------------------------------------------------------------------
 
 public sealed class DocumentSession
 {
     // How long ReadAndParseAsync will keep retrying a locked file before
-    // giving up: comfortably longer than any apply_changeset run on a
-    // realistic GEDCOM should ever take, short enough that a genuinely
+    // giving up: comfortably longer than an editor's save should take,
+    // short enough that a genuinely
     // stuck lock still surfaces a bounded, actionable failure rather than
     // hanging a tool call indefinitely.
     static readonly TimeSpan LockRetryBudget = TimeSpan.FromSeconds(5);
     static readonly TimeSpan LockRetryInterval = TimeSpan.FromMilliseconds(100);
 
     readonly string _path;
-    readonly bool _enforcePrivacy;
     readonly SemaphoreSlim _lock = new(1, 1);
     DocumentSnapshot _snapshot;
 
-    public DocumentSession(string path, DocumentSnapshot initialSnapshot, bool enforcePrivacy = false)
+    public DocumentSession(string path, DocumentSnapshot initialSnapshot)
     {
         if (string.IsNullOrEmpty(path)) throw new ArgumentException("Path must not be empty.", nameof(path));
         _path = path;
-        _enforcePrivacy = enforcePrivacy;
         _snapshot = initialSnapshot ?? throw new ArgumentNullException(nameof(initialSnapshot));
     }
 
-    public static DocumentSession Open(string path, bool enforcePrivacy = false)
+    public string DocumentPath => _path;
+
+    public static DocumentSession Open(string path)
     {
         using var stream = File.OpenRead(path);
-        return FromStream(path, stream, File.GetLastWriteTimeUtc(path), enforcePrivacy);
+        return FromStream(path, stream, File.GetLastWriteTimeUtc(path));
     }
 
-    public static DocumentSession FromStream(string path, Stream source, DateTime lastWriteTimeUtc, bool enforcePrivacy = false)
+    public static DocumentSession FromStream(string path, Stream source, DateTime lastWriteTimeUtc)
     {
         using var buffer = new MemoryStream();
         source.CopyTo(buffer);
         var document = GedReader.Read(buffer.ToArray());
         var model = ModelBuilder.Build(document);
-        if (enforcePrivacy) PrivacyFilter.Apply(model, DateTime.UtcNow.Year);
-        return new DocumentSession(path, new DocumentSnapshot(model, document.Version, lastWriteTimeUtc, buffer.Length), enforcePrivacy);
+        return new DocumentSession(path, new DocumentSnapshot(model, document.Version, lastWriteTimeUtc, buffer.Length));
     }
 
     /// <summary>
@@ -113,11 +102,7 @@ public sealed class DocumentSession
 
             var after = ReadMetadata();
             if (IsSameMetadata(before, after))
-            {
-                if (_enforcePrivacy)
-                    PrivacyFilter.Apply(model, DateTime.UtcNow.Year);
                 return new DocumentSnapshot(model, gedVersion, after.LastWriteTimeUtc, after.Length);
-            }
 
             // The file's metadata moved while it was being read; a writer
             // was active. Retry once before giving up.
@@ -130,8 +115,7 @@ public sealed class DocumentSession
     /// <summary>
     /// Read and parse the bound file, retrying patiently (up to
     /// <see cref="LockRetryBudget"/>) while it is held open elsewhere --
-    /// e.g. apply_changeset's own exclusive lock on this same path, or an
-    /// external editor's brief lock while saving -- and failing immediately,
+    /// e.g. an external editor's brief lock while saving -- and failing immediately,
     /// on the first attempt, for any other error (a genuinely malformed
     /// file is never going to parse no matter how long this waits).
     /// </summary>

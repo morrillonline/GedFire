@@ -1,12 +1,10 @@
-using GedFire.Gen;
-
 namespace GedFire.Mcp;
 
 // ---------------------------------------------------------------------------
 // The instructions the server states once at initialization: that xrefs
 // belong only to the bound document, which tool is the write path, and
-// whichever of --read-only and --enforce-privacy are in effect. Guidance
-// specific to one tool stays on the tool.
+// whether --read-only or a policy file is in effect. Guidance specific to
+// one tool stays on the tool.
 // ---------------------------------------------------------------------------
 
 public static class McpServerInstructions
@@ -39,20 +37,11 @@ public static class McpServerInstructions
         " This server was started with a policy file: validate_changeset reports every violation of it as an " +
         "error, and apply_changeset refuses a changeset that violates it, so fix violations at the dry run.";
 
-    public static string Build(bool readOnly, bool enforcePrivacy, bool hasPolicy = false)
+    public static string Build(bool readOnly, bool hasPolicy = false)
     {
         string instructions = Base;
         if (hasPolicy) instructions += PolicyNotice;
         if (readOnly) instructions += ReadOnlyNotice;
-        if (enforcePrivacy) instructions += EnforcePrivacyNotice();
         return instructions;
     }
-
-    static string EnforcePrivacyNotice() =>
-        " This server was started with --enforce-privacy: individuals with an RESN of CONFIDENTIAL or " +
-        "PRIVACY, and individuals plausibly still living (no death-class fact, born within the last " +
-        $"{PrivacyFilter.PlausiblyLivingAgeYears} years), are reduced to a \"{PrivacyFilter.LivingGivenName} " +
-        "<Surname>\" placeholder with no dates, places, notes, or media -- the same treatment `gedfire " +
-        "generate` applies before publishing a site. Do not treat a placeholder as the whole record; it is " +
-        "withheld, not absent.";
 }

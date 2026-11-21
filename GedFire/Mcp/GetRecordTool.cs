@@ -186,7 +186,7 @@ public sealed class GetRecordTool
                 "xref": { "type": "string", "pattern": "^@[^@]+@$" },
                 "name": { "type": "string" },
                 "title": { "type": ["string", "null"] },
-                "sex": { "type": ["string", "null"], "enum": ["M", "F", null] },
+                "sex": { "type": ["string", "null"], "enum": ["M", "F", "X", null], "description": "M, F, or X (recorded as not only male or only female). Null when the file records U (cannot be determined), another value, or no sex." },
                 "birth": { "$ref": "#/$defs/EventDetail" },
                 "death": { "$ref": "#/$defs/EventDetail" },
                 "approximateDeath": { "$ref": "#/$defs/EventDetail", "description": "Only for a person with a burial and no death: the burial, which dates the death to within days. death stays null." },

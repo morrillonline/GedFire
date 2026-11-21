@@ -147,36 +147,6 @@ public class DocumentSessionTests : IDisposable
         Assert.Contains(path, ex.Message);
     }
 
-    [Fact]
-    public async Task GetSnapshotAsync_AppliesPrivacyFilter_OnReload_WhenEnforcePrivacyEnabled()
-    {
-        string path = Path.Combine(_dir, "priv.ged");
-        File.WriteAllText(path, """
-            0 @I1@ INDI
-            1 NAME Alpha /Test/
-            1 SEX M
-
-            """);
-        var initial = InitialSnapshot(path);
-        var session = new DocumentSession(path, initial, enforcePrivacy: true);
-
-        // A living-looking replacement: no death fact, born well within the
-        // last 100 years -- PrivacyFilter reduces this to "Living <Surname>".
-        File.WriteAllText(path, $"""
-            0 @I1@ INDI
-            1 NAME Bravo /Test/
-            1 SEX M
-            1 BIRT
-            2 DATE 1 JAN {DateTime.UtcNow.Year - 30}
-
-            """);
-        File.SetLastWriteTimeUtc(path, initial.LastWriteTimeUtc.AddSeconds(5));
-
-        var snapshot = await session.GetSnapshotAsync(CancellationToken.None);
-
-        Assert.Equal("LIVING", GivenNameOf(snapshot));
-    }
-
     /// <summary>
     /// The scenario this whole retry exists for: a writer (e.g.
     /// apply_changeset's own ChangesetApplier.Run) has the file open

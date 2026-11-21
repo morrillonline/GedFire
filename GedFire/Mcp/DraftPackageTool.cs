@@ -147,6 +147,8 @@ public sealed class DraftPackageTool
     {
         if (!TryReadRequest(arguments, out var request, out string? error))
             return CallToolResults.Error(error!);
+        if (GedcomOverwriteGuard.Refusal(request!.ProposalPath, "proposal", _documentPath) is { } refusal)
+            return CallToolResults.Error(refusal);
 
         var ready = new List<ProposalChangeset>();
         var read = new List<PackageChangeset>();
@@ -201,7 +203,7 @@ public sealed class DraftPackageTool
     static (string? Path, string? Sha256) WriteProposal(Request request, string markdown, List<string> errors)
     {
         byte[] bytes = new UTF8Encoding(false).GetBytes(markdown);
-        string path = Path.Combine(request.Folder, $"{request.Proposal}.md");
+        string path = request.ProposalPath;
         if (ChangesetFileWriter.TryWrite(path, bytes, request.Overwrite, out string? writeError) is null)
         {
             errors.Add(writeError!);
@@ -213,7 +215,10 @@ public sealed class DraftPackageTool
     static string Sha256Hex(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     sealed record Request(
-        IReadOnlyList<string> ChangesetPaths, string Folder, string Proposal, bool Overwrite, IReadOnlyList<SameNamePair> SameNamePeople);
+        IReadOnlyList<string> ChangesetPaths, string Folder, string Proposal, bool Overwrite, IReadOnlyList<SameNamePair> SameNamePeople)
+    {
+        public string ProposalPath => Path.Combine(Folder, $"{Proposal}.md");
+    }
 
     static bool TryReadRequest(DraftPackageArguments arguments, out Request? request, out string? error)
     {

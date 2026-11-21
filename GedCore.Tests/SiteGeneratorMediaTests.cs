@@ -161,6 +161,19 @@ public class SiteGeneratorMediaTests : IDisposable
     }
 
     [Fact]
+    public void AMediaTitleWithAQuote_StaysInsideTheAltAttribute()
+    {
+        var model = BuildModel(Ged
+            .Replace("1 TITL Wedding & family portrait", "1 TITL x\" onload=\"alert(2)")
+            .Replace("1 FILE husband.jpg", "1 FILE https://example.invalid/portrait.jpg"));
+        new SiteGenerator(model, MinimalTemplate).Generate(_outDir);
+
+        string html = File.ReadAllText(FamilyHtmlFile());
+        Assert.Contains("alt=\"x&quot; onload=&quot;alert(2)\"", html);
+        Assert.DoesNotContain("onload=\"alert(2)\"", html);
+    }
+
+    [Fact]
     public void HtmlNote_RendersPortableFormattingAndStripsUnsafeMarkup()
     {
         var model = BuildModel(Ged.Replace("""

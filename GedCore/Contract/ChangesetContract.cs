@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using GedCore.Apply;
 
 namespace GedCore.Contract;
@@ -12,7 +13,8 @@ public sealed record ContractReport(IReadOnlyList<string> Errors)
 /// <summary>
 /// Checks a changeset against <see cref="ChangesetDialect"/>, naming the path and the fix of every fault. Anything the
 /// dialect does not define is refused: an unknown field, a singular citation, an
-/// object value, a payload the fact's tag does not take, an inline person, and an undeclared or unnamed new person.
+/// object value, a payload the fact's tag does not take, an inline person, an undeclared or unnamed new person,
+/// a date that is not a GEDCOM 7 date, and a value outside the limits the dialect declares for its field.
 /// </summary>
 public static class ChangesetContract
 {
@@ -97,8 +99,16 @@ public static class ChangesetContract
                 case DialectType.String when value.ValueKind != JsonValueKind.String:
                     Errors.Add($"{path}: must be a string");
                     break;
+                case DialectType.String:
+                    if (StringLimit(value.GetString()!, field, path) is { } textFault) Errors.Add(textFault);
+                    break;
                 case DialectType.Integer when value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out _):
                     Errors.Add($"{path}: must be an integer");
+                    break;
+                case DialectType.Integer:
+                    int number = value.GetInt32();
+                    if (number < (field.Minimum ?? int.MinValue) || number > (field.Maximum ?? int.MaxValue))
+                        Errors.Add($"{path}: must be {Range(field)}, not {number}");
                     break;
                 case DialectType.Boolean when value.ValueKind is not (JsonValueKind.True or JsonValueKind.False):
                     Errors.Add($"{path}: must be true or false");
@@ -117,12 +127,42 @@ public static class ChangesetContract
                         Errors.Add($"{path}: must be an array");
                         break;
                     }
+                    if (value.GetArrayLength() < (field.MinItems ?? 0))
+                        Errors.Add($"{path}: needs at least {field.MinItems} {(field.MinItems == 1 ? "entry" : "entries")}");
                     foreach (var (element, i) in value.EnumerateArray().Select((e, i) => (e, i)))
                         if (field.Shape == ChangesetDialect.Op) Op(element, $"{path}[{i}]");
                         else Shape(element, ChangesetDialect.Shape(field.Shape!), $"{path}[{i}]");
                     break;
             }
         }
+
+        // The limits the dialect declares for a string: its allowed values, its pattern, and GEDCOM date syntax.
+        static string? StringLimit(string text, DialectField field, string path)
+        {
+            if (field.Values.Count > 0 && !field.Values.Contains(text))
+                return $"{path}: must be {string.Join(" or ", field.Values.Select(v => $"\"{v}\""))}, not \"{text}\"";
+            if (field.Pattern is { } pattern && !Regex.IsMatch(text, pattern))
+                return pattern == ChangesetDialect.XrefPattern
+                    ? $"{path}: must be an xref such as \"@I1@\", not \"{text}\""
+                    : $"{path}: \"{text}\" does not match {pattern}";
+            if (field.GedcomDate) return DateFault(text, path);
+            return null;
+        }
+
+        // The applier writes the date as given, so it must already be in the upper case GEDCOM 7 requires.
+        static string? DateFault(string date, string path)
+        {
+            if (GedDateSyntax.Check($"{path}:", date) is { } fault) return fault;
+            return date == date.ToUpperInvariant() ? null : $"{path}: write the date in upper case: \"{date.ToUpperInvariant()}\"";
+        }
+
+        static string Range(DialectField field) => (field.Minimum, field.Maximum) switch
+        {
+            ({ } min, { } max) => $"{min} to {max}",
+            ({ } min, null) => $"at least {min}",
+            (null, { } max) => $"at most {max}",
+            _ => "an integer",
+        };
 
         void Op(JsonElement op, string path)
         {

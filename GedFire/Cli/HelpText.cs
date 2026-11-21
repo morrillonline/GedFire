@@ -41,7 +41,7 @@ public static class HelpText
                         pointer resolution, record-count deltas) passes.
 
           validate  <file> [--warnings-as-errors]
-                        Run GEDCOM 7 conformance checks (GED001-GED016) and
+                        Run GEDCOM 7 conformance checks (GED001-GED017) and
                         print one diagnostic per line, sorted by severity then
                         code. Exits 1 if any Error is present (or any Warning
                         too, with --warnings-as-errors); 0 otherwise.
@@ -54,7 +54,7 @@ public static class HelpText
                         Extract a GEDZIP archive's gedcom.ged and media files
                         into a directory.
 
-          mcp       --input <ged> [--policy <json>] [--read-only] [--enforce-privacy]
+          mcp       --input <ged> [--policy <json>] [--read-only]
                         Start a local-only stdio Model Context Protocol server
                         exposing this GEDCOM to MCP-compatible agent clients.
                         The client launches GedFire as a local child process.
@@ -70,13 +70,6 @@ public static class HelpText
                                               call to it is refused.
                                               validate_changeset and every
                                               read-only tool stay available.
-                          --enforce-privacy   Apply the same privacy filter
-                                              `generate` uses before
-                                              publishing a site: RESN
-                                              CONFIDENTIAL/PRIVACY and
-                                              plausibly-living individuals
-                                              are reduced to a placeholder
-                                              in every tool's output.
 
           tools list
           tools describe <tool>
@@ -88,8 +81,8 @@ public static class HelpText
                         Results go to stdout unless --out names a new file;
                         existing output files are refused. Diagnostics go to stderr.
                         Exit 1 on errors or failed checks; 0 on success.
-                        Also accepts --policy <json>, --read-only and
-                        --enforce-privacy with the same meaning as mcp.
+                        Also accepts --policy <json> and --read-only with
+                        the same meaning as mcp.
                         date_calc, describe_changeset_ops and describe_schemas
                         need no --input; validate_finding
                         without --input checks every rule that needs no

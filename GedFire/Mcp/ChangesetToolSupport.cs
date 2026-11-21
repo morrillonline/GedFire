@@ -20,9 +20,9 @@ namespace GedFire.Mcp;
 //      (from Ged70Parser) to preserve exact structure and formatting for
 //      its byte-stable round-trip check; there is no conversion between
 //      the two.
-//   2. ChangesetApplier holds one exclusive file handle (FileShare.None)
-//      from its initial read straight through the verified write, so
-//      nothing else can touch the file in between. Fetching a snapshot
+//   2. ChangesetApplier holds the file's write lock from its initial read
+//      straight through the replacement, so no other GedFire writer can
+//      touch the file in between. Fetching a snapshot
 //      first and writing separately later would reopen exactly the
 //      time-of-check-to-time-of-use gap that locking exists to close.
 // A successful apply_changeset write is picked up by DocumentSession's own

@@ -172,6 +172,18 @@ public class GetRecordToolTests : IDisposable
         Assert.Equal("M", root.GetProperty("sex").GetString());
     }
 
+    [Theory]
+    [InlineData("U", null)]
+    [InlineData("X", "X")]
+    public async Task HandleAsync_Person_XIsReportedAsRecorded_AndUAsUnknown(string recorded, string? reported)
+    {
+        var tool = ToolOver($"0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME Ottoline /Marrowby/\n1 SEX {recorded}\n0 TRLR\n");
+
+        var result = await tool.HandleAsync("@I1@", CancellationToken.None);
+
+        Assert.Equal(reported, StructuredContent(result).GetProperty("sex").GetString());
+    }
+
     [Fact]
     public async Task HandleAsync_Person_BirthEvent_HasDateSourceAndCroppedMedia()
     {
