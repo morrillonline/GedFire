@@ -39,4 +39,26 @@ public class ParserDiagnosticsTests
         var doc = Ged55Parser.Parse("0 HEAD\r\n1 GEDC\r\n2 VERS 5.5\r\n0 TRLR\r\n");
         Assert.Equal(2, doc.Records.Count);
     }
+
+    [Theory]
+    [InlineData("\r\n")]
+    [InlineData("\n")]
+    [InlineData("\r")]
+    public void EveryLineBreak_SplitsTheSameLines(string lineBreak)
+    {
+        string text = string.Join(lineBreak, "0 HEAD", "1 GEDC", "2 VERS 7.0", "0 @I1@ INDI", "1 NAME Ann /Holt/", "0 TRLR");
+
+        var doc = GedCore.Ged70.Ged70Parser.Parse(text + lineBreak);
+
+        Assert.Equal(["HEAD", "INDI", "TRLR"], doc.Records.Select(r => r.Tag));
+        Assert.Equal("Ann /Holt/", doc.ByXref["@I1@"].FirstChild("NAME")!.Value);
+    }
+
+    [Fact]
+    public void MixedAndBlankLineBreaks_AreEachOneBreak_AndLineNumbersCountThem()
+    {
+        var ex = Assert.Throws<FormatException>(() => Ged55Parser.Parse("0 HEAD\n1 GEDC\r\r\n2 VERS 5.5\rbad line\r\n"));
+
+        Assert.Contains("line 5", ex.Message);
+    }
 }
