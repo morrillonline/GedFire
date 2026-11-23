@@ -117,6 +117,8 @@ public sealed class GedIndividual
     public GedEvent? Death   { get; set; }
     public GedEvent? Will    { get; set; }
     public GedEvent? Probate { get; set; }
+    // The first NMR (number of marriages) whose count is 0: the recorded answer that the person never married.
+    public GedEvent? NeverMarried { get; set; }
     public List<GedEvent>     Census     { get; } = [];
     // Dated events outside the fields above (burial, baptism, ..., and any family
     // event misplaced on the person), in document order; GedEvent.Tag says which.

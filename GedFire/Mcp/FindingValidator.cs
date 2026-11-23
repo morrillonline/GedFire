@@ -49,7 +49,7 @@ public sealed class FindingValidator(GedModel? model, ChangesetPolicy? policy, b
         if (file.Draft is { } draft)
         {
             // draft_changeset joins a file's notes before compiling, so the check sees the notes it compiles.
-            var cited = new CitedFindings(DraftNoteJoiner.Join([draft])[0], others);
+            var cited = new CitedFindings(DraftNoteJoiner.Join([draft], others)[0], others);
             var ruleErrors = RuleErrors(cited, compiles, complete: file.Gaps.Count == 0);
             errors.AddRange(CitedFindings.Relabel(ruleErrors, $"{file.Name} (findings[0])"));
         }

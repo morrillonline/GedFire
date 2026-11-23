@@ -9,9 +9,9 @@ public sealed class SelectTargetsCommand : SynchronousOptionCommand
     public override string Name => "select-targets";
 
     protected override string Usage =>
-        "Usage: gedfire select-targets --input <ged> --output <wanted.json> --count <people> --surnames <list>";
+        "Usage: gedfire select-targets --input <ged> --output <wanted.json> --count <people> --surnames <list> [--study-surnames <list>]";
 
-    protected override IReadOnlyCollection<string> ValueOptions => ["--input", "--output", "--count", "--surnames"];
+    protected override IReadOnlyCollection<string> ValueOptions => ["--input", "--output", "--count", "--surnames", "--study-surnames"];
 
     protected override IReadOnlyCollection<string> RequiredOptions => ["--input", "--output", "--count", "--surnames"];
 
@@ -24,23 +24,26 @@ public sealed class SelectTargetsCommand : SynchronousOptionCommand
         if (!int.TryParse(countArg, out int count) || count <= 0)
             return context.Fail($"--count must be a positive integer, got: {countArg}");
 
-        var surnames = commandLine.Require("--surnames")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToList();
+        var surnames = SurnameList(commandLine.Require("--surnames"))!;
         if (surnames.Count == 0)
             return context.Fail("--surnames must list at least one surname");
+
+        var studySurnames = SurnameList(commandLine.Value("--study-surnames"));
+        if (studySurnames is { Count: 0 })
+            return context.Fail("--study-surnames must list at least one surname");
+        var rules = studySurnames is null ? GapRules.Default : new GapRules { Scope = new StudyScope(studySurnames) };
 
         if (context.FileMissing(input)) return 1;
         if (GedcomOverwriteGuard.Refusal(output, "--output", input) is { } refusal) return context.Fail(refusal);
 
         var model = ModelBuilder.Build(context.ReadDocument(input));
         var suppressedCards = new List<SuppressedCard>();
-        var candidates = GapDetector.Detect(model, surnames, suppressedCards);
+        var candidates = GapDetector.Detect(model, surnames, suppressedCards, rules);
         ReportCandidates(candidates, surnames, context.Out);
 
         long seed = DateTime.UtcNow.Ticks;
         var draw = DuplicateAnnotator.Annotate(
-            TargetDrawer.DrawPack(model, candidates, count, seed) with { SuppressedCards = suppressedCards }, new MatchIndex(model));
+            TargetDrawer.DrawPack(model, candidates, count, seed, suppressedCards, rules), new MatchIndex(model));
         if (draw.LegendaryDiscards.Count > 0)
             context.Out.WriteLine($"  {draw.LegendaryDiscards.Select(d => d.Xref).Distinct().Count():N0} extra Legendary-band person(s) discarded (one-per-pack cap)");
 
@@ -49,6 +52,9 @@ public sealed class SelectTargetsCommand : SynchronousOptionCommand
         context.Out.WriteLine($"Wrote    {output} ({draw.Targets.Count:N0} card(s) for {drawnPeople:N0} person(s), seed {seed})");
         return 0;
     }
+
+    static List<string>? SurnameList(string? commaSeparated) =>
+        commaSeparated?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     static void ReportCandidates(IReadOnlyList<SelectionTarget> candidates, List<string> surnames, TextWriter output)
     {

@@ -411,6 +411,8 @@ public static class ChangesetApplier
         var beforeDoc = Ged70Parser.Read(new MemoryStream(originalBytes));
         result.Changes = TreeChanges.Between(
             beforeDoc, state.Doc, state.TouchedRoots, BiographyCredit.Find(beforeDoc, state.Doc, state));
+        result.Before = beforeDoc;
+        result.After = state.Doc;
         var beforeDiags = AllDiagnostics(beforeDoc, touchedIndiXrefs, cancellationToken);
         var afterDiags = AllDiagnostics(state.Doc, touchedIndiXrefs, cancellationToken);
         var newDiags = ConformanceChecker.DiffDiagnostics(beforeDiags, afterDiags);
@@ -487,4 +489,10 @@ public sealed class ApplyResult
     /// when validation failed or the run was an all-no-op.
     /// </summary>
     public TreeChanges Changes { get; internal set; } = TreeChanges.None;
+
+    /// <summary>The document <see cref="Changes"/> was diffed from; null when <see cref="Changes"/> is <see cref="TreeChanges.None"/>.</summary>
+    public GedDocument? Before { get; internal set; }
+
+    /// <summary>The document as the run left it in memory, written or not; null when <see cref="Changes"/> is <see cref="TreeChanges.None"/>.</summary>
+    public GedDocument? After { get; internal set; }
 }

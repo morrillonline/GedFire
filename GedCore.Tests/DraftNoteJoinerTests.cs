@@ -6,6 +6,8 @@ public class DraftNoteJoinerTests
 {
     static readonly DraftSource Source = new("Obituary", null, null, "p. 1", null, "derivative", "primary");
 
+    static readonly DraftSource Register = new("Town register", null, null, "p. 9", null, "original", "primary");
+
     static DraftFinding Finding(string id, string xref, string? card, params DraftNote[] notes) =>
         new(id, Source, "text", new DraftTarget(xref, card, null), [], notes);
 
@@ -17,12 +19,61 @@ public class DraftNoteJoinerTests
     {
         var joined = DraftNoteJoiner.Join([
             Finding("F-1", "@I1@", "enrich", Note("@I1@", "Died in Salem.")),
-            Finding("F-2", "@I1@", "enrich", Note("@I1@", "Buried in Salem.", quay: 1))]);
+            Finding("F-2", "@I1@", "enrich", Note("@I1@", "Buried in Salem.", quay: 1)) with { Source = Register }]);
 
         var note = Assert.Single(joined[0].Notes);
         Assert.Equal("Died in Salem. Buried in Salem.", note.Text);
         Assert.Empty(joined[1].Notes);
         Assert.Equal([("F-1", 2), ("F-2", 1)], note.Cites.Select(c => (c.Finding!, c.Quay)));
+    }
+
+    [Fact]
+    public void NotesCitingOneSourcePageAtDifferentGrades_AreLeftAsTwoNotes()
+    {
+        var joined = DraftNoteJoiner.Join([
+            Finding("F-1", "@I1@", "enrich", Note("@I1@", "Died in Salem.")),
+            Finding("F-2", "@I1@", "enrich", Note("@I1@", "Buried in Salem.", quay: 1))]);
+
+        Assert.Equal("Died in Salem.", Assert.Single(joined[0].Notes).Text);
+        Assert.Equal("Buried in Salem.", Assert.Single(joined[1].Notes).Text);
+    }
+
+    [Fact]
+    public void TwoNotesOfOneFinding_FoldOnlyWhenTheyGradeItsPageAlike()
+    {
+        var alike = DraftNoteJoiner.Join([Finding("F-1", "@I1@", null, Note("@I1@", "One."), Note("@I1@", "Two."))]);
+        var unlike = DraftNoteJoiner.Join([Finding("F-1", "@I1@", null, Note("@I1@", "One."), Note("@I1@", "Two.", quay: 1))]);
+
+        Assert.Equal("One. Two.", Assert.Single(alike[0].Notes).Text);
+        Assert.Equal(["One.", "Two."], unlike[0].Notes.Select(n => n.Text));
+    }
+
+    [Fact]
+    public void ANoteThatClashesWithOne_StillFoldsWithTheNotesItAgreesWith()
+    {
+        var joined = DraftNoteJoiner.Join([
+            Finding("F-1", "@I1@", null, Note("@I1@", "One.")),
+            Finding("F-2", "@I1@", null, Note("@I1@", "Two.", quay: 1)),
+            Finding("F-3", "@I1@", null, Note("@I1@", "Three."))]);
+
+        Assert.Equal("One. Three.", Assert.Single(joined[0].Notes).Text);
+        Assert.Equal("Two.", Assert.Single(joined[1].Notes).Text);
+        Assert.Empty(joined[2].Notes);
+    }
+
+    [Fact]
+    public void ANoteCitingAFindingBesideTheDraft_IsComparedOnThatFindingsPage()
+    {
+        var notes = new[]
+        {
+            Finding("F-1", "@I1@", null, Note("@I1@", "One.")),
+            Finding("F-2", "@I1@", null, Note("@I1@", "Two.", "F-9", quay: 1)) with { Source = Register },
+        };
+        var onTheSamePage = Finding("F-9", "@I7@", null);
+        var onAnotherPage = onTheSamePage with { Source = Register };
+
+        Assert.Equal("Two.", Assert.Single(DraftNoteJoiner.Join(notes, [onTheSamePage])[1].Notes).Text);
+        Assert.Empty(DraftNoteJoiner.Join(notes, [onAnotherPage])[1].Notes);
     }
 
     [Fact]

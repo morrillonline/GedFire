@@ -9,6 +9,9 @@ public sealed record GapRules
 
     public NewChildLimits NewChild { get; init; } = NewChildLimits.Default;
 
-    /// <summary>Draw every card a rule would withhold, so the owner can force one; nothing is reported as suppressed.</summary>
+    /// <summary>Draw every card a rule would withhold, so the owner can force one; only the cards <see cref="Scope"/> withholds are then reported as suppressed.</summary>
     public bool IncludeSuppressed { get; init; }
+
+    /// <summary>The study's scope; null deals to everyone, as before the option existed. A card outside it is never dealt, even when forced.</summary>
+    public StudyScope? Scope { get; init; }
 }

@@ -493,6 +493,7 @@ public sealed class SiteGenerator
 
         // Married
         WriteChildMarriages(child, page, hasOwnPage);
+        WriteNeverMarried(child, page);
 
         page.Write("</dl>\r\n");
 
@@ -512,6 +513,15 @@ public sealed class SiteGenerator
         if (showSources) ExportSources(ev.Sources, page);
         if (ev.Place.Length > 0)
             page.Write(" <span class=\"sub\">· " + H(PlaceAbbr(ev.Place)) + "</span>");
+        page.Write("</dd>\r\n");
+    }
+
+    // A recorded never-married answer fills the Married row of a child no marriage is recorded for.
+    void WriteNeverMarried(GedIndividual child, WebPage page)
+    {
+        if (child.FamSpouse.Count > 0 || child.NeverMarried is not { } answer) return;
+        page.Write("<dt>Married</dt><dd>Never married");
+        ExportSources(answer.Sources, page);
         page.Write("</dd>\r\n");
     }
 

@@ -90,6 +90,7 @@ public static class PrivacyFilter
         indi.Death      = null;
         indi.Will       = null;
         indi.Probate    = null;
+        indi.NeverMarried = null;
         indi.Census.Clear();
         indi.OtherEvents.Clear();
         indi.NameSources.Clear();

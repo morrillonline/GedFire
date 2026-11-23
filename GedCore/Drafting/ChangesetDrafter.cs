@@ -76,6 +76,7 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         changeset["findings"] = evidence;
 
         errors.AddRange(QuayDisagreements(items));
+        errors.AddRange(RepeatedCitations(items));
         errors.AddRange(RelativeDuplicates(changeset));
         if (policy is not null) errors.AddRange(policy.Check(changeset.ToJsonString(), document: lookup));
         return new DraftResult(changeset, decisions, errors);
@@ -86,6 +87,31 @@ public sealed class ChangesetDrafter(IDraftLookup lookup, ChangesetPolicy? polic
         Changeset.Read(changeset.ToJsonString()).Changeset is { } parsed
             ? RelativeDuplicateCheck.Check(parsed.Items.SelectMany(i => i.Ops), lookup)
             : [];
+
+    // Validation refuses a structure that cites one source page twice, so a draft that would is refused here, naming the
+    // grades the author gave: which of them the fact, note or family carries is the author's to say.
+    static IEnumerable<string> RepeatedCitations(JsonArray items) =>
+        from item in items
+        from op in item!["ops"]!.AsArray().Select(op => op!.AsObject())
+        from citations in CitationLists(op)
+        from repeated in citations.Where(c => (string?)c["source"] != DraftReferences.Void)
+            .GroupBy(c => ((string?)c["source"], (string?)c["page"])).Where(g => g.Count() > 1)
+        select $"item {(int)item!["item"]!}: {(string)op["op"]!} on {Subject(op)} cites {repeated.Key.Item1} at " +
+            $"{(repeated.Key.Item2 is null ? "no page" : $"\"{repeated.Key.Item2}\"")} {repeated.Count()} times, at QUAY " +
+            $"{string.Join(" and ", repeated.Select(c => (int?)c["quay"]).Distinct())}{Findings(op)}; a fact, note or family cites " +
+            "a source page once, so give the claims that cite it there one grade.";
+
+    // Every citation list an op carries: its own, its family's, and its marriage's.
+    static IEnumerable<List<JsonObject>> CitationLists(JsonObject node) =>
+        node.Where(p => p.Key is "citations" or "familyCitations" && p.Value is JsonArray)
+            .Select(p => p.Value!.AsArray().Select(c => c!.AsObject()).ToList())
+            .Concat(node.Select(p => p.Value).OfType<JsonObject>().SelectMany(CitationLists));
+
+    static string Subject(JsonObject op) =>
+        (string?)op["record"] ?? (string?)op["family"] ?? (string?)op["person"] ?? "its record";
+
+    static string Findings(JsonObject op) =>
+        op["findings"] is JsonArray ids ? $" (findings {string.Join(", ", ids.Select(id => (string)id!))})" : "";
 
     static IEnumerable<DraftDecision> MintedPeople(IReadOnlyList<DraftFinding> findings) =>
         findings.SelectMany(f => f.People.Select(p => (Finding: f, Person: p)))

@@ -484,7 +484,11 @@ public class ChangesetReportTests : IDisposable
     public async Task EverySavedReport_ValidatesAgainstItsPublishedSchema()
     {
         string ged = WriteGed();
-        var cards = Json(new[] { new { xref = "@I00001@", @class = "enrich-person", gap = "enrich-death", points = 7 } });
+        var cards = Json(new object[]
+        {
+            new { xref = "@I00001@", @class = "enrich-person", gap = "enrich-death", points = 7 },
+            new { xref = "@I00001@", @class = "new-child", gap = "children", points = 5, family = "@F00001@" },
+        });
         string validated = Report("validated.json"), refused = Report("refused.json"), applied = Report("applied.json");
         string drafted = Report("drafted.json"), changeset = Report("drafted-changeset.json");
 
@@ -498,6 +502,7 @@ public class ChangesetReportTests : IDisposable
             new DraftChangesetArguments(Findings_(), default, default, Json(changeset), default, Json(drafted)), CancellationToken.None);
 
         Assert.True(SchemaAccepts(SchemaCatalog.ChangesetReport, validated));
+        Assert.Contains("\"family\":\"@F00001@\"", File.ReadAllText(validated).Replace(" ", ""));
         Assert.True(SchemaAccepts(SchemaCatalog.ChangesetReport, refused));
         Assert.True(SchemaAccepts(SchemaCatalog.ChangesetReport, applied));
         Assert.True(SchemaAccepts(SchemaCatalog.DraftReport, drafted));

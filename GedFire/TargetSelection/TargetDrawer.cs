@@ -31,12 +31,18 @@ public static class TargetDrawer
     /// <summary>
     /// <see cref="Draw"/> over the gap cards in <paramref name="model"/>, with every card that pays for each
     /// drawn person: their gap cards, then a man's Biography card. Biography alone never brings a person into the draw.
+    /// The result carries <paramref name="suppressedCards"/>, the cards withheld while detecting the gap cards; of those
+    /// a study scope withheld, only the drawn people's, a Biography card among them.
     /// </summary>
-    public static DrawResult DrawPack(GedModel model, IReadOnlyList<SelectionTarget> gapCards, int people, long seed)
+    public static DrawResult DrawPack(
+        GedModel model, IReadOnlyList<SelectionTarget> gapCards, int people, long seed,
+        IReadOnlyCollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null)
     {
         var draw = Draw(gapCards, people, seed);
-        var drawn = draw.Targets.Select(t => t.Xref).Distinct().Select(xref => model.Individuals[xref]);
-        return draw with { Targets = GapDetector.WithBiographyCards(drawn, draw.Targets) };
+        var drawnXrefs = draw.Targets.Select(t => t.Xref).Distinct().ToList();
+        var withheld = (suppressedCards ?? []).Where(card => !card.OutOfScope || drawnXrefs.Contains(card.Xref)).ToList();
+        var targets = GapDetector.WithBiographyCards(drawnXrefs.Select(xref => model.Individuals[xref]), draw.Targets, withheld, rules);
+        return draw with { Targets = targets, SuppressedCards = withheld };
     }
 
     /// <summary>

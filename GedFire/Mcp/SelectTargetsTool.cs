@@ -28,8 +28,8 @@ public sealed class SelectTargetsTool
         "target per eligible gap (a married person gets no New spouse card, a person with both parents no New " +
         "parent card), then, for a man, his Biography card. Each target has its gap type, difficulty band, points, and the facts needed to " +
         "start work (an Enrich person target is one card per person: \"enrichments\" lists every birth, " +
-        "marriage and death with an inexact date or place, or an exact one lacking a citation, nominalPoints is one per missing date, place or citation, and " +
-        "the difficulty bonus is added once; a BET range of 12 months or less cited at QUAY 2 or higher is not a missing date), including possibleDuplicateOf (the best few people the duplicate test pairs with the target) and possibleDuplicateCount; the " +
+        "marriage and death whose date or place is not exact or that has no citation, nominalPoints is one per missing date, place or citation (a fact with no citation misses one whatever its date and place), and " +
+        "the difficulty bonus is added once; a BET range of 12 months or less cited at QUAY 2 or higher is not a missing date; validate_changeset's pointsPreview pays the card by this same rule, one point for each listed part a changeset fills), including possibleDuplicateOf (the best few people the duplicate test pairs with the target) and possibleDuplicateCount; the " +
         "draw keeps at most one person with Legendary-band cards (that person may hold several), discarding later such people whole, so a pack can come up short. " +
         "A family's New child card and marriage enrichment sit on one spouse only. This is " +
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
@@ -43,12 +43,16 @@ public sealed class SelectTargetsTool
         "once per person per changeset when a biography note adds new information: a citation (source and page) none of the person's " +
         "cited notes carried, or text that matches none of the person's notes once case, whitespace and punctuation are folded. " +
         "New parent and New spouse require an exact date or non-empty place on an own vital event " +
-        "(birth, christening/baptism, death, burial). New child requires an anchor on either spouse or " +
+        "(birth, christening/baptism, death, burial). New spouse is also withheld from a person with a cited NMR 0, a proven never-married answer. New child requires an anchor on either spouse or " +
         "the marriage. Otherwise enrich first. A childless couple's New child card is also withheld when, on every reading of " +
         "the dates (an ABT, CAL or EST date reads as two years either side), the wife was at least maxMotherAgeAtMarriage " +
         "(default 50) at the marriage, or the marriage lasted under minMarriageYears (default 1) before either spouse's death " +
         "or burial or a divorce; an unknown wife's birth or marriage date, or a child of either spouse born after the marriage, " +
-        "never withholds it. suppressedCards lists the withheld cards and reasons; with xrefs, includeSuppressed: true draws them anyway.";
+        "never withholds it. suppressedCards lists the withheld cards and reasons; with xrefs, includeSuppressed: true draws them anyway. " +
+        "Pass studySurnames, in either mode, to hold the result to a surname study's scope, on the assumption that a child takes the father's surname: " +
+        "a person who bears one of them gets every card; a spouse of such a person who does not bear one gets only Enrich person; anyone else gets none; " +
+        "and a family's New child card is dealt, to either spouse, only when its husband bears one. Each card it withholds is listed in suppressedCards with a " +
+        "reason starting \"out of study scope:\" (in a draw, for the people drawn only), and includeSuppressed does not force such a card.";
 
     public const string InputSchemaJson = """
         {
@@ -90,7 +94,13 @@ public sealed class SelectTargetsTool
             "includeSuppressed": {
               "type": "boolean",
               "default": false,
-              "description": "Only with xrefs: draw every card a rule would withhold, so the owner can force one. suppressedCards is then empty."
+              "description": "Only with xrefs: draw every card a rule would withhold, so the owner can force one. suppressedCards then lists only the cards studySurnames withholds, which are never forced."
+            },
+            "studySurnames": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
+              "description": "The surnames of a surname study, e.g. [\"Ashworth\", \"Ashwirth\"]. With people or with xrefs, cards outside the study's scope are withheld and listed in suppressedCards: every card of a person who neither bears one of these nor is married to someone who does; New parent, New spouse and Biography of a spouse who does not bear one; and New child of a family whose husband does not bear one. Omit it to deal as before."
             }
           },
           "oneOf": [
@@ -122,7 +132,7 @@ public sealed class SelectTargetsTool
                 },
                 "required": ["xref", "name", "cardType", "reason"]
               },
-              "description": "Cards withheld, with the rule and the values behind it: relationship gaps needing enrichment first, and New child cards the couple almost certainly could not win."
+              "description": "Cards withheld, with the rule and the values behind it: relationship gaps needing enrichment first, a New spouse card answered by a cited never-married fact, New child cards the couple almost certainly could not win, and, with studySurnames, cards outside the study's scope."
             },
             "xrefsWithoutGaps": {
               "type": "array",
@@ -160,6 +170,7 @@ public sealed class SelectTargetsTool
     Task<CallToolResult> InvokeAsync(
         JsonElement? people = null, JsonElement? surnames = null, JsonElement? xrefs = null,
         JsonElement? maxMotherAgeAtMarriage = null, JsonElement? minMarriageYears = null, JsonElement? includeSuppressed = null,
+        JsonElement? studySurnames = null,
         CancellationToken cancellationToken = default)
         => HandleAsync(new SelectTargetsArguments
         {
@@ -169,6 +180,7 @@ public sealed class SelectTargetsTool
             MaxMotherAgeAtMarriage = maxMotherAgeAtMarriage ?? default,
             MinMarriageYears = minMarriageYears ?? default,
             IncludeSuppressed = includeSuppressed ?? default,
+            StudySurnames = studySurnames ?? default,
         }, cancellationToken);
 
     public Task<CallToolResult> HandleAsync(
@@ -199,7 +211,7 @@ public sealed class SelectTargetsTool
         var suppressedCards = new List<SuppressedCard>();
         var candidates = GapDetector.Detect(snapshot.Model, surnameList, suppressedCards, rules);
         var draw = DuplicateAnnotator.Annotate(
-          TargetDrawer.DrawPack(snapshot.Model, candidates, peopleCount, DateTime.UtcNow.Ticks) with { SuppressedCards = suppressedCards },
+          TargetDrawer.DrawPack(snapshot.Model, candidates, peopleCount, DateTime.UtcNow.Ticks, suppressedCards, rules),
           snapshot.MatchIndex, cancellationToken);
 
         string json = WantedFileWriter.ToJson(surnameList, candidates.Count, draw);
@@ -214,7 +226,8 @@ public sealed class SelectTargetsTool
                 defaults.MaxMotherAgeAtMarriage, out int maxAge, out error) ||
             !ToolArguments.TryReadOptionalInt(arguments.MinMarriageYears, "minMarriageYears", 0, 100,
                 defaults.MinMarriageYears, out int minYears, out error) ||
-            !ToolArguments.TryReadOptionalBool(arguments.IncludeSuppressed, "includeSuppressed", out bool includeSuppressed, out error))
+            !ToolArguments.TryReadOptionalBool(arguments.IncludeSuppressed, "includeSuppressed", out bool includeSuppressed, out error) ||
+            !StudyScopeArgument.TryRead(arguments.StudySurnames, out var scope, out error))
             return false;
         if (includeSuppressed && !hasXrefs)
         {
@@ -222,7 +235,7 @@ public sealed class SelectTargetsTool
             return false;
         }
 
-        rules = new GapRules { NewChild = new NewChildLimits(maxAge, minYears), IncludeSuppressed = includeSuppressed };
+        rules = new GapRules { NewChild = new NewChildLimits(maxAge, minYears), IncludeSuppressed = includeSuppressed, Scope = scope };
         return true;
     }
 
@@ -247,7 +260,7 @@ public sealed class SelectTargetsTool
 
         var suppressedCards = new List<SuppressedCard>();
         var gaps = GapDetector.DetectForPeople(people, suppressedCards, rules);
-        var targets = GapDetector.WithNamedBiographyCards(people, gaps);
+        var targets = GapDetector.WithNamedBiographyCards(people, gaps, suppressedCards, rules);
         var scored = DuplicateAnnotator.Annotate(
           new DrawResult { Targets = targets, Seed = null, LegendaryDiscards = [], SuppressedCards = suppressedCards },
             snapshot.MatchIndex, cancellationToken);

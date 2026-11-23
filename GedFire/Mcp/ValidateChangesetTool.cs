@@ -29,7 +29,9 @@ public sealed class ValidateChangesetTool
         "every violation of it (banned phrases, a death place " +
         "with no death evidence) is reported as an error here, so it surfaces at the dry run. Pass \"cards\" to " +
         "get pointsPreview: which research cards the changeset closes by what it writes to the tree (cards may be " +
-        "given inline or by cardsPath, a file holding {\"cards\": [...]}). Pass reportPath to write the full result " +
+        "given inline or by cardsPath, a file holding {\"cards\": [...]}); an Enrich person card is paid by the rule select_targets " +
+        "priced it by, a New child card belongs to one family, and with studySurnames no card outside a surname study's scope is closed. " +
+        "Pass reportPath to write the full result " +
         "JSON to a file a script can read; the response is then only a digest of its counts, unless verbose is true. " +
         "Pass after, a list of {changesetPath, items}, to check this changeset against the document as it will stand once " +
         "those earlier changesets are applied, in order, in memory; nothing is written, and an earlier changeset that does " +
@@ -63,11 +65,11 @@ public sealed class ValidateChangesetTool
     Task<CallToolResult> InvokeAsync(
         string changesetPath, string items, JsonElement? cards = null, JsonElement? cardsPath = null,
         JsonElement? reportPath = null, JsonElement? overwrite = null, JsonElement? verbose = null,
-        JsonElement? after = null, CancellationToken cancellationToken = default)
+        JsonElement? after = null, JsonElement? studySurnames = null, CancellationToken cancellationToken = default)
         => HandleAsync(
             new ValidateChangesetArguments(
                 changesetPath, items, cards ?? default, cardsPath ?? default, reportPath ?? default, overwrite ?? default,
-                verbose ?? default, after ?? default),
+                verbose ?? default, after ?? default) { StudySurnames = studySurnames ?? default },
             cancellationToken);
 
     /// <summary>
@@ -96,6 +98,10 @@ public sealed class ValidateChangesetTool
             return CallToolResults.Error(error!);
         if (!PointsCardReader.TryRead(cards, out var cardList, out error))
             return CallToolResults.Error(error!);
+        if (!StudyScopeArgument.TryRead(arguments.StudySurnames, out var scope, out error))
+            return CallToolResults.Error(error!);
+        if (scope is not null && cardList is null)
+            return CallToolResults.Error($"{StudyScopeArgument.Name} needs cards or cardsPath: it scopes the points preview.");
         if (!ReportFile.TryRead(arguments.ReportPath, arguments.Overwrite, arguments.Verbose, _absoluteGedcomPath, out var report, out error))
             return CallToolResults.Error(error!);
         if (!PriorChangesets.TryRead(arguments.After, out var after, out error))
@@ -103,10 +109,13 @@ public sealed class ValidateChangesetTool
 
         return ChangesetToolSupport.Execute(
             _absoluteGedcomPath, arguments.ChangesetPath, arguments.Items, dryRun: true, cancellationToken, _policy, cardList,
-            report, after);
+            report, after, scope);
     }
 }
 
 public sealed record ValidateChangesetArguments(
     string ChangesetPath, string Items, JsonElement Cards = default, JsonElement CardsPath = default,
-    JsonElement ReportPath = default, JsonElement Overwrite = default, JsonElement Verbose = default, JsonElement After = default);
+    JsonElement ReportPath = default, JsonElement Overwrite = default, JsonElement Verbose = default, JsonElement After = default)
+{
+    public JsonElement StudySurnames { get; init; }
+}

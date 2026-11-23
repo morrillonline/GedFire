@@ -42,11 +42,12 @@ public static class PointsCardReader
             return false;
         }
 
-        string? xref = null, cls = null, gap = null, name = null;
+        string? xref = null, cls = null, gap = null, name = null, family = null;
         if (!ToolArguments.TryReadOptionalString(Property(card, "xref"), $"{path}.xref", out xref, out error)
             || !ToolArguments.TryReadOptionalString(Property(card, "class"), $"{path}.class", out cls, out error)
             || !ToolArguments.TryReadOptionalString(Property(card, "gap"), $"{path}.gap", out gap, out error)
             || !ToolArguments.TryReadOptionalString(Property(card, "name"), $"{path}.name", out name, out error)
+            || !ToolArguments.TryReadOptionalString(Property(card, "family"), $"{path}.family", out family, out error)
             || !ToolArguments.TryReadOptionalInt(Property(card, "points"), $"{path}.points", 0, int.MaxValue, -1, out int points, out error)
             || !ToolArguments.TryReadOptionalInt(Property(card, "bonus"), $"{path}.bonus", 0, int.MaxValue, 0, out int bonus, out error))
             return false;
@@ -56,7 +57,10 @@ public static class PointsCardReader
         else if (points < 0) error = $"{path}.points is required: a non-negative integer.";
         if (error is not null) return false;
 
-        read = new PointsCard(xref!.Trim(), cls!.Trim(), gap?.Trim(), name?.Trim(), points, bonus);
+        read = new PointsCard(xref!.Trim(), cls!.Trim(), gap?.Trim(), name?.Trim(), points, bonus)
+        {
+            Family = string.IsNullOrWhiteSpace(family) ? null : family.Trim(),
+        };
         return true;
     }
 

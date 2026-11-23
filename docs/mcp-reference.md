@@ -249,10 +249,12 @@ and `draw.seed` is null. An unknown xref is an error.
   biography note whose text none of the person's notes carried. `nominalPoints` is 3, and
   `score` adds the enrichment difficulty bonus for the person's birth era and
   region, without the anchor adjustment (3, 8, 13, or 18).
-- An `enrich-person` card covers all inexact birth, marriage, and death dates
-  and places for one person, plus any such fact with an exact date or place but
-  no citation. `nominalPoints` counts missing dates, places, and citations;
-  `score` adds a difficulty bonus once.
+- An `enrich-person` card covers, for one person, every birth, marriage, and
+  death whose date or place is not exact or that has no citation. A fact with
+  no citation misses one whatever its date and place, so a fact the record
+  lacks altogether counts three. `nominalPoints` counts missing dates, places,
+  and citations; `score` adds a difficulty bonus once. The
+  [points preview](#points-preview) pays the card by this same rule.
 - A `BET ... AND ...` date no wider than 12 months, cited at QUAY 2 or higher,
   is not a missing date. Open `BEF`/`AFT` dates and `ABT`, `CAL`, and `EST`
   remain gaps.
@@ -263,6 +265,9 @@ and `draw.seed` is null. An unknown xref is an error.
   (per `ExactnessRules.IsExactDate`) or a non-empty place. Qualified years such
   as `ABT 1872`, unqualified years, notes, citations, and relatives do not anchor
   them; any non-empty place does, even if it still needs enrichment.
+- A New-spouse card is withheld from a person with a cited `NMR 0`, a proven
+  never-married answer (`createOrUpdateVital`, fact `NMR`, value `"0"`, with
+  its citations). An uncited `NMR 0`, or any other count, withholds nothing.
 - New-child cards are withheld only if both spouses are bare-bones and the
   marriage has neither an exact date nor a place. In surname mode they also
   require a husband with a study surname; xrefs mode has no surname requirement.
@@ -286,7 +291,8 @@ and `draw.seed` is null. An unknown xref is an error.
 - `suppressedCards` lists `{xref, name, cardType, reason}` for otherwise eligible
   cards withheld by these gates, once per childless family for New child. These
   use the same subject xref, name, and card-type labels as the withheld card.
-  Personal reasons are `bare-bones subject — enrich first`; family reasons are
+  Personal reasons are `bare-bones subject — enrich first` and
+  `never married: a cited NMR 0 records the answer`; family reasons are
   `bare-bones family (both spouses and marriage lack anchors) — enrich first`,
   `the wife's known children were all born before this marriage`, or a reason
   naming the rule and its values, such as `wife aged about 64 at marriage, at
@@ -298,8 +304,24 @@ and `draw.seed` is null. An unknown xref is an error.
   rules are unchanged. No state is kept: landing an anchor restores relationship
   cards on the next selection, without restricting extra-credit collection.
 - With `xrefs`, `includeSuppressed: true` draws every withheld card, so the
-  owner can force one; `suppressedCards` is then empty. It is an error without
-  `xrefs`.
+  owner can force one; `suppressedCards` then lists only what `studySurnames`
+  withholds. It is an error without `xrefs`.
+- `studySurnames`, in either mode, holds the result to a surname study's
+  scope, on the assumption that a child takes the father's surname:
+  - a person who bears one of the surnames gets every card;
+  - a spouse of such a person who does not bear one gets only Enrich person;
+  - anyone else gets no card;
+  - a family's New-child card is dealt, to either spouse, only when its
+    husband bears one.
+
+  Each card it withholds is listed in `suppressedCards` with a reason starting
+  `out of study scope:`. A draw lists them for the drawn people only; the
+  other rules' withheld cards are listed for every candidate, as before.
+  `includeSuppressed` never forces a card outside the scope. Without
+  `studySurnames` nothing changes: in surname mode New parent still goes only
+  to surname-bearers and New child only to a family whose husband is one, both
+  unreported, and a drawn husband of another surname still gets his Biography
+  card. The CLI takes the same list as `--study-surnames`.
 - Duplicate hints use the GEN301 plausibility test. Results include up to
   three candidates plus `possibleDuplicateCount`; duplicates do not prevent a draw.
 - An `Unknown` name part needs an agreeing parent or spouse name for duplicate
@@ -449,7 +471,9 @@ written over a held page; 3.1 let a citation take
 `moveToNote` from `replacedCitations` and `deletedCitations` from
 `deleteVital`; 2.0 refused every
 legacy shape, including the `schemaVersion` key; 1.1 let `createOrUpdateParent` take
-`notDuplicateOf`), `cards` 1.0, `changeset-report` 2.0 (drops `warnings`) and
+`notDuplicateOf`), `cards` 1.1 (a new-child card takes `family`),
+`changeset-report` 2.1 (a `closed` or `notClosed` entry of `pointsPreview`
+repeats the card's `family`; 2.0 dropped `warnings`) and
 `draft-report` 3.2 (embeds `changeset` 3.2; 3.0 dropped the `verification-note`
 decision kind). A schema
 document states structure only. `validate_finding` is the full check. In its default
@@ -666,7 +690,11 @@ The warning requests source review, is not an error, and does not block applicat
 - A note's `match` names the exact text to rewrite. `cites` lists
   `{"finding", "quay", "excerpt"}` entries; omitting `finding` uses its own.
   The compiler joins notes on the same record within a changeset and retains
-  every finding's citations.
+  every finding's citations. Notes that cite one source page at different
+  grades are left as separate notes, because a fact, note or family cites a
+  source page once. Where the claims cannot be kept apart (one note citing a
+  page at two grades, or one fact asserted from one page at two grades), the
+  draft is refused, naming the op, the page and the grades.
 - A fact's `cites` lists `{"finding", "quay", "excerpt"}` entries, each naming
   another finding whose record also supports the fact. The fact keeps its own
   finding's citation at its `quay` and gains one citation per entry; a cite
@@ -832,25 +860,44 @@ Policy matches text and grades, not the underlying truth of a source.
 
 Pass `cards` to `validate_changeset`, or `cardsPath` pointing to
 `{"cards": [...]}`. Each card supplies `xref`, `class`, and `points`, with
-optional `gap`, `name`, and `bonus`.
+optional `gap`, `name`, `bonus`, and, for a new-child card, `family`.
 
 Classes are `enrich-person`, `new-parent`, `new-spouse`, `new-child`, and
 `biography`.
 Enrichment gaps are `enrich-birth`, `enrich-death`, or `enrich-marriage`,
 optionally ending in `-date` or `-place`.
 
-With no gap, or with `enrich-fact`, the card covers any improved fact on the
-subject. Each improved date, place, or newly added citation earns `points`;
-`bonus` pays once.
-A date improves only when it is the first, refines the held date (`1877` to
-`14 APR 1877`, `ABT 1877` to `1877`), narrows its bound (`BEF 1800` to
-`BEF 1797`), or corrects a date it contradicts. A less specific date or the same
-date respelled (`BEFORE 1796` to `BEF 1796`) earns nothing.
-`pointsPreview` compares the touched records before and after:
+With no gap, or with `enrich-fact`, the card is `select_targets`' Enrich
+person card, and it is paid by the rule that card was priced by. The preview
+lists the subject's gaps on the tree before the changeset and again after it,
+exactly as `select_targets` would; each gap listed before and not after earns
+`points`, and `bonus` pays once. So:
 
-- `closed`: cards with a written improvement or new family relationship.
-  `wrote` identifies the fact and improved components, naming a date as
-  `first`, `refined`, `narrowed`, or `corrected`.
+- filling exactly the gaps `enrichments` listed pays the dealt `score`, and a
+  card dealt again after the apply is priced at what is left;
+- a date gap closes on an exact date or an honest cited range, a place gap on
+  an exact place, a citation gap on the fact's first citation; a date or place
+  that is still not exact (`ABT 1877`, `1877`, `Ohio`) closes nothing;
+- a write the deal did not list pays nothing: a residence or census, a burial
+  (unless its exact date and place stand for the death, which closes the death
+  gaps as the deal rules), the marriage of a family the changeset creates, a
+  correction to a fact that was already exact and cited;
+- a family's marriage gaps are paid once, to the first of the given cards
+  whose subject is a partner in it.
+
+A card that names a fact (`enrich-death-place`) is not dealt by
+`select_targets`; it closes at its `points` when that fact is written on its
+subject. There a date counts only when it is the first, refines the held date
+(`1877` to `14 APR 1877`, `ABT 1877` to `1877`), narrows its bound
+(`BEF 1800` to `BEF 1797`), or corrects a date it contradicts.
+
+`pointsPreview` reports:
+
+- `closed`: cards closed, with their `points`. `wrote` names what closed the
+  card: for an Enrich person card the gaps closed, as
+  `BIRT @I1@ (date and citation); DEAT @I1@ (date and place and citation)`;
+  for a card that names a fact, the fact and its improved components, a date
+  as `first`, `refined`, `narrowed`, or `corrected`.
 - `notClosed`: remaining cards with reasons. An identical restatement earns no
   closure.
 - `subjectMismatch`: cards left open by a name mismatch. An enrich card detects
@@ -858,10 +905,33 @@ date respelled (`BEFORE 1796` to `BEF 1796`) earns nothing.
   match `name` exactly, including case and spelling.
 - `total`: points from closed cards.
 
+A `closed` or `notClosed` entry repeats the card's `family` when the card gave
+one, and has no such field otherwise; `cardKey` is unchanged
+(`xref|class|gap`).
+
 Card-to-write matching is one-to-one: an applied person closes at most one
 new-relative card. An exact `name` match claims the minted person first, the
 rest claim by anchor xref, and a card left only with already-claimed people
 appears in `notClosed` with the collision named.
+
+A new-child card belongs to one family, the one `select_targets` dealt it for
+(`spouseFamily.familyXref`). It closes only on a child who joins a family that
+existed before the changeset, had no child, and had the subject as a partner;
+give the card `family` to hold it to that family. A child of a family the
+changeset creates closes no card, and `notClosed` names the family the child
+joined. A family's card is paid once: when both spouses' cards are given, or
+two children are added, one card closes (the one whose subject has the lower
+xref) and the other names the card that was paid.
+
+A new-spouse card closes on a spouse, or on a cited never-married answer the
+changeset records on its subject: `createOrUpdateVital` with fact `NMR`, value
+`"0"`, and its citations. `select_targets` withholds the card from then on. A
+note saying the same closes nothing.
+
+`studySurnames` (only with cards) is the list `select_targets` takes. A card
+`select_targets` would withhold as outside the study's scope is never closed:
+it is listed in `notClosed` with a reason starting `out of study scope:`. The
+scope is judged on the tree before the changeset.
 
 A `biography` card closes at its `points` when a `createOrUpdateNote` with
 `purpose: "biography"` adds new information to its subject, either of:

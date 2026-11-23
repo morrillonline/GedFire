@@ -2,6 +2,7 @@ using GedCore;
 using GedCore.Apply;
 using GedCore.Points;
 using GedCore.Policy;
+using GedFire.TargetSelection;
 using ModelContextProtocol.Protocol;
 
 namespace GedFire.Mcp;
@@ -38,11 +39,13 @@ static class ChangesetToolSupport
     /// result; a mutating run is refused before anything is applied, while a dry run still reports
     /// the document's own errors beside the violations so the author sees every problem at once.
     /// A dry run is made against the document as it stands after <paramref name="after"/>.
+    /// <paramref name="cards"/> are priced as select_targets dealt them, within <paramref name="scope"/> when given.
     /// </summary>
     public static CallToolResult Execute(
         string absoluteGedcomPath, string changesetPath, string items, bool dryRun,
         CancellationToken cancellationToken = default, ChangesetPolicy? policy = null,
-        IReadOnlyList<PointsCard>? cards = null, ReportRequest? report = null, PriorChangesets? after = null)
+        IReadOnlyList<PointsCard>? cards = null, ReportRequest? report = null, PriorChangesets? after = null,
+        StudyScope? scope = null)
     {
         if (!ChangesetFile.TryRead(changesetPath, out var file, out string? fileError))
             return CallToolResults.Error(fileError!);
@@ -69,9 +72,13 @@ static class ChangesetToolSupport
         }
 
         var mapped = Map(result, violations);
-        if (cards is not null) mapped = mapped with { PointsPreview = CardScorer.Preview(cards, result.Changes) };
+        if (cards is not null) mapped = mapped with { PointsPreview = CardScorer.Preview(cards, result.Changes, Deal(result, scope)) };
         return Respond(mapped, request.ItemNumbers, report);
     }
+
+    // A run that changed nothing has no before and after to compare, and closes no card.
+    static ICardDeal? Deal(ApplyResult result, StudyScope? scope) =>
+        result is { Before: { } before, After: { } after } ? new DealComparison(before, after, scope) : null;
 
     // The document as the policy reads it, read only when a rule asks.
     // A document that cannot be read holds nothing here; the run that follows reports why.

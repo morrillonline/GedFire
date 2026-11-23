@@ -11,4 +11,5 @@ public sealed record SelectTargetsArguments
     public JsonElement MaxMotherAgeAtMarriage { get; init; }
     public JsonElement MinMarriageYears { get; init; }
     public JsonElement IncludeSuppressed { get; init; }
+    public JsonElement StudySurnames { get; init; }
 }

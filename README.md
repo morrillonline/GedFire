@@ -267,14 +267,14 @@ different file or provider.
 | `get_records` | Fetch several records at once, optionally selecting fields. |
 | `match_record` | Compare a multi-person record with tree families and survey same-name rivals. |
 | `research_brief` | Summarize a person's facts, kin, gaps, notes, duplicates, and plausibility issues. |
-| `select_targets` | Draw people with research gaps, or score specified people, returning every card that pays for each, including a man's repeatable Biography card. |
+| `select_targets` | Draw people with research gaps, or score specified people, returning every card that pays for each, including a man's repeatable Biography card; optionally within a surname study's scope. |
 | `date_calc` | Normalize dual dates, add or subtract ages, or calculate elapsed time. |
 | `describe_changeset_ops` | Return the changeset contract: envelope, structures, operations, and worked examples. |
 | `describe_schemas` | Return the versioned JSON Schemas of the finding-file and changeset contracts, cards, and saved reports. |
 | `validate_finding` | Check finding files for shape, readiness, and xref bindings without drafting. |
 | `draft_changeset` | Compile findings into cited changesets and report unresolved decisions. |
 | `draft_package` | Write a review proposal from finished changesets. |
-| `validate_changeset` | Preview selected edits, optionally after earlier changesets, enforce policy, and optionally score gap closures. |
+| `validate_changeset` | Preview selected edits, optionally after earlier changesets, enforce policy, and optionally score gap closures as `select_targets` priced them. |
 | `check_plausibility` | Report chronological and biological issues the edits would introduce, optionally after earlier changesets. |
 | `validate_document` | Check the whole document for GEDCOM 7 conformance. |
 | `apply_changeset` | Validate, apply, and verify selected items, then write the GEDCOM. |
@@ -377,7 +377,7 @@ The CLI uses the same engine as the MCP server.
 | `apply` | Preview or apply selected changeset items; use `--dry-run` to preview. |
 | `generate` | Generate static family pages, with optional media staging. |
 | `export-index` | Export a JSON person-name index. |
-| `select-targets` | Draw people with research gaps for study surnames, with every card that pays for each. |
+| `select-targets` | Draw people with research gaps for study surnames, with every card that pays for each; `--study-surnames` holds the pack to the study's scope. |
 | `date-calc` | Normalize dual dates or calculate dates and ages. |
 | `find-person` / `get-record` / `get-document-stats` | Run one lookup and print JSON without starting a server. |
 | `schema` | Print a versioned JSON Schema of a GedFire file contract (`finding`, `finding-file`, `record`, `argument`, `changeset`, `cards`, `changeset-report`, `draft-report`). |

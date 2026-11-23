@@ -126,9 +126,10 @@ static class ChangesetToolSchemas
           "properties": {
             "xref": { "type": "string", "pattern": "^@[^@]+@$", "description": "The card subject's xref." },
             "class": { "type": "string", "description": "enrich-person, new-parent, new-spouse, new-child or biography (select_targets' card type, case and spacing ignored)." },
-            "gap": { "type": "string", "description": "For enrich-person, the fact the card names: enrich-birth, enrich-death or enrich-marriage, optionally ending -date or -place. Omit it, or use enrich-fact, for a card that names no single fact: it closes on any improved fact written on the subject." },
+            "gap": { "type": "string", "description": "For enrich-person, the fact the card names: enrich-birth, enrich-death or enrich-marriage, optionally ending -date or -place. Omit it, or use enrich-fact, for select_targets' Enrich person card, which names no single fact: it is paid for each gap select_targets listed for the subject that the changeset closes." },
             "name": { "type": "string", "description": "For enrich-person, the subject's name: a changeset that renames the subject to something else leaves the card open. For new-parent, new-spouse and new-child, the name of the person to mint: a person the changeset creates must carry exactly this name, or the card stays open." },
-            "points": { "type": "integer", "minimum": 0, "description": "The card's points. For a card with no single named fact (no gap, or enrich-fact) this is the points for each improved date, place or citation, and closed.points is this times the improvements plus bonus." },
+            "family": { "type": "string", "pattern": "^@[^@]+@$", "description": "For new-child, the family the card was dealt for (select_targets' spouseFamily.familyXref): only a child joining this family closes the card, and closed and notClosed repeat it. Without it the card stands for any family of the subject that was childless before the changeset." },
+            "points": { "type": "integer", "minimum": 0, "description": "The card's points. For a card with no single named fact (no gap, or enrich-fact) this is the points for each gap closed, and closed.points is this times the gaps closed plus bonus." },
             "bonus": { "type": "integer", "minimum": 0, "description": "The card's difficulty bonus, added once to a card that names no single fact; ignored for other cards, whose points already include it." }
           },
           "required": ["xref", "class", "points"]
@@ -151,10 +152,18 @@ static class ChangesetToolSchemas
         schema["properties"]!["cards"] = JsonNode.Parse("""
             {
               "type": "array",
-              "description": "Research cards the author is working. When given, the result carries pointsPreview: which cards this changeset closes by what it actually writes to the tree, which it leaves open and why, and any card whose subject the changeset renamed. An enrich card closes only when the fact it names is written on its subject; a citation alone writes no fact. A biography card closes when a createOrUpdateNote with purpose biography adds new information to the subject: a citation (same source and page) none of the subject's biography notes carried before, or note text that matches none of the subject's notes once case, whitespace and punctuation are folded (rewording is not judged); one biography card per person closes per changeset."
+              "description": "Research cards the author is working. When given, the result carries pointsPreview: which cards this changeset closes by what it actually writes to the tree, which it leaves open and why, and any card whose subject the changeset renamed. An enrich card that names a fact closes only when that fact is written on its subject; a citation alone writes no fact. An enrich card that names none (select_targets' Enrich person card: no gap, or enrich-fact) is paid by the rule select_targets priced it by: its points for each missing date, place or citation select_targets listed on the subject's birth, death or marriages that the changeset fills (an exact date or an honest cited range, an exact place, a first citation), so filling exactly the listed gaps pays the dealt score; a residence, a burial that does not stand for the death, the marriage of a family the changeset creates, a date or place still not exact, and any other write select_targets did not list pay nothing; a family's marriage is paid to one card. A new-child card closes only on a child joining a family that existed before the changeset, childless, with the subject a partner in it (the card's family when it names one), and a family's New child card is paid once however many children or cards there are. A new-spouse card closes on a spouse, or on a cited NMR 0 (createOrUpdateVital, fact NMR, value \"0\") recorded on the subject. A biography card closes when a createOrUpdateNote with purpose biography adds new information to the subject: a citation (same source and page) none of the subject's biography notes carried before, or note text that matches none of the subject's notes once case, whitespace and punctuation are folded (rewording is not judged); one biography card per person closes per changeset."
             }
             """);
         schema["properties"]!["cards"]!["items"] = JsonNode.Parse(CardJson);
+        schema["properties"]![StudyScopeArgument.Name] = JsonNode.Parse("""
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
+              "description": "Only with cards: the surnames of a surname study, as select_targets takes them. A card select_targets would withhold as outside the study's scope is never closed; it is listed in notClosed with a reason starting \"out of study scope:\". Omit it to price every card."
+            }
+            """);
     });
 
     /// <summary>The <c>pointsPreview</c> schema, shared by every tool that prices a changeset against cards.</summary>
@@ -165,10 +174,10 @@ static class ChangesetToolSchemas
               "description": "Present only when cards were given.",
               "properties": {
                 "closed": { "type": "array", "items": { "type": "object", "additionalProperties": false,
-                  "properties": { "cardKey": { "type": "string" }, "points": { "type": "integer" }, "wrote": { "type": "string", "description": "The fact or relationship the changeset wrote that closes the card." } },
+                  "properties": { "cardKey": { "type": "string" }, "points": { "type": "integer" }, "wrote": { "type": "string", "description": "The fact or relationship the changeset wrote that closes the card." }, "family": { "type": "string", "description": "The card's family; present only when the card gave one." } },
                   "required": ["cardKey", "points", "wrote"] } },
                 "notClosed": { "type": "array", "items": { "type": "object", "additionalProperties": false,
-                  "properties": { "cardKey": { "type": "string" }, "reason": { "type": "string" } },
+                  "properties": { "cardKey": { "type": "string" }, "reason": { "type": "string" }, "family": { "type": "string", "description": "The card's family; present only when the card gave one." } },
                   "required": ["cardKey", "reason"] } },
                 "subjectMismatch": { "type": "array", "items": { "type": "object", "additionalProperties": false,
                   "properties": { "cardKey": { "type": "string" }, "cardSubject": { "type": "string" }, "appliedName": { "type": "string" } },

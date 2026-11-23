@@ -79,7 +79,8 @@ public static class ChangesetOpsCatalog
             "fact (NAME, SEX) by value, or an attribute (OCCU, RESI, EVEN, …) by value, date and place. Absent → create; " +
             "identical → no-op; different → replaced unconditionally, old value logged. A repeatable tag (anything but " +
             "BIRT/DEAT/CHR/BAPM/BURI/CREM/SEX/NAME/MARR/DIV) refuses to overwrite an existing instance without \"match\" or " +
-            "\"mode\":\"add\". A family event (" + string.Join("/", GedCore.FamilyEvents.Tags.Order(StringComparer.Ordinal)) +
+            "\"mode\":\"add\". A proven never-married answer is fact NMR with value \"0\" and its citations: pages print it, select_targets " +
+            "withholds the person's New spouse card, and the points preview closes that card. A family event (" + string.Join("/", GedCore.FamilyEvents.Tags.Order(StringComparer.Ordinal)) +
             ") is refused on a person; record it on the couple's family. draft_changeset writes only these tags: " + string.Join(", ", GedCore.Apply.CreateOrUpdateVitalOp.Facts) + ".",
             """
             { "op": "createOrUpdateVital", "record": "@I2@", "fact": "DEAT",

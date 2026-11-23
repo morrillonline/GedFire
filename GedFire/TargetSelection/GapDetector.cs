@@ -1,9 +1,15 @@
+using System.Text.Json.Serialization;
 using GedCore;
 using GedFire.Gen;
 
 namespace GedFire.TargetSelection;
 
-public sealed record SuppressedCard(string Xref, string Name, string CardType, string Reason);
+public sealed record SuppressedCard(string Xref, string Name, string CardType, string Reason)
+{
+    /// <summary>The study scope withheld the card; such a card cannot be forced, and a draw reports it only for the people drawn.</summary>
+    [JsonIgnore]
+    public bool OutOfScope { get; init; }
+}
 
 /// <summary>
 /// Detects every candidate gap in a GedModel and scores it (card type,
@@ -23,9 +29,11 @@ public static class GapDetector
 
     /// <summary>
     /// Restrict to persons bearing one of <paramref name="surnames"/>, or
-    /// married to one of them, then run every gap rule against each — except
-    /// New parent, which only ever runs for an actual surname-bearer (see
-    /// the check inline below).
+    /// married to one of them, then run every gap rule against each. With no
+    /// study scope in <paramref name="rules"/>, New parent runs only for an
+    /// actual surname-bearer and New child only for a family whose husband is
+    /// one, and neither is reported; a study scope withholds those cards
+    /// itself and reports each.
     /// </summary>
     public static List<SelectionTarget> Detect(GedModel model, IEnumerable<string> surnames, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null) =>
         Detect(model, surnames, DateTime.UtcNow.Year, suppressedCards, rules);
@@ -35,10 +43,9 @@ public static class GapDetector
         GedModel model, IEnumerable<string> surnames, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null)
     {
         rules ??= GapRules.Default;
-        var withholding = new Withholding(suppressedCards, rules.IncludeSuppressed);
-        var surnameSet = new HashSet<string>(
-            surnames.Select(s => s.Trim()).Where(s => s.Length > 0),
-            StringComparer.OrdinalIgnoreCase);
+        var withholding = new Withholding(suppressedCards, rules);
+        var drawn = new StudyScope(surnames);
+        bool scoped = rules.Scope is not null;
         int privacyFloorYear = currentYear - PrivacyFloorYears;
 
         var targets = new List<SelectionTarget>();
@@ -53,19 +60,18 @@ public static class GapDetector
 
         foreach (var person in model.Individuals.Values)
         {
-            if (!MatchesSurname(person, surnameSet)) continue;
+            if (!drawn.BearsOrMarriedOne(person)) continue;
             if (IsWithinPrivacyFloor(person, privacyFloorYear)) continue;
 
             // New parent means "go find this person's own parents" — for
             // someone who only qualifies by marrying into the surname (not
             // by carrying it), that would push research up into a wholly
-            // unrelated family line. Restrict it to actual surname-bearers;
-            // every other card type still applies to a married-in spouse.
-            if (BearsSurname(person, surnameSet))
+            // unrelated family line.
+            if (scoped || drawn.Bears(person))
                 DetectNewParent(person, targets, withholding);
             DetectNewSpouse(person, targets, withholding);
-            DetectNewChild(person, fam => fam.Husband != null && BearsSurname(fam.Husband, surnameSet), newChildFamiliesSeen, targets, withholding, rules.NewChild);
-            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, rules.HonestRange);
+            DetectNewChild(person, fam => scoped || drawn.HusbandBears(fam), newChildFamiliesSeen, targets, withholding, rules.NewChild);
+            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, rules.HonestRange, withholding);
         }
 
         return targets;
@@ -84,7 +90,7 @@ public static class GapDetector
         IEnumerable<GedIndividual> people, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null)
     {
         rules ??= GapRules.Default;
-        var withholding = new Withholding(suppressedCards, rules.IncludeSuppressed);
+        var withholding = new Withholding(suppressedCards, rules);
         int privacyFloorYear = currentYear - PrivacyFloorYears;
         var targets = new List<SelectionTarget>();
         var newChildFamiliesSeen = new HashSet<string>();
@@ -97,7 +103,7 @@ public static class GapDetector
             DetectNewParent(person, targets, withholding);
             DetectNewSpouse(person, targets, withholding);
             DetectNewChild(person, _ => true, newChildFamiliesSeen, targets, withholding, rules.NewChild);
-            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, rules.HonestRange);
+            DetectEnrichPerson(person, marriageEnrichFamiliesSeen, targets, rules.HonestRange, withholding);
         }
 
         return targets;
@@ -127,30 +133,39 @@ public static class GapDetector
     /// Every card that pays for each of <paramref name="people"/>, in order: the person's <paramref name="gapCards"/>,
     /// then, for a man with at least one of them, his Biography card.
     /// </summary>
-    public static List<SelectionTarget> WithBiographyCards(IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards) =>
-        WithBiographyCards(people, gapCards, biographyAlone: false);
+    public static List<SelectionTarget> WithBiographyCards(
+        IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards,
+        ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null) =>
+        WithBiographyCards(people, gapCards, biographyAlone: false, new Withholding(suppressedCards, rules ?? GapRules.Default));
 
     /// <summary>
     /// Every card that pays for each of the named <paramref name="people"/>, in order: the person's <paramref name="gapCards"/>,
     /// then, for a man, his Biography card, even when he has no other card.
     /// </summary>
-    public static List<SelectionTarget> WithNamedBiographyCards(IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards) =>
-        WithBiographyCards(people, gapCards, biographyAlone: true);
+    public static List<SelectionTarget> WithNamedBiographyCards(
+        IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards,
+        ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null) =>
+        WithBiographyCards(people, gapCards, biographyAlone: true, new Withholding(suppressedCards, rules ?? GapRules.Default));
 
-    static List<SelectionTarget> WithBiographyCards(IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards, bool biographyAlone)
+    static List<SelectionTarget> WithBiographyCards(
+        IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards, bool biographyAlone, Withholding withholding)
     {
         var byPerson = gapCards.ToLookup(c => c.Xref, StringComparer.Ordinal);
         return [.. people.SelectMany(person => biographyAlone || byPerson[person.Xref].Any()
-            ? byPerson[person.Xref].Concat(BiographyCards([person]))
+            ? byPerson[person.Xref].Concat(BiographyCards([person], DateTime.UtcNow.Year, withholding))
             : [])];
     }
 
     /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
-    public static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people, int currentYear)
+    public static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people, int currentYear) =>
+        BiographyCards(people, currentYear, new Withholding(null, GapRules.Default));
+
+    static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people, int currentYear, Withholding withholding)
     {
         int privacyFloorYear = currentYear - PrivacyFloorYears;
         return [.. people
-            .Where(person => person.IsMale && !IsWithinPrivacyFloor(person, privacyFloorYear))
+            .Where(person => person.IsMale && !IsWithinPrivacyFloor(person, privacyFloorYear)
+                && !withholding.OutOfScope(person, CardType.Biography))
             .Select(person => BuildTarget(person, CardType.Biography, BiographyPoints, DifficultyScore.Compute(
                 EraWeightForDate(BiographyEraDate(person)), ExactnessRules.GeographyWeight(person.Birth?.Place), contextAdjustment: 0)))];
     }
@@ -171,30 +186,30 @@ public static class GapDetector
     static bool SuppressBareSubject(GedIndividual person, CardType cardType, Withholding withholding) =>
         IsBareBones(person) && withholding.Withhold(person, cardType, "bare-bones subject \u2014 enrich first");
 
-    /// <summary>Reports each withheld card, or, when the owner forces them, withholds nothing.</summary>
-    sealed class Withholding(ICollection<SuppressedCard>? reported, bool includeSuppressed)
+    /// <summary>Reports each card a rule withholds. The owner can force a card past every rule but the study scope.</summary>
+    sealed class Withholding(ICollection<SuppressedCard>? reported, GapRules rules)
     {
         /// <summary>True when the card is withheld, so the caller skips it.</summary>
         public bool Withhold(GedIndividual person, CardType cardType, string reason)
         {
-            if (includeSuppressed) return false;
+            if (rules.IncludeSuppressed) return false;
             reported?.Add(new SuppressedCard(person.Xref, DisplayName(person), cardType.Display(), reason));
             return true;
         }
-    }
 
-    static bool BearsSurname(GedIndividual person, HashSet<string> surnames) =>
-        surnames.Contains(person.LastNameRaw);
-
-    static bool MatchesSurname(GedIndividual person, HashSet<string> surnames)
-    {
-        if (BearsSurname(person, surnames)) return true;
-        foreach (var fam in person.FamSpouse)
+        /// <summary>True when the study scope withholds the card, of <paramref name="family"/> for a New child card.</summary>
+        public bool OutOfScope(GedIndividual person, CardType cardType, GedFamily? family = null)
         {
-            var spouse = fam.SpouseOf(person);
-            if (spouse != null && surnames.Contains(spouse.LastNameRaw)) return true;
+            if (ScopeReason(person, cardType, family) is not { } reason) return false;
+            ReportOutOfScope(person, cardType, reason);
+            return true;
         }
-        return false;
+
+        public string? ScopeReason(GedIndividual person, CardType cardType, GedFamily? family = null) =>
+            rules.Scope?.WithheldReason(person, cardType, family);
+
+        public void ReportOutOfScope(GedIndividual person, CardType cardType, string reason) =>
+            reported?.Add(new SuppressedCard(person.Xref, DisplayName(person), cardType.Display(), reason) { OutOfScope = true });
     }
 
     // -------------------------------------------------------------------
@@ -206,6 +221,7 @@ public static class GapDetector
         var fam = person.FamChild;
         int parentCount = (fam?.Husband != null ? 1 : 0) + (fam?.Wife != null ? 1 : 0);
         if (parentCount > 1) return;
+        if (withholding.OutOfScope(person, CardType.NewParent)) return;
         if (SuppressBareSubject(person, CardType.NewParent, withholding)) return;
 
         var difficulty = DifficultyScore.Compute(
@@ -224,13 +240,16 @@ public static class GapDetector
     }
 
     // -------------------------------------------------------------------
-    // New spouse — no recorded spouse family, and did not die young.
+    // New spouse — no recorded spouse family, did not die young, and no
+    // proven never-married answer.
     // -------------------------------------------------------------------
 
     static void DetectNewSpouse(GedIndividual person, List<SelectionTarget> targets, Withholding withholding)
     {
         if (person.FamSpouse.Count > 0) return;
         if (DiedYoung(person)) return;
+        if (withholding.OutOfScope(person, CardType.NewSpouse)) return;
+        if (NeverMarriedAnswer.IsRecorded(person) && withholding.Withhold(person, CardType.NewSpouse, NeverMarriedAnswer.Reason)) return;
         if (SuppressBareSubject(person, CardType.NewSpouse, withholding)) return;
 
         var difficulty = DifficultyScore.Compute(
@@ -269,6 +288,7 @@ public static class GapDetector
             if (fam.Children.Count > 0) continue;
             if (!familyQualifies(fam)) continue;
             if (!familiesSeen.Add(fam.Xref)) continue;
+            if (withholding.OutOfScope(person, CardType.NewChild, fam)) continue;
             if (NewChildWithheldReason(fam, limits) is { } reason && withholding.Withhold(person, CardType.NewChild, reason)) continue;
 
             // Era/geography key off the marriage when one is recorded (this
@@ -306,23 +326,22 @@ public static class GapDetector
     }
 
     // -------------------------------------------------------------------
-    // Enrich person — one card per person listing every birth, marriage and
-    // death whose date or place is not exact, or that has an exact date or
-    // place but no citation. Each missing part is a point; the difficulty
-    // bonus is added once. Geography keys off the subject's
-    // own birth place. An honest cited range is not a missing date.
+    // Enrich person — one card per person listing what EnrichRule lists.
+    // Each missing part is a point; the difficulty bonus is added once.
+    // Geography keys off the subject's own birth place.
     // -------------------------------------------------------------------
 
-    static void DetectEnrichPerson(GedIndividual person, HashSet<string> familiesSeen, List<SelectionTarget> targets, HonestRange honestRange)
+    static void DetectEnrichPerson(
+        GedIndividual person, HashSet<string> familiesSeen, List<SelectionTarget> targets, HonestRange honestRange, Withholding withholding)
     {
-        var facts = new List<EnrichmentEntry>();
-        AddIfImprovable(facts, "Birth", person.Birth, honestRange);
-        if (!BurialSatisfiesDeath(person))
-            AddIfImprovable(facts, "Death", person.Death, honestRange);
-        foreach (var fam in person.FamSpouse.Where(f => familiesSeen.Add(f.Xref)))
-            // A missing MARR record (fam.Marriage null) still counts as "not
-            // exact" because both date and place are absent.
-            AddIfImprovable(facts, "Marriage", fam.Marriage, honestRange);
+        // Judged before the marriages are claimed, so a person outside the scope takes no family's marriage from a spouse inside it.
+        if (withholding.ScopeReason(person, CardType.EnrichPerson) is { } outOfScope)
+        {
+            if (EnrichRule.ListedFacts(person, honestRange).Count > 0) withholding.ReportOutOfScope(person, CardType.EnrichPerson, outOfScope);
+            return;
+        }
+
+        var facts = EnrichRule.ListedFacts(person, honestRange, family => familiesSeen.Add(family.Xref)).Select(f => f.Entry).ToList();
         if (facts.Count == 0) return;
 
         int nominal = facts.Sum(f => (f.MissingDate ? 1 : 0) + (f.MissingPlace ? 1 : 0) + (f.MissingCitation ? 1 : 0));
@@ -333,33 +352,6 @@ public static class GapDetector
 
         targets.Add(BuildTarget(person, CardType.EnrichPerson, nominal, difficulty, enrichments: facts));
     }
-
-    // An exact burial closes the death gap: it dates the death closely enough for the study's purposes.
-    static bool BurialSatisfiesDeath(GedIndividual person) =>
-        person.Burial is { } burial && ExactnessRules.IsExactDate(burial.Date) && ExactnessRules.IsExactPlace(burial.Place);
-
-    static void AddIfImprovable(List<EnrichmentEntry> facts, string fact, GedEvent? gedEvent, HonestRange honestRange)
-    {
-        string? date = gedEvent?.Date;
-        string? place = gedEvent?.Place;
-        bool missingDate = !ExactnessRules.IsExactDate(date) && !(gedEvent is not null && honestRange.Closes(gedEvent));
-        bool missingPlace = !ExactnessRules.IsExactPlace(place);
-        bool missingCitation = (!missingDate || !missingPlace) && !IsCited(gedEvent);
-        if (!missingDate && !missingPlace && !missingCitation) return;
-
-        facts.Add(new EnrichmentEntry
-        {
-            Fact = fact,
-            CurrentDate = NullIfEmpty(date),
-            CurrentPlace = NullIfEmpty(place),
-            MissingDate = missingDate,
-            MissingPlace = missingPlace,
-            MissingCitation = missingCitation,
-        });
-    }
-
-    // A personal-note pseudo-source records no evidence, so it does not cite the fact.
-    static bool IsCited(GedEvent? gedEvent) => gedEvent is not null && gedEvent.Sources.Any(s => !s.NoCitation);
 
     // The era of the person's own birth, else of the first listed fact that has a date.
     static string? EarliestDate(GedIndividual person, List<EnrichmentEntry> facts) =>

@@ -10,7 +10,7 @@ namespace GedCore.Drafting;
 internal sealed class SourcePlan
 {
     // A finding naming its source by xref is keyed by that xref alone; the others by collection and author.
-    readonly record struct SourceKey(string? Ref, string Collection, string Author);
+    internal readonly record struct SourceKey(string? Ref, string Collection, string Author);
 
     readonly Dictionary<SourceKey, string> _refs = [];
 
@@ -21,7 +21,7 @@ internal sealed class SourcePlan
     public string? CitedRefOf(DraftFinding finding) => _refs.GetValueOrDefault(KeyOf(finding));
 
     // Findings whose titles differ only in case, punctuation or a trailing person name cite one collection.
-    static SourceKey KeyOf(DraftFinding finding) =>
+    internal static SourceKey KeyOf(DraftFinding finding) =>
         finding.Source.Ref is { } named
             ? new SourceKey(named, "", "")
             : new SourceKey(null, SourceTitles.Identity(SourceTitles.Collection(finding.Source.Name)), (finding.Source.Author ?? "").ToLowerInvariant());

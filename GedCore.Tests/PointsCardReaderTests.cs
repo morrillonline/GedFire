@@ -35,6 +35,15 @@ public class PointsCardReaderTests
         Assert.Equal([4, 0], cards!.Select(c => c.Bonus));
     }
 
+    [Fact]
+    public void AFamily_IsReadAndLeavesTheKeyAsItWas()
+    {
+        Assert.True(TryRead("""[ { "xref": "@I1@", "class": "new-child", "gap": "children", "points": 5, "family": " @F1@ " }, { "xref": "@I1@", "class": "new-child", "points": 5 } ]""", out var cards, out _));
+
+        Assert.Equal(["@F1@", null], cards!.Select(c => c.Family));
+        Assert.Equal("@I1@|new-child|children", cards![0].Key);
+    }
+
     [Theory]
     [InlineData("{}", "cards must be an array")]
     [InlineData("[ 3 ]", "cards[0] must be an object")]

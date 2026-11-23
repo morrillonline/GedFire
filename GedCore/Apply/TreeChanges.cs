@@ -24,7 +24,14 @@ public sealed record NameChange(string? Before, string? After);
 /// <summary>A family's partners and children after the changeset, and which of them it added.</summary>
 public sealed record FamilyChange(
     IReadOnlyList<string> Partners, IReadOnlyList<string> Children,
-    IReadOnlyList<string> AddedPartners, IReadOnlyList<string> AddedChildren);
+    IReadOnlyList<string> AddedPartners, IReadOnlyList<string> AddedChildren)
+{
+    /// <summary>The changeset created the family, so no card was dealt for it.</summary>
+    public bool Created { get; init; }
+
+    /// <summary>The family already had a child before the changeset, so it had no New child card.</summary>
+    public bool HadChildren { get; init; }
+}
 
 /// <summary>
 /// What a changeset actually changed in the tree, found by comparing the touched
@@ -131,7 +138,11 @@ public sealed class TreeChanges
         var children = Pointers(current, "CHIL");
         var oldPartners = prior is null ? new List<string>() : Pointers(prior, "HUSB", "WIFE");
         var oldChildren = prior is null ? new List<string>() : Pointers(prior, "CHIL");
-        return new FamilyChange(partners, children, [.. partners.Except(oldPartners)], [.. children.Except(oldChildren)]);
+        return new FamilyChange(partners, children, [.. partners.Except(oldPartners)], [.. children.Except(oldChildren)])
+        {
+            Created = prior is null,
+            HadChildren = oldChildren.Count > 0,
+        };
     }
 
     static List<string> Pointers(GedRecord family, params string[] tags) =>
