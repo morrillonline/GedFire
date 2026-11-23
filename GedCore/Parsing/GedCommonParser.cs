@@ -5,6 +5,8 @@ namespace GedCore.Parsing;
 /// </summary>
 internal static class GedCommonParser
 {
+    static readonly System.Buffers.SearchValues<char> LineBreaks = System.Buffers.SearchValues.Create("\r\n");
+
     /// <summary>
     /// Split a decoded GEDCOM text into GedRecord objects (no tree structure yet).
     /// <paramref name="mapTag"/> is called on every parsed tag so callers can remap
@@ -19,24 +21,18 @@ internal static class GedCommonParser
 
         while (start < len)
         {
-            int cr = text.IndexOf('\r', start);
-            int lf = text.IndexOf('\n', start);
-
-            int end, next;
-            if (cr >= 0 && (lf < 0 || cr < lf))
-            {
-                end  = cr;
-                next = (lf == cr + 1) ? lf + 1 : cr + 1;  // eat CRLF pair or bare CR
-            }
-            else if (lf >= 0)
-            {
-                end  = lf;
-                next = lf + 1;
-            }
-            else
+            // One search for either break: searching for each separately rescans to the end of a file that lacks one.
+            int end = text.AsSpan(start).IndexOfAny(LineBreaks);
+            if (end >= 0) end += start;
+            int next;
+            if (end < 0)
             {
                 end  = len;
                 next = len;
+            }
+            else
+            {
+                next = text[end] == '\r' && end + 1 < len && text[end + 1] == '\n' ? end + 2 : end + 1;  // eat CRLF pair or bare CR/LF
             }
 
             lineNumber++;
