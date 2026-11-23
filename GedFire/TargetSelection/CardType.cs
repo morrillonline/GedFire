@@ -26,4 +26,15 @@ public static class CardTypeExtensions
         CardType.Biography => "Biography",
         _ => type.ToString(),
     };
+
+    /// <summary>The card type a card class names ("new-child", "New child", "new_child"); null for any other text.</summary>
+    public static CardType? Parse(string cardClass)
+    {
+        string wanted = Fold(cardClass);
+        foreach (var type in Enum.GetValues<CardType>())
+            if (Fold(type.Display()) == wanted) return type;
+        return null;
+    }
+
+    static string Fold(string text) => text.Trim().ToLowerInvariant().Replace(' ', '-').Replace('_', '-');
 }

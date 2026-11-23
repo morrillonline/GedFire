@@ -51,8 +51,8 @@ public static class SchemaCatalog
 
     // The changeset schema's version is the contract version.
     public static readonly PublishedSchema Changeset = new(ChangesetName, ChangesetDialect.SchemaVersion, "GedFire changeset", ChangesetSchemas.Changeset);
-    public static readonly PublishedSchema Cards = new(CardsName, "1.0", "GedFire cards file", ChangesetSchemas.Cards);
-    public static readonly PublishedSchema ChangesetReport = new(ChangesetReportName, "2.0", "GedFire validate_changeset and apply_changeset report", ChangesetSchemas.ChangesetReport);
+    public static readonly PublishedSchema Cards = new(CardsName, "1.1", "GedFire cards file", ChangesetSchemas.Cards);
+    public static readonly PublishedSchema ChangesetReport = new(ChangesetReportName, "2.1", "GedFire validate_changeset and apply_changeset report", ChangesetSchemas.ChangesetReport);
     public static readonly PublishedSchema DraftReport = new(DraftReportName, "3.2", "GedFire draft_changeset report", ChangesetSchemas.DraftReport);
 
     public static readonly IReadOnlyList<PublishedSchema> All =

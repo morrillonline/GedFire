@@ -577,6 +577,96 @@ public class SelectTargetsToolTests : IDisposable
         Assert.Contains(expected, ErrorText(result));
     }
 
+    // A bearer husband and his married-in wife (@F1@), and a bearer daughter with a husband of another surname (@F2@).
+    const string StudyGed = """
+        0 HEAD
+        1 GEDC
+        2 VERS 5.5.1
+        0 @I1@ INDI
+        1 NAME Amos /Ashworth/
+        1 SEX M
+        1 BIRT
+        2 PLAC Salem, Oregon
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Ruth /Holt/
+        1 SEX F
+        1 BIRT
+        2 PLAC Salem, Oregon
+        1 FAMS @F1@
+        0 @I3@ INDI
+        1 NAME Ada /Ashworth/
+        1 SEX F
+        1 BIRT
+        2 PLAC Salem, Oregon
+        1 FAMS @F2@
+        0 @I4@ INDI
+        1 NAME Eli /Pike/
+        1 SEX M
+        1 BIRT
+        2 PLAC Salem, Oregon
+        1 FAMS @F2@
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        0 @F2@ FAM
+        1 HUSB @I4@
+        1 WIFE @I3@
+        """;
+
+    static List<(string Xref, string CardType)> CardList(CallToolResult result, string property) =>
+        [.. result.StructuredContent!.Value.GetProperty(property).EnumerateArray()
+            .Select(card => (card.GetProperty("xref").GetString()!, card.GetProperty("cardType").GetString()!))];
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StudySurnames_WithholdTheCardsOutsideTheStudysScope_WithReasons(bool explicitPeople)
+    {
+        var tool = new SelectTargetsTool(_sessions.Open(StudyGed), new ToolGate());
+        var arguments = explicitPeople
+            ? new SelectTargetsArguments { Xrefs = Json("[\"@I1@\",\"@I2@\",\"@I3@\",\"@I4@\"]") }
+            : new SelectTargetsArguments { People = Json("50"), Surnames = Json("[\"Ashworth\"]") };
+
+        var result = await tool.HandleAsync(arguments with { StudySurnames = Json("[\"Ashworth\"]") }, CancellationToken.None);
+
+        Assert.NotEqual(true, result.IsError);
+        var withheld = CardList(result, "suppressedCards");
+        Assert.Equal(
+            [("@I2@", "New parent"), ("@I3@", "New child"), ("@I4@", "Biography"), ("@I4@", "New parent")],
+            withheld.Order());
+        Assert.All(result.StructuredContent!.Value.GetProperty("suppressedCards").EnumerateArray(),
+            card => Assert.StartsWith("out of study scope: ", card.GetProperty("reason").GetString()));
+        var dealt = CardList(result, "targets");
+        Assert.Empty(dealt.Intersect(withheld));
+        Assert.Equal(["Enrich person"], dealt.Where(c => c.Xref == "@I4@").Select(c => c.CardType));
+        Assert.Contains(("@I1@", "New child"), dealt);
+    }
+
+    [Fact]
+    public async Task WithoutStudySurnames_TheSameDrawDealsAsItAlwaysHas()
+    {
+        var result = await new SelectTargetsTool(_sessions.Open(StudyGed), new ToolGate())
+            .HandleAsync(new SelectTargetsArguments { People = Json("50"), Surnames = Json("[\"Ashworth\"]") }, CancellationToken.None);
+
+        Assert.Empty(result.StructuredContent!.Value.GetProperty("suppressedCards").EnumerateArray());
+        Assert.Contains(("@I4@", "Biography"), CardList(result, "targets"));
+    }
+
+    [Theory]
+    [InlineData("[]", "studySurnames must list at least one surname")]
+    [InlineData("\"Ashworth\"", "studySurnames must be an array")]
+    [InlineData("[\" \"]", "studySurnames[0] must be a non-blank string")]
+    public async Task StudySurnames_BadShape_IsRejectedByFieldName(string studySurnames, string expected)
+    {
+        var arguments = new SelectTargetsArguments { Xrefs = Json("[\"@I1@\"]"), StudySurnames = Json(studySurnames) };
+
+        var result = await Tool().HandleAsync(arguments, CancellationToken.None);
+
+        Assert.True(result.IsError);
+        Assert.Contains(expected, ErrorText(result));
+    }
+
     [Fact]
     public void Constructor_RejectsNullDependencies()
     {

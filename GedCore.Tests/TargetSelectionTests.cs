@@ -859,7 +859,7 @@ public class GapDetectorTests
     }
 
     [Fact]
-    public void EnrichPerson_InexactUncitedBirth_HasNoCitationPoint()
+    public void EnrichPerson_InexactUncitedBirth_AlsoMissesItsCitation()
     {
         const string ged = """
             0 @I1@ INDI
@@ -869,7 +869,7 @@ public class GapDetectorTests
             2 DATE ABT 1780
             """;
         var target = Assert.Single(Detect(ged, "Morrill"), t => t.CardType == "Enrich person");
-        Assert.False(Assert.Single(target.Enrichments!, e => e.Fact == "Birth").MissingCitation);
+        Assert.True(Assert.Single(target.Enrichments!, e => e.Fact == "Birth").MissingCitation);
     }
 
     [Fact]
@@ -1128,8 +1128,8 @@ public class GapDetectorTests
 
         var card = Assert.Single(targets, t => t.CardType == "Enrich person");
         Assert.Equal(["Birth", "Death", "Marriage"], card.Enrichments!.Select(e => e.Fact));
-        // birth: inexact date and no place (2); death: no place, exact date uncited (2); marriage: no date, exact place uncited (2)
-        Assert.Equal(6, card.NominalPoints);
+        // birth: inexact date, no place, uncited (3); death: no place, uncited (2); marriage: no date, uncited (2)
+        Assert.Equal(7, card.NominalPoints);
         Assert.True(card.Score >= card.NominalPoints, "the difficulty bonus is added once, never subtracted");
     }
 
@@ -1295,6 +1295,215 @@ public class GapDetectorTests
         Assert.DoesNotContain(pack, t => t.Xref == "@I2@");
         Assert.Equal(gaps.Count + 1, pack.Count);
     }
+
+    [Fact]
+    public void EnrichPerson_AFactTheRecordLacks_MissesItsDatePlaceAndCitation()
+    {
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Amos /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 3 JUN 1850
+            2 PLAC Salem, Oregon
+            2 SOUR @S1@
+            """;
+
+        var card = Assert.Single(Detect(ged, "Ashworth"), t => t.CardType == "Enrich person");
+
+        var death = Assert.Single(card.Enrichments!);
+        Assert.Equal(("Death", true, true, true), (death.Fact, death.MissingDate, death.MissingPlace, death.MissingCitation));
+        Assert.Equal(3, card.NominalPoints);
+    }
+
+    // ---- a proven never-married answer ----
+
+    static string Bachelor(string answer) => $"""
+        0 @I1@ INDI
+        1 NAME Amos /Ashworth/
+        1 SEX M
+        1 BIRT
+        2 PLAC Salem, Oregon
+        {answer}
+        """;
+
+    [Fact]
+    public void NewSpouse_WithheldFromSomeoneWithACitedNeverMarriedAnswer()
+    {
+        var suppressed = new List<SuppressedCard>();
+
+        var targets = GapDetector.Detect(ModelBuilder.Build(Ged55Parser.Parse(Bachelor("1 NMR 0\n2 SOUR @S1@"))), ["Ashworth"], 2026, suppressed);
+
+        Assert.DoesNotContain(targets, t => t.CardType == "New spouse");
+        var card = Assert.Single(suppressed);
+        Assert.Equal(("@I1@", "New spouse", "never married: a cited NMR 0 records the answer"), (card.Xref, card.CardType, card.Reason));
+    }
+
+    [Theory]
+    [InlineData("1 NMR 0")]                 // uncited: not proven
+    [InlineData("1 NMR 1\n2 SOUR @S1@")]    // married once: the spouse is still to find
+    [InlineData("1 OCCU Cooper")]
+    public void NewSpouse_StillDealtWithoutACitedZero(string answer) =>
+        Assert.Contains(Detect(Bachelor(answer), "Ashworth"), t => t.CardType == "New spouse");
+
+    [Fact]
+    public void NewSpouse_IncludeSuppressedDrawsTheCardDespiteTheAnswer()
+    {
+        var person = ModelBuilder.Build(Ged55Parser.Parse(Bachelor("1 NMR 0\n2 SOUR @S1@"))).Individuals["@I1@"];
+
+        var targets = GapDetector.DetectForPeople([person], 2026, rules: new GapRules { IncludeSuppressed = true });
+
+        Assert.Contains(targets, t => t.CardType == "New spouse");
+    }
+
+    // ---- study scope ----
+
+    // A bearer husband and his married-in wife (@F1@); a bearer daughter and her husband of another surname (@F2@); a stranger.
+    const string StudyGed = """
+        0 @I1@ INDI
+        1 NAME Amos /Ashworth/
+        1 SEX M
+        1 BIRT
+        2 PLAC Salem, Oregon
+        1 FAMS @F1@
+        0 @I2@ INDI
+        1 NAME Ruth /Holt/
+        1 SEX F
+        1 BIRT
+        2 PLAC Salem, Oregon
+        1 FAMS @F1@
+        0 @I3@ INDI
+        1 NAME Ada /Ashworth/
+        1 SEX F
+        1 BIRT
+        2 PLAC Salem, Oregon
+        1 FAMS @F2@
+        0 @I4@ INDI
+        1 NAME Eli /Pike/
+        1 SEX M
+        1 BIRT
+        2 PLAC Salem, Oregon
+        1 FAMS @F2@
+        0 @I5@ INDI
+        1 NAME Saul /Marsh/
+        1 SEX M
+        1 BIRT
+        2 PLAC Salem, Oregon
+        0 @F1@ FAM
+        1 HUSB @I1@
+        1 WIFE @I2@
+        0 @F2@ FAM
+        1 HUSB @I4@
+        1 WIFE @I3@
+        """;
+
+    static readonly GapRules AshworthStudy = new() { Scope = new StudyScope(["Ashworth"]) };
+
+    static (List<SelectionTarget> Targets, List<SuppressedCard> Suppressed) Named(GapRules rules, params string[] xrefs)
+    {
+        var model = ModelBuilder.Build(Ged55Parser.Parse(StudyGed));
+        var people = xrefs.Select(x => model.Individuals[x]).ToList();
+        var suppressed = new List<SuppressedCard>();
+        var gaps = GapDetector.DetectForPeople(people, 2026, suppressed, rules);
+        return (GapDetector.WithNamedBiographyCards(people, gaps, suppressed, rules), suppressed);
+    }
+
+    static IEnumerable<string> CardsOf(IEnumerable<SelectionTarget> targets, string xref) =>
+        targets.Where(t => t.Xref == xref).Select(t => t.CardType);
+
+    [Fact]
+    public void StudyScope_ABearerGetsEveryCard_AndTheSpouseWhoDoesNotBearItOnlyEnrichment()
+    {
+        var (targets, suppressed) = Named(AshworthStudy, "@I1@", "@I2@");
+
+        Assert.Equal(["New parent", "New child", "Enrich person", "Biography"], CardsOf(targets, "@I1@"));
+        Assert.Equal(["Enrich person"], CardsOf(targets, "@I2@"));
+        var withheld = Assert.Single(suppressed);
+        Assert.Equal(("@I2@", "New parent", true), (withheld.Xref, withheld.CardType, withheld.OutOfScope));
+        Assert.StartsWith("out of study scope: bears no study surname; the spouse of someone who does", withheld.Reason);
+    }
+
+    [Fact]
+    public void StudyScope_WithholdsTheNewChildCardOfAFamilyWhoseHusbandDoesNotBearTheSurname_AndHisBiography()
+    {
+        var (targets, suppressed) = Named(AshworthStudy, "@I3@", "@I4@");
+
+        Assert.Equal(["New parent", "Enrich person"], CardsOf(targets, "@I3@"));
+        Assert.Equal(["Enrich person"], CardsOf(targets, "@I4@"));
+        Assert.Equal(
+            [("@I3@", "New child"), ("@I4@", "New parent"), ("@I4@", "Biography")],
+            suppressed.Select(c => (c.Xref, c.CardType)));
+        Assert.Equal("out of study scope: @F2@ has no husband who bears a study surname, so its children would not bear one", suppressed[0].Reason);
+    }
+
+    [Fact]
+    public void StudyScope_DealsTheMarriedInWifeTheNewChildCardOfHerHusbandsFamily()
+    {
+        var (targets, _) = Named(AshworthStudy, "@I2@");
+
+        Assert.Equal(["New child", "Enrich person"], CardsOf(targets, "@I2@"));
+    }
+
+    [Fact]
+    public void StudyScope_DealsNothingToAnyoneElse_AndListsEachCardWithheld()
+    {
+        var (targets, suppressed) = Named(AshworthStudy, "@I5@");
+
+        Assert.Empty(targets);
+        Assert.Equal(["New parent", "New spouse", "Enrich person", "Biography"], suppressed.Select(c => c.CardType));
+        Assert.All(suppressed, c => Assert.Equal("out of study scope: bears no study surname and is not married to someone who does", c.Reason));
+    }
+
+    [Fact]
+    public void StudyScope_IsNotLiftedByIncludeSuppressed()
+    {
+        var (targets, suppressed) = Named(AshworthStudy with { IncludeSuppressed = true }, "@I4@", "@I5@");
+
+        Assert.Equal(["Enrich person"], targets.Select(t => t.CardType));
+        Assert.All(suppressed, c => Assert.True(c.OutOfScope));
+    }
+
+    [Fact]
+    public void WithoutAStudyScope_ANamedPersonGetsEveryCard()
+    {
+        var (targets, suppressed) = Named(GapRules.Default, "@I4@", "@I5@");
+
+        Assert.Equal(["New parent", "New child", "Enrich person", "Biography"], CardsOf(targets, "@I4@"));
+        Assert.Equal(["New parent", "New spouse", "Enrich person", "Biography"], CardsOf(targets, "@I5@"));
+        Assert.Empty(suppressed);
+    }
+
+    [Fact]
+    public void StudyScope_APersonOutsideIt_TakesNoMarriageFromASpouseInsideIt()
+    {
+        // Ruth is in scope by her first marriage; her second husband is not, and is named before her.
+        string ged = StudyGed.ReplaceLineEndings("\n").Replace("1 FAMS @F1@\n0 @I3@", "1 FAMS @F1@\n1 FAMS @F3@\n0 @I3@")
+            + "\n0 @I6@ INDI\n1 NAME Noah /Pike/\n1 SEX M\n1 FAMS @F3@\n0 @F3@ FAM\n1 HUSB @I6@\n1 WIFE @I2@\n";
+        var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
+
+        var targets = GapDetector.DetectForPeople([model.Individuals["@I6@"], model.Individuals["@I2@"]], 2026, rules: AshworthStudy);
+
+        var card = Assert.Single(targets, t => t.CardType == "Enrich person");
+        Assert.Equal("@I2@", card.Xref);
+        Assert.Equal(2, card.Enrichments!.Count(e => e.Fact == "Marriage"));
+    }
+
+    [Fact]
+    public void StudyScope_InADraw_ReportsWhatTheSurnameFilterUsedToSkipSilently()
+    {
+        var model = ModelBuilder.Build(Ged55Parser.Parse(StudyGed));
+        var silent = new List<SuppressedCard>();
+        var reported = new List<SuppressedCard>();
+
+        var unscoped = GapDetector.Detect(model, ["Ashworth"], 2026, silent);
+        var scoped = GapDetector.Detect(model, ["Ashworth"], 2026, reported, AshworthStudy);
+
+        Assert.Equal(unscoped.Select(t => (t.Xref, t.CardType)), scoped.Select(t => (t.Xref, t.CardType)));
+        Assert.Empty(silent);
+        Assert.Equal(
+            [("@I2@", "New parent"), ("@I3@", "New child"), ("@I4@", "New parent")],
+            reported.Select(c => (c.Xref, c.CardType)));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1332,6 +1541,57 @@ public class TargetDrawerTests
         Assert.All(order.Distinct(), xref => Assert.Equal(
             order.LastIndexOf(xref) - order.IndexOf(xref) + 1, order.Count(x => x == xref)));
         Assert.Equal(["New parent", "New spouse"], result.Targets.Where(t => t.Xref == "@I1@").Select(t => t.CardType));
+    }
+
+    [Fact]
+    public void DrawPack_ListsTheCardsAStudyScopeWithholdsForTheDrawnPeopleOnly()
+    {
+        // Two bearer wives with husbands of another surname, and a bearer with no anchor at all.
+        const string ged = """
+            0 @I1@ INDI
+            1 NAME Ada /Ashworth/
+            1 SEX F
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Eli /Pike/
+            1 SEX M
+            1 FAMS @F1@
+            0 @I3@ INDI
+            1 NAME Ann /Ashworth/
+            1 SEX F
+            1 FAMS @F2@
+            0 @I4@ INDI
+            1 NAME Noah /Marsh/
+            1 SEX M
+            1 FAMS @F2@
+            0 @I5@ INDI
+            1 NAME Amos /Ashworth/
+            1 SEX M
+            0 @F1@ FAM
+            1 HUSB @I2@
+            1 WIFE @I1@
+            1 MARR
+            2 PLAC Salem, Oregon
+            0 @F2@ FAM
+            1 HUSB @I4@
+            1 WIFE @I3@
+            1 MARR
+            2 PLAC Salem, Oregon
+            """;
+        var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
+        var rules = new GapRules { Scope = new StudyScope(["Ashworth"]) };
+        var suppressed = new List<SuppressedCard>();
+        var husbands = GapDetector.Detect(model, ["Ashworth"], 2026, suppressed, rules).Where(t => t.Xref is "@I2@" or "@I4@").ToList();
+
+        var pack = TargetDrawer.DrawPack(model, husbands, people: 1, seed: 3, suppressed, rules);
+
+        string drawn = Assert.Single(pack.Targets).Xref;
+        Assert.Equal("Enrich person", pack.Targets[0].CardType);
+        var outOfScope = pack.SuppressedCards.Where(c => c.OutOfScope).ToList();
+        Assert.All(outOfScope, c => Assert.Equal(drawn, c.Xref));
+        Assert.Contains(outOfScope, c => c.CardType == "Biography");
+        Assert.Contains(outOfScope, c => c.CardType == "New parent");
+        Assert.Contains(pack.SuppressedCards, c => c.Xref == "@I5@" && c.Reason.StartsWith("bare-bones subject"));
     }
 
     [Fact]

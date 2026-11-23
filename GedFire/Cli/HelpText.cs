@@ -23,7 +23,7 @@ public static class HelpText
                         individual: xref, normalized name, birth/death, parents,
                         marriages with spouse and children xrefs).
 
-          select-targets --input <ged> --output <wanted.json> --count <N> --surnames <list>
+          select-targets --input <ged> --output <wanted.json> --count <N> --surnames <list> [--study-surnames <list>]
                         Detect eligible research gaps for the given surnames
                         (New parent/spouse/child, Enrich person), score each
                         by nominal points and GED-only difficulty, and draw
@@ -33,6 +33,10 @@ public static class HelpText
                         New child card is withheld when the wife was 50 or older
                         at marriage or the marriage lasted under a year;
                         suppressedCards lists the withheld cards and reasons.
+                        --study-surnames holds the pack to a surname study's
+                        scope: a spouse who does not bear one of them gets only
+                        Enrich person, and a family's New child card needs a
+                        husband who bears one.
 
           apply     --input <ged> --changes <json> --items all|1,3 [--dry-run]
                         Apply approved research-proposal changeset items to the

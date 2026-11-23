@@ -155,7 +155,10 @@ public class SchemaCatalogTests
     [Fact]
     public void TheCardsSchemaAcceptsACardsFile()
     {
-        using var document = JsonDocument.Parse("""{ "cards": [ { "xref": "@I1@", "class": "enrich-person", "gap": "enrich-death", "points": 7 } ] }""");
+        using var document = JsonDocument.Parse("""
+            { "cards": [ { "xref": "@I1@", "class": "enrich-person", "gap": "enrich-death", "points": 7 },
+                         { "xref": "@I1@", "class": "new-child", "points": 5, "family": "@F1@" } ] }
+            """);
 
         Assert.True(Compile(SchemaCatalog.Cards).Evaluate(document.RootElement).IsValid);
     }

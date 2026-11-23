@@ -856,4 +856,73 @@ public class ChangesetDrafterTests
 
         Assert.True(applied.Success, string.Join("; ", applied.Errors));
     }
+
+    // ---- one structure cites a source page once ----
+
+    const string LonePerson = "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME Hiram /Test/\n1 SEX M\n0 TRLR\n";
+
+    static GedCore.Apply.ApplyResult Validate(DraftResult drafted) =>
+        GedCore.Apply.ChangesetApplier.Run(
+            Encoding.UTF8.GetBytes(LonePerson), GedCore.Apply.Changeset.Parse(drafted.Changeset!.ToJsonString()), [1], dryRun: true);
+
+    static DraftNote Note(string text, int quay, string excerpt) =>
+        new("@I1@", text) { Cites = [new DraftCite(null, quay, excerpt)] };
+
+    [Fact]
+    public void TwoNotesCitingOnePageAtDifferentGrades_DraftAsTwoNotesThatValidationAccepts()
+    {
+        var finding = Finding("F-1", Memorial(), "Born in Salem. Died in Salem.", [],
+            notes: [Note("He was born in Salem.", 2, "Born in Salem."), Note("He died in Salem.", 1, "Died in Salem.")]);
+
+        var drafted = new ChangesetDrafter(new FakeLookup()).Draft(DraftNoteJoiner.Join([finding]));
+
+        Assert.True(drafted.Success, string.Join("; ", drafted.Errors));
+        var notes = Ops(drafted).Where(o => o.GetProperty("op").GetString() == "createOrUpdateNote").ToList();
+        Assert.Equal([2, 1], notes.Select(n => Assert.Single(n.GetProperty("citations").EnumerateArray()).GetProperty("quay").GetInt32()));
+        var validated = Validate(drafted);
+        Assert.True(validated.Success, string.Join("; ", validated.Errors));
+    }
+
+    [Fact]
+    public void ANoteCitingOnePageAtTwoGrades_IsRefusedByTheDraft()
+    {
+        var note = new DraftNote("@I1@", "He was born and died in Salem.")
+        {
+            Cites = [new DraftCite(null, 2, "Born in Salem."), new DraftCite(null, 1, "Died in Salem.")],
+        };
+
+        var drafted = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "Born in Salem. Died in Salem.", [], notes: [note])]);
+
+        Assert.Equal(
+            ["item 1: createOrUpdateNote on @I1@ cites @NewSource1@ at \"Memorial #1\" 2 times, at QUAY 2 and 1 (findings F-1); " +
+             "a fact, note or family cites a source page once, so give the claims that cite it there one grade."],
+            drafted.Errors);
+        Assert.Contains(Validate(drafted).Errors, e => e.Contains("cited twice on one structure"));
+    }
+
+    [Fact]
+    public void OneFactFromTwoFindingsOfOnePageAtDifferentGrades_IsRefusedByTheDraft()
+    {
+        var drafted = new ChangesetDrafter(new FakeLookup()).Draft([
+            Finding("F-1", Memorial(), "Died 1 Jan 1900.", [Fact("DEAT", "1 JAN 1900", null, 2)]),
+            Finding("F-2", Memorial(), "Death 1 Jan 1900 in Salem.", [Fact("DEAT", "1 JAN 1900", null, 1)])]);
+
+        Assert.Contains("createOrUpdateVital on @I1@ cites @NewSource1@ at \"Memorial #1\" 2 times, at QUAY 2 and 1 (findings F-1, F-2)",
+            Assert.Single(drafted.Errors));
+    }
+
+    [Fact]
+    public void ANeverMarriedFact_DraftsAsACitedNmrOfZeroThatValidationAccepts()
+    {
+        var drafted = new ChangesetDrafter(new FakeLookup()).Draft(
+            [Finding("F-1", Memorial(), "Marital status: single.", [Text("NMR", "0", 2)], card: "new-spouse")]);
+
+        var op = Assert.Single(Ops(drafted));
+        Assert.Equal(("createOrUpdateVital", "NMR", "0"),
+            (op.GetProperty("op").GetString(), op.GetProperty("fact").GetString(), op.GetProperty("value").GetString()));
+        Assert.Equal("Memorial #1", Assert.Single(op.GetProperty("citations").EnumerateArray()).GetProperty("page").GetString());
+        var validated = Validate(drafted);
+        Assert.True(validated.Success, string.Join("; ", validated.Errors));
+    }
 }

@@ -10,102 +10,146 @@ internal sealed record NewRelativeOutcome(string? Wrote, string? Reason, IReadOn
 /// new-spouse), one-to-one, keyed by card position: an exact subject-name match claims its
 /// minted person first, the remaining cards claim an unclaimed person in anchor-xref order,
 /// and a card left only with already-claimed people stays open, naming the collision.
+/// A New child card belongs to the one family the deal dealt it for: only a child joining a family that
+/// existed, childless, with the subject in it closes the card, and a family's card is paid once.
+/// A new-spouse card no spouse closes is closed by a newly recorded never-married answer.
 /// </summary>
 internal static class NewRelativeCardAllocator
 {
-    sealed record Candidate(string Family, string Person);
+    const string NewChild = "new-child";
+    const string NewParent = "new-parent";
+    const string NewSpouse = "new-spouse";
 
-    public static Dictionary<int, NewRelativeOutcome> Allocate(IReadOnlyList<PointsCard> cards, TreeChanges changes)
+    // A person the changeset added to a family; NotDealt says why that family's New child card is not the card being priced.
+    sealed record Candidate(string Family, string Person, string? NotDealt = null);
+
+    sealed record Entry(PointsCard Card, int Index, string Class, IReadOnlyList<Candidate> Candidates)
+    {
+        public IEnumerable<Candidate> Dealt => Candidates.Where(c => c.NotDealt is null);
+    }
+
+    // The card each added person closed, and the card each family's New child card was paid to.
+    sealed class Claims
+    {
+        readonly Dictionary<string, PointsCard> _people = new(StringComparer.Ordinal);
+        readonly Dictionary<string, (PointsCard Card, string Child)> _families = new(StringComparer.Ordinal);
+
+        public bool IsFree(Entry entry, Candidate candidate) =>
+            !_people.ContainsKey(candidate.Person) && !(entry.Class == NewChild && _families.ContainsKey(candidate.Family));
+
+        public void Take(Entry entry, Candidate candidate)
+        {
+            _people[candidate.Person] = entry.Card;
+            if (entry.Class == NewChild) _families[candidate.Family] = (entry.Card, candidate.Person);
+        }
+
+        public string Collision(Entry entry, Candidate taken) =>
+            entry.Class == NewChild && _families.TryGetValue(taken.Family, out var paid)
+                ? $"not closed by this apply: {taken.Family}'s New child card is already closed by card {paid.Card.Key} (CHIL {paid.Child}) — a family's New child card is paid once"
+                : $"not closed by this apply: {taken.Person} already closed card {_people[taken.Person].Key} — one applied person closes at most one card";
+    }
+
+    public static Dictionary<int, NewRelativeOutcome> Allocate(IReadOnlyList<PointsCard> cards, TreeChanges changes, ICardDeal deal)
     {
         var entries = cards
             .Select((card, index) => (Card: card, Index: index, Class: CardText.Normalize(card.Class)))
-            .Where(e => e.Class is "new-child" or "new-parent" or "new-spouse")
-            .Select(e => (e.Card, e.Index, e.Class, Candidates: CandidatesFor(e.Class, e.Card, changes)))
+            .Where(e => e.Class is (NewChild or NewParent or NewSpouse) && deal.WithheldReason(e.Card, e.Card.Family) is null)
+            .Select(e => new Entry(e.Card, e.Index, e.Class, CandidatesFor(e.Class, e.Card, changes, deal)))
             .OrderBy(e => e.Card.Xref, StringComparer.Ordinal)
             .ToList();
 
         var result = new Dictionary<int, NewRelativeOutcome>();
-        var claimedBy = new Dictionary<string, PointsCard>(StringComparer.Ordinal);
+        var claims = new Claims();
 
         foreach (var entry in entries.Where(e => e.Card.Name is not null))
         {
-            var match = entry.Candidates.FirstOrDefault(c =>
-                !claimedBy.ContainsKey(c.Person)
+            var match = entry.Dealt.FirstOrDefault(c =>
+                claims.IsFree(entry, c)
                 && MintedName(changes, c.Person) is { } minted && CardText.Fold(minted) == CardText.Fold(entry.Card.Name!));
             if (match is null) continue;
-            claimedBy[match.Person] = entry.Card;
-            result[entry.Index] = Closes(entry.Class, entry.Card, match);
+            claims.Take(entry, match);
+            result[entry.Index] = Closes(entry, match);
         }
 
         foreach (var entry in entries.Where(e => !result.ContainsKey(e.Index)))
-        {
-            if (entry.Candidates.Count == 0)
-            {
-                result[entry.Index] = SubjectLinkedAsSpouse(entry.Class, entry.Card, changes)
-                    ? new NewRelativeOutcome($"spouse in {SpouseFamily(entry.Card, changes)}", null, [])
-                    : Open(NoRelativeReason(entry.Class));
-                continue;
-            }
-
-            var open = entry.Candidates.FirstOrDefault(c => !claimedBy.ContainsKey(c.Person));
-            if (open is not null)
-            {
-                claimedBy[open.Person] = entry.Card;
-                result[entry.Index] = Closes(entry.Class, entry.Card, open);
-            }
-            else
-            {
-                var taken = entry.Candidates[0];
-                result[entry.Index] = Open(
-                    $"not closed by this apply: {taken.Person} already closed card {claimedBy[taken.Person].Key} — one applied person closes at most one card");
-            }
-        }
+            result[entry.Index] = WithoutNameMatch(entry, claims, changes, deal);
         return result;
     }
 
-    static List<Candidate> CandidatesFor(string cardClass, PointsCard card, TreeChanges changes)
+    static NewRelativeOutcome WithoutNameMatch(Entry entry, Claims claims, TreeChanges changes, ICardDeal deal)
+    {
+        if (entry.Dealt.FirstOrDefault(c => claims.IsFree(entry, c)) is { } free)
+        {
+            claims.Take(entry, free);
+            return Closes(entry, free);
+        }
+        if (entry.Dealt.FirstOrDefault() is { } taken) return Open(claims.Collision(entry, taken));
+        if (entry.Candidates.Count > 0) return Open(entry.Candidates[0].NotDealt!);
+
+        // No added person is claimed by either of these, so nothing can collide.
+        if (entry.Class == NewSpouse && SpouseFamily(entry.Card, changes) is { } family)
+            return new NewRelativeOutcome($"spouse in {family}", null, []);
+        if (entry.Class == NewSpouse && deal.RecordedNeverMarried(entry.Card.Xref))
+            return new NewRelativeOutcome($"NMR 0 on {entry.Card.Xref} (never married, cited)", null, []);
+        return Open(NoRelativeReason(entry));
+    }
+
+    static List<Candidate> CandidatesFor(string cardClass, PointsCard card, TreeChanges changes, ICardDeal deal)
     {
         var found = new List<Candidate>();
         foreach (var (xref, family) in changes.Families)
         {
-            IReadOnlyList<string> people = cardClass switch
+            switch (cardClass)
             {
-                "new-child" when family.Partners.Contains(card.Xref) => family.AddedChildren,
-                "new-parent" when family.Children.Contains(card.Xref) => family.AddedPartners,
-                "new-spouse" when family.Partners.Contains(card.Xref) && family.Partners.Count >= 2
-                    => [.. family.AddedPartners.Where(p => p != card.Xref)],
-                _ => [],
-            };
-            found.AddRange(people.Select(p => new Candidate(xref, p)));
+                case NewChild when family.Partners.Contains(card.Xref):
+                    string? notDealt = NotDealtReason(card, xref, family, deal);
+                    found.AddRange(family.AddedChildren.Select(child =>
+                        new Candidate(xref, child, notDealt is null ? null : $"{child} joined {xref}, {notDealt}")));
+                    break;
+                case NewParent when family.Children.Contains(card.Xref):
+                    found.AddRange(family.AddedPartners.Select(parent => new Candidate(xref, parent)));
+                    break;
+                case NewSpouse when family.Partners.Contains(card.Xref) && family.Partners.Count >= 2:
+                    found.AddRange(family.AddedPartners.Where(p => p != card.Xref).Select(spouse => new Candidate(xref, spouse)));
+                    break;
+            }
         }
         return found;
+    }
+
+    // Why the deal holds no New child card of the subject's for this family that the priced card could be; null when it does.
+    static string? NotDealtReason(PointsCard card, string xref, FamilyChange family, ICardDeal deal)
+    {
+        if (card.Family is not null && card.Family != xref) return $"not the card's family {card.Family}";
+        if (family.Created) return "a family this changeset creates; a New child card is dealt for a family that was childless before it";
+        if (family.AddedPartners.Contains(card.Xref))
+            return "a family the subject joins in this changeset; a New child card is dealt for a family the subject was already a partner in";
+        if (family.HadChildren) return "which already had a child, so it had no New child card";
+        return deal.WithheldReason(card, xref) is { } withheld ? $"whose New child card is withheld ({withheld})" : null;
     }
 
     static string? MintedName(TreeChanges changes, string person) =>
         changes.Names.TryGetValue(person, out var name) && name.Before is null ? name.After : null;
 
-    static NewRelativeOutcome Closes(string cardClass, PointsCard card, Candidate claimed) => cardClass switch
+    static NewRelativeOutcome Closes(Entry entry, Candidate claimed) => entry.Class switch
     {
-        "new-child" => new($"CHIL {claimed.Person} in {claimed.Family}", null, [claimed.Person]),
-        "new-parent" => new($"parent {claimed.Person} of {card.Xref} in {claimed.Family}", null, [claimed.Person]),
+        NewChild => new($"CHIL {claimed.Person} in {claimed.Family}", null, [claimed.Person]),
+        NewParent => new($"parent {claimed.Person} of {entry.Card.Xref} in {claimed.Family}", null, [claimed.Person]),
         _ => new($"spouse in {claimed.Family}", null, [claimed.Person]),
     };
 
     static NewRelativeOutcome Open(string reason) => new(null, reason, []);
 
-    // A new-spouse card also closes when the subject itself was the partner the changeset
-    // linked into a two-partner family; no added person is claimed, so nothing can collide.
-    static bool SubjectLinkedAsSpouse(string cardClass, PointsCard card, TreeChanges changes) =>
-        cardClass == "new-spouse" && SpouseFamily(card, changes) is not null;
-
+    // The two-partner family the changeset linked the subject itself into, when it added no other partner to claim.
     static string? SpouseFamily(PointsCard card, TreeChanges changes) =>
         changes.Families.FirstOrDefault(f =>
             f.Value.Partners.Contains(card.Xref) && f.Value.Partners.Count >= 2 && f.Value.AddedPartners.Count > 0).Key;
 
-    static string NoRelativeReason(string cardClass) => cardClass switch
+    static string NoRelativeReason(Entry entry) => entry.Class switch
     {
-        "new-child" => "no child added to a family the subject is a partner in",
-        "new-parent" => "no parent added to a family the subject is a child in",
-        _ => "no spouse added to a family the subject is a partner in",
+        NewChild when entry.Card.Family is { } family => $"no child added to {family}",
+        NewChild => "no child added to a family the subject is a partner in",
+        NewParent => "no parent added to a family the subject is a child in",
+        _ => "no spouse added to a family the subject is a partner in, and no cited never-married answer (NMR 0) recorded",
     };
 }

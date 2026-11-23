@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace GedCore.Points;
 
 /// <summary>
@@ -7,12 +9,25 @@ namespace GedCore.Points;
 /// </summary>
 public sealed record PointsCard(string Xref, string Class, string? Gap, string? Name, int Points, int Bonus = 0)
 {
+    /// <summary>For a new-child card, the family it was dealt for; null leaves it to any childless family of the subject.</summary>
+    public string? Family { get; init; }
+
     public string Key => Gap is null ? $"{Xref}|{Class}" : $"{Xref}|{Class}|{Gap}";
 }
 
-public sealed record ClosedCard(string CardKey, int Points, string Wrote);
+/// <summary><see cref="Family"/> repeats the card's own, so two New child cards of one person can be told apart.</summary>
+public sealed record ClosedCard(string CardKey, int Points, string Wrote)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Family { get; init; }
+}
 
-public sealed record UnclosedCard(string CardKey, string Reason);
+/// <inheritdoc cref="ClosedCard"/>
+public sealed record UnclosedCard(string CardKey, string Reason)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Family { get; init; }
+}
 
 public sealed record SubjectMismatch(string CardKey, string CardSubject, string AppliedName);
 

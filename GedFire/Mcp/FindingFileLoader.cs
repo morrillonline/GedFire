@@ -36,9 +36,10 @@ public static partial class FindingFileLoader
         var errors = loaded.SelectMany(f => f.Errors).ToList();
         if (errors.Count > 0) return new LoadedFindings([], [], errors);
 
-        return new LoadedFindings(DraftNoteJoiner.Join([.. loaded.Select(f => f.Finding!)]), [.. loaded.Select(f => f.Name)], [])
+        var cited = StagedFindings.CitedBeside(loaded.Select(f => (f.Name, f.Finding!)));
+        return new LoadedFindings(DraftNoteJoiner.Join([.. loaded.Select(f => f.Finding!)], cited), [.. loaded.Select(f => f.Name)], [])
         {
-            Cited = StagedFindings.CitedBeside(loaded.Select(f => (f.Name, f.Finding!))),
+            Cited = cited,
         };
     }
 

@@ -165,6 +165,9 @@ public static class ModelBuilder
                     case "PROB":
                         indi.Probate = ParseEvent(child, "PROB");
                         break;
+                    case "NMR" when indi.NeverMarried is null && child.Value.Trim() == "0":
+                        indi.NeverMarried = ParseEvent(child, "NMR");
+                        break;
                     case "CENS":
                     case "RESI":
                         indi.Census.Add(ParseEvent(child, child.Tag));
