@@ -114,7 +114,7 @@ public class GapDetectorTests
         var suppressed = new List<SuppressedCard>();
 
         var targets = explicitPeople
-            ? GapDetector.DetectForPeople(model.Individuals.Values, 2026, suppressed)
+            ? GapDetector.DetectForPeople(model.Individuals.Values, suppressed)
             : GapDetector.Detect(model, ["Ashworth"], 2026, suppressed);
 
         Assert.Equal("Enrich person", Assert.Single(targets).CardType);
@@ -153,7 +153,7 @@ public class GapDetectorTests
         {
             var suppressed = new List<SuppressedCard>();
             var targets = explicitPeople
-                ? GapDetector.DetectForPeople(model.Individuals.Values, 2026, suppressed)
+                ? GapDetector.DetectForPeople(model.Individuals.Values, suppressed)
                 : GapDetector.Detect(model, ["Ashworth"], 2026, suppressed);
 
             Assert.Contains(targets, card => card.CardType == "New parent");
@@ -192,7 +192,7 @@ public class GapDetectorTests
         {
             var suppressed = new List<SuppressedCard>();
             var targets = explicitPeople
-                ? GapDetector.DetectForPeople(model.Individuals.Values, 2026, suppressed)
+                ? GapDetector.DetectForPeople(model.Individuals.Values, suppressed)
                 : GapDetector.Detect(model, ["Ashworth"], 2026, suppressed);
 
             Assert.Equal(expectedChild ? 1 : 0, targets.Count(card => card.CardType == "New child"));
@@ -207,12 +207,12 @@ public class GapDetectorTests
     public void BareBonesGate_ReevaluatesAfterAnAnchorLands()
     {
         var person = new GedIndividual { Xref = "@I1@", FirstName = "Ada", LastNameRaw = "Ashworth" };
-        Assert.Equal("Enrich person", Assert.Single(GapDetector.DetectForPeople([person], 2026)).CardType);
+        Assert.Equal("Enrich person", Assert.Single(GapDetector.DetectForPeople([person])).CardType);
 
         person.Birth = new GedEvent { Date = "4 JUL 1872" };
 
         var suppressed = new List<SuppressedCard>();
-        Assert.Equal(3, GapDetector.DetectForPeople([person], 2026, suppressed).Count);
+        Assert.Equal(3, GapDetector.DetectForPeople([person], suppressed).Count);
         Assert.Empty(suppressed);
     }
 
@@ -238,7 +238,7 @@ public class GapDetectorTests
         var suppressed = new List<SuppressedCard>();
 
         var targets = explicitPeople
-            ? GapDetector.DetectForPeople([model.Individuals["@I1@"]], 2026, suppressed)
+            ? GapDetector.DetectForPeople([model.Individuals["@I1@"]], suppressed)
             : GapDetector.Detect(model, ["Ashworth"], 2026, suppressed).Where(card => card.Xref == "@I1@");
 
         Assert.Equal("Enrich person", Assert.Single(targets).CardType);
@@ -627,7 +627,7 @@ public class GapDetectorTests
     {
         var suppressed = new List<SuppressedCard>();
         var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
-        return (GapDetector.DetectForPeople([model.Individuals["@I1@"]], 2026, suppressed, rules), suppressed);
+        return (GapDetector.DetectForPeople([model.Individuals["@I1@"]], suppressed, rules), suppressed);
     }
 
     [Fact]
@@ -1250,6 +1250,22 @@ public class GapDetectorTests
         Assert.NotEmpty(targets);
     }
 
+    [Fact]
+    public void PrivacyFloor_DoesNotHoldBackAPersonTheOwnerNames()
+    {
+        var person = new GedIndividual
+        {
+            Xref = "@I1@", FirstName = "William", LastNameRaw = "Morrill", IsMale = true,
+            Birth = new GedEvent { Tag = "BIRT", Date = "1990" },
+        };
+
+        var gaps = GapDetector.DetectForPeople([person]);
+        var cards = GapDetector.WithNamedBiographyCards([person], gaps);
+
+        Assert.Contains(gaps, c => c.CardType == "Enrich person");
+        Assert.Contains(cards, c => c.CardType == "Biography");
+    }
+
     [Theory]
     [InlineData("4 JUL 1950", "Boston, Massachusetts", false, 0, 0)]       // within the privacy floor
     [InlineData("4 JUL 1910", "Boston, Massachusetts", true, 0, 3)]        // Common: complete vitals still earn a card
@@ -1286,7 +1302,7 @@ public class GapDetectorTests
         var man = Person("@I1@", true);
         var manWithoutGaps = Person("@I2@", true);
         var woman = Person("@I3@", false);
-        var gaps = GapDetector.DetectForPeople([man, woman], 2026);
+        var gaps = GapDetector.DetectForPeople([man, woman]);
 
         var pack = GapDetector.WithBiographyCards([man, manWithoutGaps, woman], gaps);
 
@@ -1351,7 +1367,7 @@ public class GapDetectorTests
     {
         var person = ModelBuilder.Build(Ged55Parser.Parse(Bachelor("1 NMR 0\n2 SOUR @S1@"))).Individuals["@I1@"];
 
-        var targets = GapDetector.DetectForPeople([person], 2026, rules: new GapRules { IncludeSuppressed = true });
+        var targets = GapDetector.DetectForPeople([person], rules: new GapRules { IncludeSuppressed = true });
 
         Assert.Contains(targets, t => t.CardType == "New spouse");
     }
@@ -1404,7 +1420,7 @@ public class GapDetectorTests
         var model = ModelBuilder.Build(Ged55Parser.Parse(StudyGed));
         var people = xrefs.Select(x => model.Individuals[x]).ToList();
         var suppressed = new List<SuppressedCard>();
-        var gaps = GapDetector.DetectForPeople(people, 2026, suppressed, rules);
+        var gaps = GapDetector.DetectForPeople(people, suppressed, rules);
         return (GapDetector.WithNamedBiographyCards(people, gaps, suppressed, rules), suppressed);
     }
 
@@ -1481,7 +1497,7 @@ public class GapDetectorTests
             + "\n0 @I6@ INDI\n1 NAME Noah /Pike/\n1 SEX M\n1 FAMS @F3@\n0 @F3@ FAM\n1 HUSB @I6@\n1 WIFE @I2@\n";
         var model = ModelBuilder.Build(Ged55Parser.Parse(ged));
 
-        var targets = GapDetector.DetectForPeople([model.Individuals["@I6@"], model.Individuals["@I2@"]], 2026, rules: AshworthStudy);
+        var targets = GapDetector.DetectForPeople([model.Individuals["@I6@"], model.Individuals["@I2@"]], rules: AshworthStudy);
 
         var card = Assert.Single(targets, t => t.CardType == "Enrich person");
         Assert.Equal("@I2@", card.Xref);
