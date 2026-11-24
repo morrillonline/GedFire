@@ -22,6 +22,9 @@ port. This describes the MCP connection, not where your client's AI model runs.
 historical records -> findings -> changesets -> review -> GEDCOM -> website
 ```
 
+A *finding* is what one source says. A *changeset* is a reviewable set of typed
+edits drafted from findings.
+
 GedFire handles the mechanics. You and your reviewer judge the evidence.
 The server exposes seventeen typed tools; only `apply_changeset` can modify
 the bound GEDCOM. Other tools can write drafts and reports to separate files.
@@ -53,14 +56,12 @@ communicates through the process streams, not a network connection.
 Ask your agent: **"How many people and families are in this file?"**
 It should call `get_document_stats` and report both counts.
 
-`--read-only` blocks GEDCOM changes, not drafting or report files. Keep it
-until you understand the
-[safety and privacy limits](#safety-and-review).
+Keep `--read-only` until you understand the [safety limits](#safety-and-review).
 
 ## Try the fictional demo
 
 [Browse the generated family pages](https://morrillonline.github.io/GedFire/).
-CI rebuilds this site from the fictional Ash family on every push. Hover over
+CI rebuilds this site from the fictional Ash family whenever the demo or the code changes on `main`. Hover over
 the footnotes to read each fact's citations.
 
 To run the demo yourself, download or clone this repository. From its root:
@@ -98,8 +99,7 @@ a record says, identify whom it concerns, then propose a cited change.
   GEDCOM rather than maintaining a separate copy of its facts.
 
 Agents exchange compact findings and operations instead of rewriting whole
-records. Token use depends on the client and task; this README makes no
-quantified savings claim.
+records.
 
 GedFire is not a graphical tree editor, record provider, or hosted genealogy
 service. It cannot establish that a quotation is genuine or an identification
@@ -108,7 +108,6 @@ is correct.
 ## Connect an AI client
 
 Choose **local** or **stdio** if your client asks for the MCP server type.
-Configure an executable command and arguments, not a remote server URL.
 
 ### VS Code / GitHub Copilot
 
@@ -192,75 +191,24 @@ fails, check:
 
 GedFire needs no API keys, credentials, or environment variables.
 
-## Research workflow
-
-**A finding records what a source says.** Capture a verbatim extract, source
-and locator, source and information classes, claimed facts, and quality grades.
-Keep conflicting findings instead of flattening them into one conclusion.
-
-**Correlation identifies the person.** Use `find_person` for a hinted name
-lookup or `match_record` for a household, obituary, or other multi-person
-record. Inspect the candidates and exclusions. `match_record` returns `single`
-only when something besides the name (lifespan, place, or kin) supports the
-match; a lead on the name alone is `weak`. A deterministic match score is
-not a probability or a substitute for a proof argument.
-
-**A changeset specifies the edits.** `draft_changeset` compiles findings into
-typed operations. It reconciles compatible facts, preserves their citations,
-and leaves genuine disagreements as `open` decisions. A repeatable fact such as
-a census is placed by its date, so it still applies after another approved
-changeset adds instances of the same tag, and a spouse relation between people
-who are already partners lands on their existing family. Fix the findings and
-draft again when validation exposes a defect.
-
-Changesets follow GedFire's changeset contract (`gedfire schema changeset`;
-`describe_changeset_ops` is the readable guide). `citations` is always an
-array; a relationship op cites the family in `familyCitations`; a fact gives
-`value`, or `date` and `place`, as its tag requires; and new people are
-declared once in the item's `people`. Validation and apply refuse anything
-else, naming the path and the fix; redraft such a changeset from its finding
-with `draft_changeset`.
-
-Findings saved to disk follow GedFire's versioned finding-file schema
-(`gedfire schema finding-file`). It holds the draft entry, the identity argument,
-the record it was matched from, and a `meta` object that belongs to your own
-workflow. `validate_finding` checks those files before drafting, using the same
-error text `draft_changeset` gives. A note or a fact may cite any finding by
-id, whatever its target: another finding of the batch, or the `<id>.json`
-file staged beside the citing file. The cited finding lends only a citation of
-its record; nothing else is drafted from it. A biography note must cite at
-least one finding.
-
-NAME facts can correct the target or an existing relative bound by
-`existingPeople: ["@I10@"]` or a relation. Corrections preserve the previous
-name and its citations in a note. An intentional surname change requires
-`allowSurnameChange: true` on the NAME fact.
-
-**A proposal presents the case for review.** After `validate_changeset` and
-`check_plausibility`, call `draft_package`. Both checks accept `after`, the
-changesets approved ahead of this one, applied in memory in order, so a
-conflict between packages shows before apply. `draft_package` writes a numbered proposal
-from the finished changesets, including evidence, grades, and any identity
-arguments the author supplied. It also checks the changesets together, and
-refuses a package that grades one extract twice or names one new person two ways.
-
-**Apply only what your review process accepts.** Select the approved items
-with `apply_changeset`. It validates and verifies them again before writing.
-Generate the site when you are ready to publish. Family pages show every fact a
-changeset can write: events, attributes such as occupation, census entries,
-family events and notes, and details such as age and cause, each with its
-citations as footnotes.
-
-Source and information classes bound citation quality; they do not prove a
-claim. A death certificate may offer primary information about death but
-secondary information about birth. Read the [grading and drafting
-reference](docs/mcp-reference.md#drafting-a-changeset) for the QUAY ceilings.
-
 ## The tools
 
 The server binds to one GEDCOM and reloads it when the file changes on disk.
-Every returned xref belongs to that document only; never reuse it against a
+Every returned xref (a record ID such as `@I1@`) belongs to that document only; never reuse it against a
 different file or provider.
+
+Use the advertised MCP schemas for exact parameters and the
+[MCP reference](docs/mcp-reference.md) for behavior and examples.
+Every tool rejects missing required parameters and unrecognized parameters.
+The error names the offending fields and lists the accepted ones.
+
+### Tools for reading
+
+These tools never change the GEDCOM. To identify a person, use `find_person`
+for a hinted name lookup or `match_record` for a household, obituary, or other
+multi-person record. `match_record` calls a match `single` only when lifespan,
+place, or kin support it beyond the name; its score is not a probability or a
+proof.
 
 | Tool | Purpose |
 |---|---|
@@ -270,22 +218,81 @@ different file or provider.
 | `get_records` | Fetch several records at once, optionally selecting fields. |
 | `match_record` | Compare a multi-person record with tree families and survey same-name rivals. |
 | `research_brief` | Summarize a person's facts, kin, gaps, notes, duplicates, and plausibility issues. |
-| `select_targets` | Draw people with research gaps, or score specified people, returning every card that pays for each, including a man's repeatable Biography card; optionally within a surname study's scope. |
+| `validate_document` | Check the whole document for GEDCOM 7 conformance. |
 | `date_calc` | Normalize dual dates, add or subtract ages, or calculate elapsed time. |
 | `describe_changeset_ops` | Return the changeset contract: envelope, structures, operations, and worked examples. |
 | `describe_schemas` | Return the versioned JSON Schemas of the finding-file and changeset contracts, cards, and saved reports. |
+
+### Tools for writing
+
+These tools turn findings into reviewed changes; only `apply_changeset`
+writes the GEDCOM. The work runs in four steps:
+
+1. **Record findings.** A finding is what one source says: a verbatim
+   extract, the source and locator, its source and information classes, the
+   facts it claims, and their grades. Keep conflicting findings rather than
+   merging them. `validate_finding` checks saved findings
+   (`gedfire schema finding-file`) before drafting.
+2. **Draft a changeset.** `draft_changeset` compiles findings into typed edits
+   under the changeset contract (`gedfire schema changeset`, with
+   `describe_changeset_ops` as its guide). It merges facts that agree, keeps
+   their citations, and leaves disagreements as `open` decisions. When
+   validation finds a defect, fix the finding and draft again.
+3. **Package it for review.** Run `validate_changeset` and
+   `check_plausibility`, both of which accept `after`, the changesets approved
+   ahead of this one. Then `draft_package` writes a numbered proposal with the
+   evidence, grades, and identity arguments.
+4. **Apply what review accepts.** `apply_changeset` validates and verifies the
+   selected items again before writing. `gedfire generate` then publishes
+   family pages showing every fact a changeset can write, with its citations.
+
+Source and information classes cap a citation's grade; they do not prove a
+claim. The [drafting reference](docs/mcp-reference.md#drafting-a-changeset)
+covers QUAY ceilings, name corrections, and the full contract.
+
+| Tool | Purpose |
+|---|---|
 | `validate_finding` | Check finding files for shape, readiness, and xref bindings without drafting. |
 | `draft_changeset` | Compile findings into cited changesets and report unresolved decisions. |
 | `draft_package` | Write a review proposal from finished changesets. |
-| `validate_changeset` | Preview selected edits, optionally after earlier changesets, enforce policy, and optionally score gap closures as `select_targets` priced them. |
+| `validate_changeset` | Preview selected edits, optionally after earlier changesets, and enforce policy. |
 | `check_plausibility` | Report chronological and biological issues the edits would introduce, optionally after earlier changesets. |
-| `validate_document` | Check the whole document for GEDCOM 7 conformance. |
 | `apply_changeset` | Validate, apply, and verify selected items, then write the GEDCOM. |
 
-Use the advertised MCP schemas for exact parameters and the
-[MCP reference](docs/mcp-reference.md) for behavior and examples.
-Every tool rejects missing required parameters and unrecognized parameters.
-The error names the offending fields and lists the accepted ones.
+### Tools for keeping score
+
+An AI agent making genealogical discoveries works better when it can measure
+its progress and knows that some work is worth more than other work. Points
+give it both: finding a missing parent is worth more than tidying a date, and
+a hard, early, or overseas line is worth more than an easy one. With that
+scale the agent can choose which task to take on next, and it can tell
+progress from effort, noticing when a session has added little to the tree.
+
+A research card is one unit of work on one person in the tree, with the points
+it pays. Each card names a gap and the person it belongs to:
+
+| Card | The work it asks for |
+|---|---|
+| New parent | Find a parent the tree does not record. |
+| New spouse | Find a spouse for a person with none recorded. |
+| New child | Find a child of a couple with none recorded. |
+| Enrich person | Make a birth, marriage, or death date or place exact, or cite it. |
+| Biography | Add cited facts beyond birth, marriage, and death, or cited biographical prose. Repeatable; dealt only for men, but pays for anyone. |
+
+A card pays its points plus a difficulty bonus for how hard the person is to
+research, judged from the era and place of their records and, for a new
+relative, how exact the person's birth is. An Enrich person card pays its points for each listed gap a changeset
+fills, with the bonus added once; a Biography card pays at most once per person
+per changeset. `select_targets` deals cards for a few people at a time, and
+`validate_changeset` with `cards` shows which cards a changeset closes and what
+they earn.
+
+These tools deal research cards and tally the points a changeset earns.
+
+| Tool | Purpose |
+|---|---|
+| `select_targets` | Draw people with research gaps for given surnames, or score named people, and return every card that pays for each. |
+| `validate_changeset` | With `cards`, preview which cards the selected edits close and the points they earn, priced as `select_targets` dealt them. |
 
 ## Safety and review
 
@@ -336,8 +343,11 @@ GedFire makes no network requests and sends no telemetry. Your chosen client
 may send tool results to a model provider; local processing does not make the
 whole conversation local.
 
-MCP tools work on the whole GEDCOM, living people included. Living people are
-masked in one place only: the family pages `gedfire generate` writes. There,
+MCP tools work on the whole GEDCOM, living people included, with two
+exceptions. A `select_targets` surname draw skips anyone born within the last
+100 years; naming a person by xref, or asking for a `research_brief`, is never
+limited. And the family pages `gedfire generate` writes mask living people.
+There,
 individuals with `RESN CONFIDENTIAL` or `RESN PRIVACY`, plus plausibly living
 people (no death-class fact and a birth within the last 100 years), become
 `Living <Surname>` placeholders without dates, places, notes, or media, and
@@ -368,6 +378,8 @@ Download your platform's archive from
 extract it. These self-contained binaries do not require a separate .NET install.
 
 On Windows, run `.\GedFire.exe help`. On Linux or macOS, run `./GedFire help`.
+To use a release with an MCP client, set `command` to the full path of the
+extracted `GedFire` executable.
 
 ## The command line
 
@@ -379,9 +391,9 @@ The CLI uses the same engine as the MCP server.
 | `upgrade` / `downgrade` | Convert between GEDCOM 5.5 and 7. |
 | `validate` | Check GEDCOM 7 conformance. |
 | `apply` | Preview or apply selected changeset items; use `--dry-run` to preview. |
-| `generate` | Generate static family pages, with optional media staging. |
+| `generate` | Generate static family pages, copying referenced media from the GEDCOM's folder; `--template` sets the page template. |
 | `export-index` | Export a JSON person-name index. |
-| `select-targets` | Draw people with research gaps for study surnames, with every card that pays for each; `--study-surnames` holds the pack to the study's scope. |
+| `select-targets` | Draw `--count` people with research gaps among those who bear, or married someone who bears, one of `--surnames`, and write every card that pays for each to `--output`; `--study-surnames` limits the cards to a surname study's scope. |
 | `date-calc` | Normalize dual dates or calculate dates and ages. |
 | `find-person` / `get-record` / `get-document-stats` | Run one lookup and print JSON without starting a server. |
 | `schema` | Print a versioned JSON Schema of a GedFire file contract (`finding`, `finding-file`, `record`, `argument`, `changeset`, `cards`, `changeset-report`, `draft-report`). |
@@ -413,11 +425,10 @@ JSON on stdout unless `--out` names a new file; existing output files are
 refused. Diagnostics go to stderr. The exit code is 0 on success and 1 on
 errors or failed validation/plausibility checks.
 
-`--policy` and `--read-only` have the same meaning as on
-`mcp`. Read-only prevents GEDCOM changes, not separate draft or report files.
+`--policy` and `--read-only` work as they do on `mcp`.
 Discovery needs no GEDCOM. Calls to `date_calc`, `describe_changeset_ops` and
 `describe_schemas` need no `--input`. Without `--input`, `validate_finding`
-checks every rule that needs no document. Existing convenience commands remain unchanged. See the
+checks every rule that needs no document. See the
 [script interface](docs/mcp-reference.md#command-line-tool-interface) for output details.
 
 ## Building from source

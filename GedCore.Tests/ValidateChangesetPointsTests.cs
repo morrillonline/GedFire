@@ -101,6 +101,28 @@ public class ValidateChangesetPointsTests : IDisposable
     }
 
     [Fact]
+    public async Task AWomansBiographyCard_PaysLikeAMans_ThoughTheDealNeverOffersOne()
+    {
+        var tool = new ValidateChangesetTool(WriteGed("""
+            0 @I1@ INDI
+            1 NAME Nellie /Test/
+            1 SEX F
+            """), new ToolGate());
+        var cards = Cards("""[ { "xref": "@I1@", "class": "Biography", "points": 3 } ]""");
+        string changeset = WriteChangeset("""
+            { "items": [ { "item": 1, "ops": [
+              { "op": "createOrUpdateVital", "record": "@I1@", "fact": "OCCU", "value": "Schoolmistress",
+                "citations": [{ "source": "@S1@", "page": "p. 4", "quay": 2 }] } ] } ] }
+            """);
+
+        var result = await tool.HandleAsync(changeset, "all", cards, CancellationToken.None);
+
+        var closed = Assert.Single(Structured(result).GetProperty("pointsPreview").GetProperty("closed").EnumerateArray());
+        Assert.Equal(3, closed.GetProperty("points").GetInt32());
+        Assert.Equal("cited OCCU @I1@", closed.GetProperty("wrote").GetString());
+    }
+
+    [Fact]
     public async Task ACardWhoseFactIsOnlyCited_IsNotClosed()
     {
         string path = WriteGed();

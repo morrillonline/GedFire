@@ -41,6 +41,7 @@ public sealed class SelectTargetsTool
         "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that got no card at all (such as a woman with no gap). " +
         "A Biography target is a repeatable card for a man's biography beyond birth, death and marriage (service, occupation, " +
         "census, residence, migration, probate, a divorce...): in the draw it is offered only beside another of his cards, while a man named in xrefs gets it even with no other gap; " +
+        "it is dealt only to men, but validate_changeset pays a Biography card for a woman the same way; " +
         "it is open even when prose exists; nominalPoints 3 plus the enrichment difficulty bonus (birth era and region), paid " +
         "once per person per changeset that adds new information: a cited fact other than birth, death or marriage added, improved " +
         "or corrected on him or his family; or, in a biography note, a citation (source and page) none of the person's " +
