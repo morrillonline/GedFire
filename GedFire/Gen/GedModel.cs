@@ -51,13 +51,22 @@ public sealed class GedNarrativeNote
     public List<GedSourceRef> Sources { get; } = [];
 }
 
+// One displayable substructure of a fact (TYPE, AGE, CAUS, AGNC, RELI, ADDR, NOTE), or a
+// family event's partner age (Tag HUSB or WIFE, Value the age).
+public sealed record GedEventDetail(string Tag, string Value);
+
 public sealed class GedEvent
 {
     public string            Tag     { get; init; } = "";
+    // The fact's payload: an attribute's description (OCCU "Miller") or an EVEN's; "" for an event's "Y".
+    public string            Value   { get; set; } = "";
     public string            Date    { get; set; } = "";   // raw GEDCOM date string
     public string            Place   { get; set; } = "";
+    public List<GedEventDetail> Details { get; } = [];
     public List<GedSourceRef> Sources { get; } = [];
     public List<GedMediaLink> Media   { get; } = [];
+
+    public string? DetailOf(string tag) => Details.FirstOrDefault(d => d.Tag == tag)?.Value;
 }
 
 // One file within a media object (a record may carry several, e.g. multiple
@@ -123,6 +132,8 @@ public sealed class GedIndividual
     // Dated events outside the fields above (burial, baptism, ..., and any family
     // event misplaced on the person), in document order; GedEvent.Tag says which.
     public List<GedEvent>     OtherEvents { get; } = [];
+    // Individual attributes (OCCU, EDUC, TITL, a nonzero NMR, …) in document order.
+    public List<GedEvent>     Attributes  { get; } = [];
     public List<GedSourceRef> NameSources { get; } = [];
 
     public GedFamily?       FamChild  { get; set; }
@@ -182,10 +193,6 @@ public sealed class GedIndividual
     /// <summary>The death, or when none is recorded the burial, which proves one.</summary>
     public GedEvent? DeathOrBurial => Death ?? Burial;
 
-    public bool HasNoEvents() =>
-        Birth == null && Death == null && Burial == null && Will == null && Probate == null
-        && FamSpouse.Count < 2;
-
     public IEnumerable<GedEvent> GetEvents()
     {
         if (Birth != null) yield return Birth;
@@ -206,8 +213,10 @@ public sealed class GedFamily
     public List<GedIndividual> Children { get; } = [];
     public GedEvent? Marriage { get; set; }
     public GedEvent? Divorce { get; set; }
+    // Every other family fact (ENGA, MARB, ANUL, CENS, RESI, NCHI, EVEN, …) in document order.
+    public List<GedEvent> OtherEvents { get; } = [];
     // Citations attached to the FAM record itself (relationship provenance),
-    // as opposed to the marriage event's own. Not rendered on the generated site.
+    // as opposed to the marriage event's own; footnoted on the family page's title.
     public List<GedSourceRef> Sources { get; } = [];
     public List<GedMediaLink> Media { get; } = [];
 

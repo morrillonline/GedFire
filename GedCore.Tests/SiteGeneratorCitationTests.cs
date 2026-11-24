@@ -112,6 +112,25 @@ public class SiteGeneratorCitationTests : IDisposable
     }
 
     [Fact]
+    public void AnImportedNoteThatAlreadyNamesTheAuthorAnotherWay_IsNotGivenTheAuthorAgain()
+    {
+        string ged = CommentaryGed.Replace("""
+            1 AUTH Parish Clerk
+            1 TITL Parish Register
+            """, """
+            1 AUTH Clerk, Parish
+            1 TITL Parish Register
+            1 NOTE The Parish Clerk, Parish Register (Salem, 1801).
+            """);
+        var model = ModelBuilder.Build(GedCore.Ged70.Ged70Parser.Parse(ged));
+        new SiteGenerator(model, Template).Generate(_outDir);
+        string html = string.Join("\n", Directory.EnumerateFiles(_outDir, "*.html").Select(File.ReadAllText));
+
+        Assert.Contains(">The Parish Clerk, Parish Register (Salem, 1801), 40.", html);
+        Assert.DoesNotContain("Clerk, Parish,", html);
+    }
+
+    [Fact]
     public void CitationCommentary_FollowsTheSourceInItsFootnote()
     {
         string html = GenerateCommentaryHtml();

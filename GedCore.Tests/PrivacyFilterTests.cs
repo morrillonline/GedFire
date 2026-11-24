@@ -132,6 +132,73 @@ public class PrivacyFilterTests
     }
 
     [Fact]
+    public void FamilyWithLivingSpouse_LosesEveryFamilyFact_AndTheLivingPersonTheirAttributes()
+    {
+        string ged = """
+            0 @I1@ INDI
+            1 NAME Barbara /Hearth/
+            1 SEX F
+            1 BIRT
+            2 DATE 1950
+            1 OCCU Teacher
+            1 FAMS @F1@
+            0 @F1@ FAM
+            1 WIFE @I1@
+            1 ENGA
+            2 DATE 1970
+            1 DIV
+            2 DATE 1980
+            """;
+        var model = BuildFiltered(ged);
+
+        Assert.Empty(model.Individuals["@I1@"].Attributes);
+        Assert.Null(model.Families["@F1@"].Divorce);
+        Assert.Empty(model.Families["@F1@"].OtherEvents);
+    }
+
+    [Fact]
+    public void ThePageOfAFamilyWithALivingSpouse_ShowsNoneOfTheFamilysFacts_NorTheLivingPersonsAttributes()
+    {
+        string ged = """
+            0 @I1@ INDI
+            1 NAME John /Hearth/
+            1 SEX M
+            1 DEAT
+            2 DATE 2000
+            1 FAMS @F1@
+            0 @I2@ INDI
+            1 NAME Barbara /Stone/
+            1 SEX F
+            1 BIRT
+            2 DATE 1950
+            1 OCCU Teacher
+            1 FAMS @F1@
+            0 @I3@ INDI
+            1 NAME Ann /Hearth/
+            1 SEX F
+            1 DEAT
+            2 DATE 2001
+            1 FAMC @F1@
+            0 @F1@ FAM
+            1 HUSB @I1@
+            1 WIFE @I2@
+            1 ENGA
+            2 DATE 1969
+            1 DIV
+            2 DATE 1980
+            1 NOTE They lived on Elm Street.
+            1 CHIL @I3@
+            """;
+
+        string page = Assert.Single(GenerateFiltered(ged), f => !f.Key.StartsWith("index")).Value;
+
+        Assert.DoesNotContain("Teacher", page);
+        Assert.DoesNotContain("1969", page);
+        Assert.DoesNotContain("1980", page);
+        Assert.DoesNotContain("Elm Street", page);
+    }
+
+    [Fact]
     public void WillOrProbate_CountsAsDead()
     {
         string ged = """

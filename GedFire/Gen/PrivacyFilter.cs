@@ -12,8 +12,8 @@ namespace GedFire.Gen;
 // plausibly living and is reduced to a "Living <Surname>" placeholder with no
 // dates, places, facts, or sources. The filter mutates the model so every
 // render path — parent cards, child cards, spouse lines, index rows — is
-// covered without per-site checks. Marriage events of a family with a living
-// spouse are suppressed too: a dated marriage can identify the living party.
+// covered without per-site checks. The family facts of a family with a living
+// spouse (marriage, divorce, engagement, …) are suppressed too: a dated marriage can identify the living party.
 // So is any family-level media (a wedding photo is exactly as identifying as
 // a marriage date) — individual-level media is already gone via Privatize.
 //
@@ -53,6 +53,8 @@ public static class PrivacyFilter
                 (fam.Wife    != null && living.Contains(fam.Wife)))
             {
                 fam.Marriage = null;
+                fam.Divorce = null;
+                fam.OtherEvents.Clear();
                 fam.Sources.Clear();
                 fam.Media.Clear();
                 fam.NarrativeNotes.Clear();
@@ -93,6 +95,7 @@ public static class PrivacyFilter
         indi.NeverMarried = null;
         indi.Census.Clear();
         indi.OtherEvents.Clear();
+        indi.Attributes.Clear();
         indi.NameSources.Clear();
         indi.Media.Clear();
     }

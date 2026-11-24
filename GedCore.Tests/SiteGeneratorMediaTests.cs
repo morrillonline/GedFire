@@ -195,6 +195,23 @@ public class SiteGeneratorMediaTests : IDisposable
     }
 
     [Fact]
+    public void HtmlNote_EachParagraphIsStyledLikeAPlainNote_OpeningWithNote()
+    {
+        var model = BuildModel(Ged.Replace("""
+            1 NAME John /Smith/
+            """, """
+            1 NAME John /Smith/
+            1 NOTE <p>He was <b>widely</b> respected.</p><p>He kept bees.</p>
+            2 MIME text/html
+            """));
+        new SiteGenerator(model, MinimalTemplate).Generate(_outDir);
+
+        string html = File.ReadAllText(FamilyHtmlFile());
+        Assert.Contains("<p class=\"bio-inline\">NOTE: He was <b>widely</b> respected.</p>\r\n<p class=\"bio-inline\">He kept bees.</p>", html);
+        Assert.DoesNotContain("<div class=\"bio-inline\">", html);
+    }
+
+    [Fact]
     public void SharedMediaObject_LinkedFromBothSpousesAndFam_RendersOnceInGallery()
     {
         // A couple photo is typically linked from both spouses (and here the
