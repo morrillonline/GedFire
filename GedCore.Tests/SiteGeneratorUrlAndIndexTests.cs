@@ -156,16 +156,13 @@ public class SiteGeneratorUrlAndIndexTests
 
     // -----------------------------------------------------------------------
     // Dangling links: the index must never link to a page the generator
-    // does not write (families with no husband, or minted URLs of childless
-    // couples with no parents).
+    // does not write (minted URLs of childless couples with no parents).
     // -----------------------------------------------------------------------
 
     [Fact]
-    public void IndexRow_FamilyWithoutHusband_ShowsUnlinkedNamesInsteadOfDanglingLinks()
+    public void AFamilyWithOnlyAMother_HasAPageAnchoredOnHer_AndNoDanglingLinks()
     {
-        // F1 has children but no HUSB, so GenerateFamilyPages skips it — yet
-        // GetIndividualUrl mints a URL for Wilma and her child. The index must
-        // render their names unlinked rather than link a 404.
+        // F1 has children but no HUSB: its page is anchored on Wilma, with her card and her child's.
         string ged = """
             0 @I1@ INDI
             1 NAME Wilma /Stone/
@@ -178,16 +175,16 @@ public class SiteGeneratorUrlAndIndexTests
             0 @F1@ FAM
             1 WIFE @I1@
             1 CHIL @I2@
+            1 RESI Quarry Road
             """;
 
         var files = Generate(BuildModel(ged));
-        string index = files["index0.html"];
+        string page = Assert.Single(files, f => !f.Key.StartsWith("index")).Value;
 
-        // Both people still appear in the index…
-        Assert.Contains("Wilma Stone", index);
-        Assert.Contains("Kid Stone", index);
-
-        // …and no href on any page points at a file that was not generated.
+        Assert.Contains("class=\"role\">Wife<", page);
+        Assert.Contains("Kid Stone", page);
+        Assert.Contains("<dt>Resided</dt><dd>Quarry Road</dd>", page);
+        Assert.Contains("\">Wilma Stone</a>", files["index0.html"]);
         AssertNoDanglingLinks(files);
     }
 

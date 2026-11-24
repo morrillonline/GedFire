@@ -246,7 +246,10 @@ refuses a package that grades one extract twice or names one new person two ways
 
 **Apply only what your review process accepts.** Select the approved items
 with `apply_changeset`. It validates and verifies them again before writing.
-Generate the site when you are ready to publish.
+Generate the site when you are ready to publish. Family pages show every fact a
+changeset can write: events, attributes such as occupation, census entries,
+family events and notes, and details such as age and cause, each with its
+citations as footnotes.
 
 Source and information classes bound citation quality; they do not prove a
 claim. A death certificate may offer primary information about death but
@@ -337,7 +340,8 @@ MCP tools work on the whole GEDCOM, living people included. Living people are
 masked in one place only: the family pages `gedfire generate` writes. There,
 individuals with `RESN CONFIDENTIAL` or `RESN PRIVACY`, plus plausibly living
 people (no death-class fact and a birth within the last 100 years), become
-`Living <Surname>` placeholders without dates, places, notes, or media.
+`Living <Surname>` placeholders without dates, places, notes, or media, and
+the facts of their families are withheld.
 
 The filter uses recorded facts, not verified living status. Placeholders still
 reveal surnames. Without a birth year or explicit restriction, the age

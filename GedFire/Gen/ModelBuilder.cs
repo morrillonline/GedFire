@@ -38,6 +38,24 @@ public static class ModelBuilder
             .. FamilyEvents.Tags,
         ];
 
+        // GEDCOM 7 individual attributes. TITL also prefixes the name; NMR 0 is read as never married.
+        static readonly HashSet<string> AttributeTags =
+        [
+            "CAST", "DSCR", "EDUC", "IDNO", "NATI", "NCHI", "NMR", "OCCU", "PROP", "RELI", "SSN", "TITL", "FACT",
+        ];
+
+        // The family facts beyond the first MARR and DIV, which the family holds in its own fields.
+        static readonly HashSet<string> FamilyFactTags =
+        [
+            .. FamilyEvents.Tags, "EVEN", "CENS", "RESI", "NCHI", "FACT",
+        ];
+
+        // Fact substructures a reader is shown; the rest (SDATE, UID, RESN, …) are bookkeeping.
+        static readonly HashSet<string> DetailTags =
+        [
+            "TYPE", "AGE", "CAUS", "AGNC", "RELI", "ADDR", "NOTE",
+        ];
+
         // Source-ref resolution: maps each GedSourceRef to its GEDCOM xref.
         // Populated during Pass 1, consumed and discarded at the end of Pass 2.
         readonly Dictionary<GedSourceRef, string> _pending      = new();
@@ -149,6 +167,7 @@ public static class ModelBuilder
                         break;
                     case "TITL":
                         indi.Title = child.Value;
+                        indi.Attributes.Add(ParseEvent(child, "TITL"));
                         break;
                     case "RESN":
                         indi.Restriction = child.Value.Trim().ToUpperInvariant();
@@ -174,6 +193,9 @@ public static class ModelBuilder
                         break;
                     case var tag when OtherEventTags.Contains(tag):
                         indi.OtherEvents.Add(ParseEvent(child, tag));
+                        break;
+                    case var tag when AttributeTags.Contains(tag):
+                        indi.Attributes.Add(ParseEvent(child, tag));
                         break;
                     case "FAMS":
                         if (child.Value.Length > 0)
@@ -297,11 +319,12 @@ public static class ModelBuilder
             }
         }
 
-        // Build a GedEvent from a BIRT/DEAT/MARR/CENS/WILL/PROB record.
+        // Build a GedEvent from a fact record: an event, an attribute or a family fact.
         // Sources can live under the event directly OR under its DATE child.
         GedEvent ParseEvent(GedRecord rec, string tag)
         {
-            var ev = new GedEvent { Tag = tag };
+            string value = rec.FullValue().Trim();
+            var ev = new GedEvent { Tag = tag, Value = value == "Y" ? "" : value };
             foreach (var child in rec.Children)
             {
                 switch (child.Tag)
@@ -320,6 +343,13 @@ public static class ModelBuilder
                         break;
                     case "OBJE":
                         AddMediaLink(child, _eventMediaLinks, ev);
+                        break;
+                    case "HUSB" or "WIFE" when child.FirstChild("AGE")?.Value is { Length: > 0 } age:
+                        ev.Details.Add(new GedEventDetail(child.Tag, age));
+                        break;
+                    case var detail when DetailTags.Contains(detail) && !child.IsPointerValue
+                                         && child.FullValue().Trim() is { Length: > 0 } text:
+                        ev.Details.Add(new GedEventDetail(detail, text));
                         break;
                 }
             }
@@ -395,11 +425,14 @@ public static class ModelBuilder
                         if (child.Value != GedRecord.VoidPointer)
                             (childXrefs ??= []).Add(child.Value);
                         break;
-                    case "MARR":
+                    case "MARR" when fam.Marriage is null:
                         fam.Marriage = ParseEvent(child, "MARR");
                         break;
-                    case "DIV":
+                    case "DIV" when fam.Divorce is null:
                         fam.Divorce = ParseEvent(child, "DIV");
+                        break;
+                    case var tag when FamilyFactTags.Contains(tag):
+                        fam.OtherEvents.Add(ParseEvent(child, tag));
                         break;
                     case "SOUR":
                         fam.Sources.Add(BuildSourceRef(child));

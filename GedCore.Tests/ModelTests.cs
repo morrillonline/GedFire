@@ -441,23 +441,6 @@ public class GedModelHelperTests
     }
 
     [Fact]
-    public void HasNoEvents_EmptyPerson_True()
-        => Assert.True(new GedIndividual().HasNoEvents());
-
-    [Fact]
-    public void HasNoEvents_WithBirth_False()
-        => Assert.False(new GedIndividual { Birth = new GedEvent { Tag = "BIRT" } }.HasNoEvents());
-
-    [Fact]
-    public void HasNoEvents_TwoMarriages_False()
-    {
-        var i = new GedIndividual();
-        i.FamSpouse.Add(new GedFamily());
-        i.FamSpouse.Add(new GedFamily());
-        Assert.False(i.HasNoEvents());
-    }
-
-    [Fact]
     public void SpouseOf_ReturnsOtherSpouse()
     {
         var h   = new GedIndividual();
@@ -546,6 +529,23 @@ public class FirstOfSeveralTests
     }
 
     [Fact]
+    public void TheFirstMarriage_IsTheFamilysMarriage_AndALaterOneIsKeptAmongItsOtherFacts()
+    {
+        var family = ModelBuilder.Build(Ged55Parser.Parse("""
+            0 @F1@ FAM
+            1 MARR
+            2 DATE 1828
+            1 MARR
+            2 DATE 1830
+            1 ENGA
+            2 DATE 1827
+            """)).Families["@F1@"];
+
+        Assert.Equal("1828", family.Marriage!.Date);
+        Assert.Equal(["MARR 1830", "ENGA 1827"], family.OtherEvents.Select(e => $"{e.Tag} {e.Date}"));
+    }
+
+    [Fact]
     public void TheFirstParentFamily_IsKept_SkippingAVoidPointer()
     {
         var model = ModelBuilder.Build(Ged55Parser.Parse("""
@@ -577,5 +577,61 @@ public class FirstOfSeveralTests
             """);
 
         Assert.Equal((sex, isMale, maleOrFemale), (person.Sex, person.IsMale, person.SexRecorded));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fact payloads and the substructures a page shows
+// ---------------------------------------------------------------------------
+
+public class FactParsingTests
+{
+    static GedModel Build(string gedText) => ModelBuilder.Build(Ged55Parser.Parse(gedText));
+
+    [Fact]
+    public void AnEventsY_IsNoValue_AndAnAttributesPayload_IsItsValue()
+    {
+        var person = Build("""
+            0 @I1@ INDI
+            1 DEAT Y
+            1 OCCU Miller
+            """).Individuals["@I1@"];
+
+        Assert.Equal("", person.Death!.Value);
+        Assert.Equal("Miller", Assert.Single(person.Attributes).Value);
+    }
+
+    [Fact]
+    public void ATitle_PrefixesTheName_AndIsKeptAsAnAttribute()
+    {
+        var person = Build("""
+            0 @I1@ INDI
+            1 NAME Ezra /Vale/
+            1 TITL Deacon
+            """).Individuals["@I1@"];
+
+        Assert.Equal("Deacon", person.Title);
+        Assert.Equal("Deacon", Assert.Single(person.Attributes, a => a.Tag == "TITL").Value);
+    }
+
+    [Fact]
+    public void AFamilyEvent_KeepsItsShownDetailsAndPartnersAges_ButNotASharedNotePointerOrBookkeeping()
+    {
+        var marriage = Build("""
+            0 @F1@ FAM
+            1 MARR
+            2 TYPE Civil
+            2 HUSB
+            3 AGE 25y
+            2 WIFE
+            3 AGE 22y
+            2 NOTE @N1@
+            2 NOTE By licence.
+            2 UID 1234
+            0 @N1@ SNOTE Shared.
+            """).Families["@F1@"].Marriage!;
+
+        Assert.Equal(["TYPE Civil", "HUSB 25y", "WIFE 22y", "NOTE By licence."],
+            marriage.Details.Select(d => $"{d.Tag} {d.Value}"));
     }
 }

@@ -75,7 +75,8 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
     IEnumerable<GedEvent> EventsOf(string record, string tag)
     {
         if (model.Families.TryGetValue(record, out var family))
-            return tag == "MARR" && family.Marriage is { } marriage ? [marriage] : [];
+            return new[] { family.Marriage, family.Divorce }.OfType<GedEvent>()
+                .Concat(family.OtherEvents).Where(e => e.Tag == tag);
         if (!model.Individuals.TryGetValue(record, out var person)) return [];
 
         return tag switch
@@ -84,8 +85,7 @@ public sealed class ModelDraftLookup(GedModel model) : IDraftLookup
             "DEAT" => Single(person.Death),
             "WILL" => Single(person.Will),
             "PROB" => Single(person.Probate),
-            "CENS" => person.Census,
-            _ => person.OtherEvents.Where(e => e.Tag == tag),
+            _ => person.Census.Concat(person.OtherEvents).Concat(person.Attributes).Where(e => e.Tag == tag),
         };
     }
 

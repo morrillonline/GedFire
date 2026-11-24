@@ -129,6 +129,36 @@ public class ModelDraftLookupTests
     }
 
     [Fact]
+    public void FactsOn_ReadsAttributesAndResidences_AndKeepsACensusApartFromAResidence()
+    {
+        var person = new GedIndividual { Xref = "@I1@" };
+        person.Census.Add(new GedEvent { Tag = "CENS", Date = "1900" });
+        person.Census.Add(new GedEvent { Tag = "RESI", Date = "1905" });
+        person.Attributes.Add(new GedEvent { Tag = "OCCU", Value = "Miller", Date = "1910" });
+        var model = new GedModel();
+        model.Individuals["@I1@"] = person;
+        var lookup = new ModelDraftLookup(model);
+
+        Assert.Equal(["1900"], lookup.FactsOn("@I1@", "CENS").Select(f => f.Date));
+        Assert.Equal(["1905"], lookup.FactsOn("@I1@", "RESI").Select(f => f.Date));
+        Assert.Equal(["1910"], lookup.FactsOn("@I1@", "OCCU").Select(f => f.Date));
+    }
+
+    [Fact]
+    public void FactsOn_AFamily_ListsEveryInstanceOfTheTag_IncludingALaterMarriage()
+    {
+        var family = new GedFamily { Xref = "@F1@", Marriage = new GedEvent { Tag = "MARR", Date = "1828" } };
+        family.OtherEvents.Add(new GedEvent { Tag = "MARR", Date = "1830" });
+        family.OtherEvents.Add(new GedEvent { Tag = "ENGA", Date = "1827" });
+        var model = new GedModel();
+        model.Families["@F1@"] = family;
+        var lookup = new ModelDraftLookup(model);
+
+        Assert.Equal(["1828", "1830"], lookup.FactsOn("@F1@", "MARR").Select(f => f.Date));
+        Assert.Equal(["1827"], lookup.FactsOn("@F1@", "ENGA").Select(f => f.Date));
+    }
+
+    [Fact]
     public void NotesOn_ReturnsAPersonsNoteTexts()
     {
         Assert.Equal(["A note."], Lookup().NotesOn("@I1@"));
