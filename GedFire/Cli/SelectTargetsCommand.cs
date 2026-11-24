@@ -45,7 +45,7 @@ public sealed class SelectTargetsCommand : SynchronousOptionCommand
         var draw = DuplicateAnnotator.Annotate(
             TargetDrawer.DrawPack(model, candidates, count, seed, suppressedCards, rules), new MatchIndex(model));
         if (draw.LegendaryDiscards.Count > 0)
-            context.Out.WriteLine($"  {draw.LegendaryDiscards.Select(d => d.Xref).Distinct().Count():N0} extra Legendary-band person(s) discarded (one-per-pack cap)");
+            context.Out.WriteLine($"  {draw.LegendaryDiscards.Select(d => d.Xref).Distinct().Count():N0} extra Legendary-band person(s) passed over (one-per-pack cap)");
 
         WantedFileWriter.WriteFile(input, surnames, candidates.Count, draw, output);
         int drawnPeople = draw.Targets.Select(t => t.Xref).Distinct().Count();

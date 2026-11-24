@@ -27,8 +27,12 @@ public static class HelpText
                         Detect eligible research gaps for the given surnames
                         (New parent/spouse/child, Enrich person), score each
                         by nominal points and GED-only difficulty, and draw
-                        <N> of them uniformly at random (one Legendary-band
-                        cap per pack) into a self-contained wanted.json.
+                        <N> of them at random (one Legendary-band person per
+                        pack, the next person drawn taking a passed-over seat;
+                        at most two people with only an Enrich person card while
+                        others remain; people whose enrichment would unlock
+                        withheld cards are weighted up) into a self-contained
+                        wanted.json.
                         Unanchored relationship gaps wait for enrichment, and a
                         New child card is withheld when the wife was 50 or older
                         at marriage or the marriage lasted under a year;
