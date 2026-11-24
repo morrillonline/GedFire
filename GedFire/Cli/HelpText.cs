@@ -15,7 +15,7 @@ public static class HelpText
           downgrade --input <ged70> --output <ged55>
                         Write a GEDCOM 7.0 file in GEDCOM 5.5 format.
 
-          generate  --input <ged> --output-dir <dir> [--format html]
+          generate  --input <ged> --output-dir <dir> [--format html] [--template <file>] [--media-base-url <url>]
                         Generate the family pages and index from a GEDCOM file.
 
           export-index  --input <ged> --output <json>

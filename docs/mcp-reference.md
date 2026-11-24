@@ -253,7 +253,9 @@ names the people who get no card at all, such as a woman with no gap, and
 `draw.seed` is null. An unknown xref is an error.
 
 - A man gets one `Biography` card: in the draw, only
-  beside another of his cards; with `xrefs`, always. Women get none. It
+  beside another of his cards; with `xrefs`, always. Women are not dealt one,
+  but a `biography` card for a woman passed to `validate_changeset` pays the
+  same way. It
   stays open for people with complete vitals or existing prose, and pays again
   for each later changeset that adds new information: a new citation or new text
   in a biography note, or a cited fact beyond birth, death, and marriage added,
