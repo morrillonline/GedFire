@@ -245,8 +245,9 @@ and `draw.seed` is null. An unknown xref is an error.
 - A man outside the privacy floor gets one `Biography` card: in the draw, only
   beside another of his cards; with `xrefs`, always. Women get none. It
   stays open for people with complete vitals or existing prose, and pays again
-  for each later changeset that adds new information: a new citation, or a
-  biography note whose text none of the person's notes carried. `nominalPoints` is 3, and
+  for each later changeset that adds new information: a new citation or new text
+  in a biography note, or a cited fact beyond birth, death, and marriage added,
+  improved, or corrected (see [the points preview](#points-preview)). `nominalPoints` is 3, and
   `score` adds the enrichment difficulty bonus for the person's birth era and
   region, without the anchor adjustment (3, 8, 13, or 18).
 - An `enrich-person` card covers, for one person, every birth, marriage, and
@@ -865,7 +866,9 @@ optional `gap`, `name`, `bonus`, and, for a new-child card, `family`.
 Classes are `enrich-person`, `new-parent`, `new-spouse`, `new-child`, and
 `biography`.
 Enrichment gaps are `enrich-birth`, `enrich-death`, or `enrich-marriage`,
-optionally ending in `-date` or `-place`.
+optionally ending in `-date` or `-place`. An Enrich person card pays for a
+birth, death, or marriage only: a card whose gap names anything else, such as a
+burial, a name, or a citation alone, closes nothing.
 
 With no gap, or with `enrich-fact`, the card is `select_targets`' Enrich
 person card, and it is paid by the rule that card was priced by. The preview
@@ -933,21 +936,31 @@ note saying the same closes nothing.
 it is listed in `notClosed` with a reason starting `out of study scope:`. The
 scope is judged on the tree before the changeset.
 
-A `biography` card closes at its `points` when a `createOrUpdateNote` with
-`purpose: "biography"` adds new information to its subject, either of:
+A `biography` card closes at its `points` when the changeset adds new
+information to its subject's biography, any of:
 
-- a citation that none of the subject's biographical notes carried before the
-  changeset; or
-- note text that matches none of the subject's notes before the changeset, cited
-  or not, once case, whitespace and punctuation are folded. The note's citation
-  does not matter here: a second note from an already-cited record pays when
-  its text is new. Rewording is not judged; a reviewer decides whether
-  differently worded text says anything new.
+- a cited fact beyond birth, death, and marriage (an occupation, census entry,
+  residence, immigration, education, an event, or another attribute; or a
+  divorce, engagement, or other fact of a family the subject is a partner in)
+  that the changeset added, improved, or corrected: after the changeset the fact
+  holds a value, date, place, detail such as `TYPE` or `AGE`, or cited source and
+  page that no instance of its tag on that record held before, and it cites a
+  source. An uncited fact, a NAME or SEX, a birth, death, or marriage (the
+  `enrich-person` card's), a burial whose exact date and place close the death
+  gaps (paid as the death), a citation's quotation, QUAY or commentary, and a
+  deletion on its own earn nothing;
+- with a `createOrUpdateNote` with `purpose: "biography"`, a citation that none
+  of the subject's biographical notes carried before the changeset; or
+- with such a note, note text that matches none of the subject's notes before
+  the changeset, cited or not, once case, whitespace and punctuation are folded.
+  The note's citation does not matter here: a second note from an already-cited
+  record pays when its text is new. Rewording is not judged; a reviewer decides
+  whether differently worded text says anything new.
 
 Biographical notes are plain
 person-level notes with prose and at least one source citation; GedFire writes
 no marker or extension, so they are recognized from standard GEDCOM structure.
-Only an op with the purpose earns credit. A citation is its source and page
+Only a note op with the purpose earns credit for a note. A citation is its source and page
 (`SOUR` + `PAGE`), so quotation text, QUAY, spacing or case in the page,
 citation order, and a placeholder or copied source xref do not make it new.
 Existing prose never exhausts the card: a new note beside it, a new

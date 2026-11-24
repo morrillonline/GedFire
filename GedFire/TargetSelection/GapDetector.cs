@@ -116,8 +116,9 @@ public static class GapDetector
     }
 
     // -------------------------------------------------------------------
-    // Biography — not a gap: one repeatable card per man for cited
-    // biographical prose, open even when prose exists. A drawn man gets it
+    // Biography — not a gap: one repeatable card per man for his cited
+    // biography beyond birth, death and marriage (facts and prose), open even
+    // when it exists. A drawn man gets it
     // only beside another of his cards; a man the owner names gets it alone.
     // Priced like enrichment: era and region of the person's own birth, no
     // anchor-strength adjustment.

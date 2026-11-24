@@ -49,7 +49,7 @@ public sealed class TreeChanges
     /// <summary>Every person or family record the changeset touched, whether or not it wrote a fact there (a citation or note touches).</summary>
     public IReadOnlySet<string> Touched { get; }
 
-    /// <summary>The people whose biography notes gained a citation none of them carried before; see <see cref="BiographyNotes"/>.</summary>
+    /// <summary>The people whose biography gained new information; see <see cref="BiographyWrite"/>.</summary>
     public IReadOnlyList<BiographyWrite> Biographies { get; }
 
     public TreeChanges(

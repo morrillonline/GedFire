@@ -18,11 +18,15 @@ public sealed record BiographyCitation(string Source, string? Page)
 }
 
 /// <summary>
-/// A person whose biography notes gained new information: <see cref="NewCitations"/>, citations none of their biography
-/// notes carried before the changeset, and <see cref="NewText"/>, whether a biography note's text matches none of the
-/// person's notes before it (see <see cref="BiographyNotes.NormalizeText"/>). Either earns the credit.
+/// A person whose biography gained new information. <see cref="NewCitations"/> are citations none of their biography
+/// notes carried before the changeset. <see cref="NewText"/> says whether a biography note's text matches none of the
+/// person's notes before it (see <see cref="BiographyNotes.NormalizeText"/>). <see cref="Facts"/> are the cited facts
+/// it added, improved or corrected beyond birth, death and marriage (see <see cref="BiographicalFacts"/>). Any one earns the credit.
 /// </summary>
-public sealed record BiographyWrite(string Record, IReadOnlyList<BiographyCitation> NewCitations, bool NewText = false);
+public sealed record BiographyWrite(string Record, IReadOnlyList<BiographyCitation> NewCitations, bool NewText = false)
+{
+    public IReadOnlyList<BiographicalFact> Facts { get; init; } = [];
+}
 
 /// <summary>
 /// A person's biographical notes, recognized by standard GEDCOM 7 structure alone: a person-level NOTE
@@ -55,8 +59,9 @@ public static class BiographyNotes
 
 /// <summary>
 /// Finds the biography credit a run earned, per person: the citations biography note ops added that none of the person's
-/// biography notes carried before the run and that a biography note still carries after it; or a biography note the
-/// run wrote whose text matches none of the person's notes before the run and that is still on the person after it.
+/// biography notes carried before the run and that a biography note still carries after it; a biography note the
+/// run wrote whose text matches none of the person's notes before the run and that is still on the person after it;
+/// and the cited facts beyond birth, death and marriage it added, improved or corrected on the person or their family.
 /// A source copied for the run counts as the source it stands in for.
 /// </summary>
 internal static class BiographyCredit
@@ -66,18 +71,24 @@ internal static class BiographyCredit
         var originals = state.CopiedSources
             .GroupBy(kv => kv.Value, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().Key, StringComparer.Ordinal);
-        BiographyCitation Canonical(BiographyCitation c) =>
-            originals.TryGetValue(c.Source, out var original) ? c with { Source = original } : c;
+        string CanonicalSource(string source) => originals.GetValueOrDefault(source, source);
+        BiographyCitation Canonical(BiographyCitation c) => c with { Source = CanonicalSource(c.Source) };
+
+        var facts = BiographicalFacts.Find(before, state.TouchedRoots, CanonicalSource)
+            .GroupBy(f => f.Person, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<BiographicalFact>)[.. g.Select(f => f.Fact).Distinct()], StringComparer.Ordinal);
 
         var writes = new List<BiographyWrite>();
-        foreach (string person in state.BiographyCitationsAdded.Keys.Union(state.BiographyTextsWritten.Keys))
+        foreach (string person in state.BiographyCitationsAdded.Keys.Union(state.BiographyTextsWritten.Keys).Union(facts.Keys))
         {
             var added = state.BiographyCitationsAdded.GetValueOrDefault(person, []);
             var held = Citations(before, person, Canonical);
             var kept = Citations(after, person, Canonical);
             var fresh = added.Select(Canonical).Distinct().Where(c => kept.Contains(c) && !held.Contains(c)).ToList();
             bool newText = NewText(before, after, person, state.BiographyTextsWritten.GetValueOrDefault(person, []));
-            if (fresh.Count > 0 || newText) writes.Add(new BiographyWrite(person, fresh, newText));
+            var written = facts.GetValueOrDefault(person, []);
+            if (fresh.Count > 0 || newText || written.Count > 0)
+                writes.Add(new BiographyWrite(person, fresh, newText) { Facts = written });
         }
         return writes;
     }

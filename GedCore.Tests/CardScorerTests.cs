@@ -89,7 +89,7 @@ public class CardScorerTests
     {
         var preview = CardScorer.Preview([Enrich("enrich-occupation")], Facts());
 
-        Assert.Contains("does not name a birth, death, marriage, burial or name fact", Assert.Single(preview.NotClosed).Reason);
+        Assert.Contains("does not name a birth, death or marriage fact", Assert.Single(preview.NotClosed).Reason);
     }
 
     [Theory]
@@ -180,12 +180,53 @@ public class CardScorerTests
         Assert.Equal(7, Assert.Single(preview.Closed).Points);
     }
 
-    [Fact]
-    public void EnrichBurial_ClosesOnABurialWrite()
+    [Theory]
+    [InlineData("enrich-burial-place")]
+    [InlineData("enrich-name")]
+    [InlineData("enrich-citation")]
+    [InlineData("verify-quay")]
+    [InlineData("resolve-conflict")]
+    public void AnEnrichGapNamingNoBirthDeathOrMarriage_PaysNothing_WhateverTheChangesetWrote(string gap)
     {
-        var preview = CardScorer.Preview([Enrich("enrich-burial-place")], Facts(new FactWrite("@I1@", "BURI", null, "Salem Cemetery")));
+        var changes = new TreeChanges(
+            [new FactWrite("@I1@", "BURI", "1900", "Salem Cemetery") { CitationImproved = true }, new FactWrite("@I1@", "OCCU", "1880", null)],
+            NoNames, new Dictionary<string, FamilyChange>(), new HashSet<string> { "@I1@" });
 
-        Assert.Equal("BURI @I1@ (place)", Assert.Single(preview.Closed).Wrote);
+        var open = Assert.Single(CardScorer.Preview([Enrich(gap)], changes).NotClosed);
+
+        Assert.Equal($"the card's gap \"{gap}\" does not name a birth, death or marriage fact", open.Reason);
+    }
+
+    [Fact]
+    public void ACitationGapOnABirth_ClosesOnTheBirthsFirstCitation()
+    {
+        var changes = Facts(new FactWrite("@I1@", "BIRT", "1850", null, DateImprovement.None, PlaceImproved: false, CitationImproved: true));
+
+        Assert.Equal("BIRT @I1@ (citation)", Assert.Single(CardScorer.Preview([Enrich("enrich-birth-citation")], changes).Closed).Wrote);
+    }
+
+    [Fact]
+    public void ARenameOfAnEnrichCardsSubject_IsAMismatchEvenWhenTheGapNamesTheName()
+    {
+        var changes = new TreeChanges([], new Dictionary<string, NameChange> { ["@I1@"] = new("Al Test", "Allen Test") },
+            new Dictionary<string, FamilyChange>());
+
+        var preview = CardScorer.Preview([Enrich("enrich-name", name: "Al Test")], changes);
+
+        Assert.Empty(preview.Closed);
+        Assert.Single(preview.SubjectMismatch);
+    }
+
+    [Fact]
+    public void ABurialThatStandsForTheDeath_IsPaidAsTheDeath_NotAlsoAsBiography()
+    {
+        var changes = new TreeChanges([], NoNames, new Dictionary<string, FamilyChange>(), biographies:
+            [new BiographyWrite("@I1@", []) { Facts = [new BiographicalFact("@I1@", "BURI")] }]);
+        var deal = new FakeDeal { Closed = { ["@I1@"] = [new EnrichGap("DEAT", "@I1@", "date")] } };
+        var biography = new PointsCard("@I1@", "biography", null, null, 3);
+
+        Assert.Single(CardScorer.Preview([biography], changes, deal).NotClosed);
+        Assert.Equal("cited BURI @I1@", Assert.Single(CardScorer.Preview([biography], changes).Closed).Wrote);
     }
 
     [Theory]
@@ -206,30 +247,6 @@ public class CardScorerTests
         var changes = Facts(new FactWrite("@I1@", "DEAT", "1877", null, DateImprovement.None, PlaceImproved: false, CitationImproved: true));
 
         Assert.Single(CardScorer.Preview([Enrich("enrich-death-date")], changes).NotClosed);
-    }
-
-    [Fact]
-    public void EnrichName_ClosesOnARenameAndIsNotAMismatch()
-    {
-        var changes = new TreeChanges([], new Dictionary<string, NameChange> { ["@I1@"] = new("Al Test", "Allen Test") },
-            new Dictionary<string, FamilyChange>());
-
-        var preview = CardScorer.Preview([Enrich("enrich-name", name: "Al Test")], changes);
-
-        Assert.Single(preview.Closed);
-        Assert.Empty(preview.SubjectMismatch);
-    }
-
-    [Theory]
-    [InlineData("enrich-citation")]
-    [InlineData("verify-quay")]
-    [InlineData("resolve-conflict")]
-    public void ACitationStyleGap_ClosesOnAnyTouchOfTheSubject(string gap)
-    {
-        var touched = new TreeChanges([], NoNames, new Dictionary<string, FamilyChange>(), new HashSet<string> { "@I1@" });
-
-        Assert.Single(CardScorer.Preview([Enrich(gap)], touched).Closed);
-        Assert.Single(CardScorer.Preview([Enrich(gap)], TreeChanges.None).NotClosed);
     }
 
     [Fact]

@@ -37,10 +37,11 @@ public sealed class SelectTargetsTool
         "people the same way: the result is " +
         "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that got no card at all (a woman with no gap, " +
         "or anyone born within the last 100 years). " +
-        "A Biography target is a repeatable card for a man's cited biographical prose (service, occupation, migration, " +
-        "probate...): in the draw it is offered only beside another of his cards, while a man named in xrefs gets it even with no other gap; " +
+        "A Biography target is a repeatable card for a man's biography beyond birth, death and marriage (service, occupation, " +
+        "census, residence, migration, probate, a divorce...): in the draw it is offered only beside another of his cards, while a man named in xrefs gets it even with no other gap; " +
         "it is open even when prose exists; nominalPoints 3 plus the enrichment difficulty bonus (birth era and region), paid " +
-        "once per person per changeset when a biography note adds new information: a citation (source and page) none of the person's " +
+        "once per person per changeset that adds new information: a cited fact other than birth, death or marriage added, improved " +
+        "or corrected on him or his family; or, in a biography note, a citation (source and page) none of the person's " +
         "cited notes carried, or text that matches none of the person's notes once case, whitespace and punctuation are folded. " +
         "New parent and New spouse require an exact date or non-empty place on an own vital event " +
         "(birth, christening/baptism, death, burial). New spouse is also withheld from a person with a cited NMR 0, a proven never-married answer. New child requires an anchor on either spouse or " +
