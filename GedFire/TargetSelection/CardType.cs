@@ -3,7 +3,7 @@ namespace GedFire.TargetSelection;
 /// <summary>
 /// The fixed set of card types. Each carries its own flat per-unit point
 /// value; card types do not group into tiers. Biography is the one card that
-/// is not a gap: every person can earn it again with a new citation.
+/// is not a gap: every person can earn it again with a new cited fact or note.
 /// </summary>
 public enum CardType
 {

@@ -164,4 +164,102 @@ public class BiographyCreditTests : ApplyTestBase
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains(error));
     }
+
+    // -------------------------------------------------------------------
+    // Facts beyond birth, death and marriage
+    // -------------------------------------------------------------------
+
+    static string Ops(params string[] ops) => $$"""{ "items": [ { "item": 1, "ops": [ {{string.Join(", ", ops)}} ] } ] }""";
+
+    static string VitalOp(string record, string fact, string fields, string? citations = MusterRoll) =>
+        $$"""{ "op": "createOrUpdateVital", "record": "{{record}}", "fact": "{{fact}}", {{fields}}, "citations": [ {{citations}} ] }""";
+
+    static IReadOnlyList<string> CreditedFacts(ApplyResult result, string person) =>
+        [.. result.Changes.Biographies.Where(b => b.Record == person).SelectMany(b => b.Facts).Select(f => f.ToString())];
+
+    [Fact]
+    public void ACitedAttribute_EarnsBiographyCredit()
+    {
+        WriteFileWithNotesOnAllen();
+
+        var result = RunExpectSuccess(Ops(VitalOp("@I00001@", "OCCU", "\"value\": \"Seaman\", \"date\": \"1945\"")));
+
+        Assert.Equal(["OCCU @I00001@"], CreditedFacts(result, "@I00001@"));
+    }
+
+    [Fact]
+    public void AnUncitedFact_EarnsNothing()
+    {
+        WriteFileWithNotesOnAllen();
+
+        var result = RunExpectSuccess(Ops(VitalOp("@I00001@", "OCCU", "\"value\": \"Seaman\"", citations: "")));
+
+        Assert.Empty(result.Changes.Biographies);
+    }
+
+    [Theory]
+    [InlineData("BIRT", "\"date\": \"4 MAR 1928\"")]
+    [InlineData("DEAT", "\"date\": \"1990\"")]
+    public void ABirthOrDeath_IsTheEnrichCardsAndEarnsNoBiographyCredit(string fact, string fields)
+    {
+        WriteFileWithNotesOnAllen();
+
+        var result = RunExpectSuccess(Ops(VitalOp("@I00001@", fact, fields)));
+
+        Assert.Empty(result.Changes.Biographies);
+    }
+
+    [Fact]
+    public void CorrectingACitedFactsValue_EarnsCredit_AndAnIdenticalReplayEarnsNothing()
+    {
+        WriteFileWithNotesOnAllen("1 OCCU Seeman", "2 SOUR @S00001@", "3 PAGE Muster roll, p. 12");
+
+        var corrected = RunExpectSuccess(Ops(VitalOp("@I00001@", "OCCU", "\"value\": \"Seaman\", \"match\": { \"value\": \"Seeman\" }")));
+        var replay = RunExpectSuccess(Ops(VitalOp("@I00001@", "OCCU", "\"value\": \"Seaman\", \"match\": { \"value\": \"Seaman\" }")));
+
+        Assert.Equal(["OCCU @I00001@"], CreditedFacts(corrected, "@I00001@"));
+        Assert.Empty(replay.Changes.Biographies);
+    }
+
+    [Fact]
+    public void ANewCitationOnAnExistingCensus_EarnsCredit_ButNewQuotationTextDoesNot()
+    {
+        WriteFileWithNotesOnAllen();
+
+        var cited = RunExpectSuccess(Ops("""
+            { "op": "createOrUpdateCitation", "record": "@I00003@", "fact": "CENS", "match": { "date": "1930" },
+              "citations": [ { "source": "@S00001@", "page": "Sheet 4" } ] }
+            """));
+        var quoted = RunExpectSuccess(Ops("""
+            { "op": "createOrUpdateCitation", "record": "@I00003@", "fact": "CENS", "match": { "date": "1930" },
+              "citations": [ { "source": "@S00001@", "page": "Sheet 4", "dataText": "Nellie Test, 32", "quay": 3 } ] }
+            """));
+
+        Assert.Equal(["CENS @I00003@"], CreditedFacts(cited, "@I00003@"));
+        Assert.Empty(quoted.Changes.Biographies);
+    }
+
+    [Fact]
+    public void ACitedFamilyFact_CreditsBothPartners_ButAMarriageIsTheEnrichCards()
+    {
+        WriteFileWithNotesOnAllen();
+
+        var result = RunExpectSuccess(Ops(
+            VitalOp("@F00002@", "DIV", "\"date\": \"1960\""),
+            VitalOp("@F00003@", "MARR", "\"date\": \"1965\"")));
+
+        Assert.Equal(["DIV @F00002@"], CreditedFacts(result, "@I00001@"));
+        Assert.Equal(["DIV @F00002@"], CreditedFacts(result, "@I00004@"));
+    }
+
+    [Fact]
+    public void ACitedFact_ClosesTheBiographyCard_NamingWhatItWrote()
+    {
+        WriteFileWithNotesOnAllen();
+
+        var result = RunExpectSuccess(Ops(VitalOp("@I00001@", "IMMI", "\"date\": \"1950\", \"place\": \"New York\"")));
+
+        var preview = GedCore.Points.CardScorer.Preview([new GedCore.Points.PointsCard("@I00001@", "biography", null, null, 3)], result.Changes);
+        Assert.Equal("cited IMMI @I00001@", Assert.Single(preview.Closed).Wrote);
+    }
 }

@@ -4,12 +4,13 @@ using GedCore.Apply;
 namespace GedCore.Points;
 
 /// <summary>
-/// Decides which cards a changeset closes by what it wrote to the tree. An enrich
-/// card closes only when the fact it names was written on its subject; a card naming no
+/// Decides which cards a changeset closes by what it wrote to the tree. An enrich card pays for a birth, death or
+/// marriage only: a card naming one of them closes only when that fact was written on its subject; a card naming no
 /// single fact is the deal's Enrich person card and pays its points for each gap the deal listed that the
 /// changeset closed; a new-parent, new-spouse or new-child card closes only when the family gained that
-/// relative, allocated one-to-one by <see cref="NewRelativeCardAllocator"/>; a biography card closes when a
-/// biography note on its subject gained a citation, at most once per person; a changeset that renames a
+/// relative, allocated one-to-one by <see cref="NewRelativeCardAllocator"/>; a biography card closes when its subject's
+/// biography gained new information (a biography note's new citation or text, or a cited fact beyond birth, death and
+/// marriage added, improved or corrected), at most once per person; a changeset that renames a
 /// card's subject closes nothing for it, and a card the deal withholds is never closed.
 /// </summary>
 public static class CardScorer
@@ -31,16 +32,11 @@ public static class CardScorer
         public string? WithheldReason(PointsCard card, string? family) => null;
     }
 
-    // Gaps asking for a citation, a grade or a ruling rather than a new fact: any touch of the subject closes them.
-    static readonly Regex NonFactGap = new("citation|verif|quay|classif|conflict|uncited", RegexOptions.Compiled);
-
     static readonly (Regex Gap, string Tag)[] GapTags =
     [
         (new Regex("birth|born", RegexOptions.Compiled), "BIRT"),
         (new Regex("death|died", RegexOptions.Compiled), "DEAT"),
         (new Regex("marriage|married", RegexOptions.Compiled), "MARR"),
-        (new Regex("burial|buri", RegexOptions.Compiled), "BURI"),
-        (new Regex("name", RegexOptions.Compiled), "NAME"),
     ];
 
     /// <param name="deal">The deal on the tree before and after the changeset; without it no Enrich person gap is known to have closed.</param>
@@ -66,7 +62,7 @@ public static class CardScorer
                 continue;
             }
 
-            if (CardText.Normalize(card.Class) == "enrich-person" && !NamesTheSubject(card) && RenamedAway(card, changes) is { } appliedName)
+            if (CardText.Normalize(card.Class) == "enrich-person" && RenamedAway(card, changes) is { } appliedName)
             {
                 mismatches.Add(new SubjectMismatch(card.Key, card.Name!, appliedName));
                 Open(card, $"the changeset renames the subject to \"{appliedName}\"");
@@ -113,37 +109,40 @@ public static class CardScorer
         CardText.Normalize(card.Class) switch
         {
             "enrich-person" => CloseEnrich(card, changes, deal, paidGaps),
-            BiographyClass => CloseBiography(card, changes),
+            BiographyClass => CloseBiography(card, changes, deal),
             _ => Closure.Open($"unknown card class \"{card.Class}\""),
         };
 
-    static Closure CloseBiography(PointsCard card, TreeChanges changes) =>
-        changes.Biographies.FirstOrDefault(b => b.Record == card.Xref) is { } write
-            ? Closure.Closes(write.NewCitations.Count > 0
-                ? $"biography note on {card.Xref} citing {string.Join("; ", write.NewCitations)}"
-                : $"biography note on {card.Xref} with text none of its notes carried")
-            : Closure.Open("no biography note on the subject added text or a citation (source and page) its notes did not already carry");
+    // An exact burial that stands for the death is paid by the Enrich person card as the death, so it is not biography too.
+    static Closure CloseBiography(PointsCard card, TreeChanges changes, ICardDeal deal)
+    {
+        var write = changes.Biographies.FirstOrDefault(b => b.Record == card.Xref);
+        if (write is not null && write.Facts.Any(f => f.Tag == "BURI") && deal.ClosedEnrichGaps(card.Xref).Any(g => g.Tag == "DEAT"))
+            write = write with { Facts = [.. write.Facts.Where(f => f.Tag != "BURI")] };
+        return write is not null && (write.NewCitations.Count > 0 || write.NewText || write.Facts.Count > 0)
+            ? Closure.Closes(string.Join("; ", BiographyWrote(card.Xref, write)))
+            : Closure.Open("no biography note on the subject added text or a citation (source and page) its notes did not already carry, " +
+                           "and no cited fact beyond birth, death and marriage was added, improved or corrected on the subject or their family");
+    }
+
+    static IEnumerable<string> BiographyWrote(string xref, BiographyWrite write)
+    {
+        if (write.NewCitations.Count > 0) yield return $"biography note on {xref} citing {string.Join("; ", write.NewCitations)}";
+        else if (write.NewText) yield return $"biography note on {xref} with text none of its notes carried";
+        if (write.Facts.Count > 0) yield return $"cited {string.Join(", ", write.Facts)}";
+    }
 
     static Closure ToClosure(NewRelativeOutcome outcome) =>
         outcome.Wrote is not null ? Closure.Closes(outcome.Wrote, outcome.Added) : Closure.Open(outcome.Reason!);
 
-    static bool NamesTheSubject(PointsCard card) => card.Gap is not null && ReadTag(CardText.Normalize(card.Gap)) == "NAME";
-
     static Closure CloseEnrich(PointsCard card, TreeChanges changes, ICardDeal deal, Dictionary<EnrichGap, string> paidGaps)
     {
         string gap = CardText.Normalize(card.Gap ?? "");
-        if (gap.Length > 0 && NonFactGap.IsMatch(gap))
-            return WroteOnSubject(card, changes) ? Closure.Closes($"touched {card.Xref}") : Closure.Open("the changeset does not touch the subject");
-
         if (IsGenericGap(gap)) return CloseListedGaps(card, changes, deal, paidGaps);
 
+        // An Enrich person card pays for a birth, death or marriage only; any other gap names nothing it pays for.
         if (!TryReadGap(card.Gap, out string tag, out string? part))
-            return Closure.Open($"the card's gap \"{card.Gap}\" does not name a birth, death, marriage, burial or name fact");
-
-        if (tag == "NAME")
-            return changes.Names.TryGetValue(card.Xref, out var renamed) && renamed.After is not null
-                ? Closure.Closes($"NAME {card.Xref}")
-                : Closure.Open("no NAME written on the subject");
+            return Closure.Open($"the card's gap \"{card.Gap}\" does not name a birth, death or marriage fact");
 
         var onSubject = changes.Facts.Where(f => WrittenOnSubject(f, card.Xref, changes)).ToList();
         var match = onSubject.FirstOrDefault(f => f.Tag == tag && Carries(f, part));
@@ -188,10 +187,6 @@ public static class CardScorer
             fact.DateImproved ? $"{fact.DateImprovement.ToString().ToLowerInvariant()} date" : null,
             fact.PlaceImproved ? "place" : null, fact.CitationImproved ? "citation" : null,
         }.OfType<string>());
-
-    static bool WroteOnSubject(PointsCard card, TreeChanges changes) =>
-        changes.Touched.Contains(card.Xref)
-        || changes.Families.Any(f => f.Value.Partners.Contains(card.Xref) && changes.Touched.Contains(f.Key));
 
     static bool WrittenOnSubject(FactWrite fact, string subject, TreeChanges changes) =>
         fact.Record == subject
