@@ -1645,7 +1645,7 @@ public class TargetDrawerTests
     }
 
     [Fact]
-    public void Draw_DiscardsSecondLegendary_WithNoBackfill()
+    public void Draw_DiscardsSecondLegendary_AndComesUpShortOnlyWhenThePoolRunsOut()
     {
         var pool = new List<SelectionTarget>
         {
@@ -1657,6 +1657,89 @@ public class TargetDrawerTests
         Assert.Single(result.Targets);
         Assert.Equal(DifficultyBand.Legendary, result.Targets[0].Difficulty.Band);
         Assert.Single(result.LegendaryDiscards);
+    }
+
+    [Fact]
+    public void Draw_FillsASeatPassedOverAtTheLegendaryCapWithTheNextPersonDrawn()
+    {
+        var pool = new List<SelectionTarget>
+        {
+            MakeTarget("@L1@", DifficultyBand.Legendary), MakeTarget("@L2@", DifficultyBand.Legendary),
+            MakeTarget("@L3@", DifficultyBand.Legendary), MakeTarget("@C1@", DifficultyBand.Common),
+            MakeTarget("@C2@", DifficultyBand.Common),
+        };
+
+        for (int seed = 0; seed < 200; seed++)
+        {
+            var result = TargetDrawer.Draw(pool, people: 3, seed);
+
+            Assert.Equal(3, result.Targets.Select(t => t.Xref).Distinct().Count());
+            Assert.Single(result.Targets, t => t.Difficulty.Band == DifficultyBand.Legendary);
+        }
+    }
+
+    [Fact]
+    public void Draw_FavorsAPersonByTheirWeight()
+    {
+        var pool = new List<SelectionTarget> { MakeTarget("@I1@", DifficultyBand.Common), MakeTarget("@I2@", DifficultyBand.Common) };
+        var weights = new Dictionary<string, int> { ["@I2@"] = 4 };
+
+        int heavier = Enumerable.Range(0, 2000).Count(seed => TargetDrawer.Draw(pool, people: 1, seed, weights).Targets[0].Xref == "@I2@");
+
+        // Weight 4 against 1 draws @I2@ about 80% of the time; uniform odds would give 50%.
+        Assert.InRange(heavier, 1450, 1750);
+    }
+
+    [Fact]
+    public void Draw_SeatsAtMostTwoEnrichOnlyPeople_WhileOthersWithARelationshipCardRemain()
+    {
+        var pool = Enumerable.Range(0, 6).Select(i => MakeTarget($"@E{i}@", DifficultyBand.Common, "Enrich person"))
+            .Concat(Enumerable.Range(0, 3).Select(i => MakeTarget($"@R{i}@", DifficultyBand.Common, i == 0 ? "New child" : "New spouse")))
+            .ToList();
+
+        for (int seed = 0; seed < 200; seed++)
+        {
+            var people = TargetDrawer.Draw(pool, people: 5, seed).Targets.Select(t => t.Xref).Distinct().ToList();
+
+            Assert.Equal(5, people.Count);
+            Assert.Equal(TargetDrawer.EnrichOnlyPeoplePerPack, people.Count(x => x.StartsWith("@E")));
+        }
+    }
+
+    [Fact]
+    public void Draw_FillsSeatsWithEnrichOnlyPeople_WhenNoOneElseRemains()
+    {
+        var pool = Enumerable.Range(0, 5).Select(i => MakeTarget($"@E{i}@", DifficultyBand.Common, "Enrich person"))
+            .Append(MakeTarget("@R1@", DifficultyBand.Common, "New spouse"))
+            .ToList();
+
+        var people = TargetDrawer.Draw(pool, people: 4, seed: 11).Targets.Select(t => t.Xref).Distinct().ToList();
+
+        Assert.Equal(4, people.Count);
+        Assert.Contains("@R1@", people);
+    }
+
+    [Fact]
+    public void DrawPack_WeighsAPersonByTheCardsEnrichmentWouldUnlock()
+    {
+        var bare = new GedIndividual { Xref = "@I1@", FirstName = "Ada", LastNameRaw = "Ashworth", IsMale = true };
+        var anchored = new GedIndividual
+        {
+            Xref = "@I2@", FirstName = "Eli", LastNameRaw = "Ashworth", IsMale = true,
+            Birth = new GedEvent { Tag = "BIRT", Date = "ABT 1850", Place = "Salem, Oregon" },
+        };
+        var model = new GedModel();
+        model.Individuals["@I1@"] = bare;
+        model.Individuals["@I2@"] = anchored;
+        var suppressed = new List<SuppressedCard>();
+        var gaps = GapDetector.DetectForPeople([bare, anchored], suppressed);
+
+        // The bare man's New parent and New spouse wait on an anchor, so he is drawn about three times as often.
+        Assert.All(suppressed, card => Assert.True(card.UnlocksOnEnrichment));
+        Assert.Equal(2, suppressed.Count(card => card.Xref == "@I1@"));
+        int bareDrawn = Enumerable.Range(0, 2000)
+            .Count(seed => TargetDrawer.DrawPack(model, gaps, people: 1, seed, suppressed).Targets[0].Xref == "@I1@");
+        Assert.InRange(bareDrawn, 1350, 1650);
     }
 
     [Fact]

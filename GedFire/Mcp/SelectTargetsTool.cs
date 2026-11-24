@@ -24,13 +24,16 @@ public sealed class SelectTargetsTool
         "Draw research targets from this server's GEDCOM: people with a missing fact or relationship (a " +
         "missing parent, spouse, or child, or a date or place that is not exact) among the people who bear, or " +
         "are married to someone who bears, one of the given surnames. Draws \"people\" people at random from " +
-        "those with at least one gap and returns every card that pays for each of them, kept together: one " +
+        "those with at least one gap (a person whose withheld cards wait only on an anchor enrichment would write is " +
+        "weighted by one more for each such card, since enriching them also unlocks those cards) and returns every card that pays for each of them, kept together: one " +
         "target per eligible gap (a married person gets no New spouse card, a person with both parents no New " +
         "parent card), then, for a man, his Biography card. Each target has its gap type, difficulty band, points, and the facts needed to " +
         "start work (an Enrich person target is one card per person: \"enrichments\" lists every birth, " +
         "marriage and death whose date or place is not exact or that has no citation, nominalPoints is one per missing date, place or citation (a fact with no citation misses one whatever its date and place), and " +
         "the difficulty bonus is added once; a BET range of 12 months or less cited at QUAY 2 or higher is not a missing date; validate_changeset's pointsPreview pays the card by this same rule, one point for each listed part a changeset fills), including possibleDuplicateOf (the best few people the duplicate test pairs with the target) and possibleDuplicateCount; the " +
-        "draw keeps at most one person with Legendary-band cards (that person may hold several), discarding later such people whole, so a pack can come up short. " +
+        "draw keeps at most one person with Legendary-band cards (that person may hold several); a later such person is passed over whole and the next person drawn takes the seat. " +
+        "It also seats at most two people whose only gap card is Enrich person while people with a New parent, New spouse or New child card remain, " +
+        "setting the rest aside to fill only seats no one else can, so a pack comes up short only when the pool runs out. " +
         "A family's New child card and marriage enrichment sit on one spouse only. This is " +
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
         "never drawn. Pass xrefs instead of people and surnames to skip the draw and score exactly those " +

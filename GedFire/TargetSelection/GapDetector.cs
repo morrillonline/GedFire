@@ -9,6 +9,10 @@ public sealed record SuppressedCard(string Xref, string Name, string CardType, s
     /// <summary>The study scope withheld the card; such a card cannot be forced, and a draw reports it only for the people drawn.</summary>
     [JsonIgnore]
     public bool OutOfScope { get; init; }
+
+    /// <summary>The card waits only on an anchor (an exact date or a place) that enriching the subject would write.</summary>
+    [JsonIgnore]
+    public bool UnlocksOnEnrichment { get; init; }
 }
 
 /// <summary>
@@ -181,7 +185,10 @@ public static class GapDetector
             !person.OtherEvents.Any(gedEvent => gedEvent.Tag is "CHR" or "BAPM" or "BURI" && HasAnchor(gedEvent)));
 
     static bool SuppressBareSubject(GedIndividual person, CardType cardType, Withholding withholding) =>
-        IsBareBones(person) && withholding.Withhold(person, cardType, "bare-bones subject \u2014 enrich first");
+        IsBareBones(person) && withholding.Withhold(person, cardType, "bare-bones subject" + EnrichFirst);
+
+    // The ending of a reason an anchor written by enrichment would lift.
+    const string EnrichFirst = " \u2014 enrich first";
 
     /// <summary>Reports each card a rule withholds. The owner can force a card past every rule but the study scope.</summary>
     sealed class Withholding(ICollection<SuppressedCard>? reported, GapRules rules)
@@ -190,7 +197,10 @@ public static class GapDetector
         public bool Withhold(GedIndividual person, CardType cardType, string reason)
         {
             if (rules.IncludeSuppressed) return false;
-            reported?.Add(new SuppressedCard(person.Xref, DisplayName(person), cardType.Display(), reason));
+            reported?.Add(new SuppressedCard(person.Xref, DisplayName(person), cardType.Display(), reason)
+            {
+                UnlocksOnEnrichment = reason.EndsWith(EnrichFirst, StringComparison.Ordinal),
+            });
             return true;
         }
 
@@ -317,7 +327,7 @@ public static class GapDetector
     static string? NewChildWithheldReason(GedFamily fam, NewChildLimits limits)
     {
         if (IsBareBones(fam.Husband) && IsBareBones(fam.Wife) && !HasAnchor(fam.Marriage))
-            return "bare-bones family (both spouses and marriage lack anchors) \u2014 enrich first";
+            return "bare-bones family (both spouses and marriage lack anchors)" + EnrichFirst;
         if (EarlierMarriageChildren.AllPredate(fam)) return EarlierMarriageChildren.Reason;
         return ChildlessCouple.WithholdReason(fam, limits);
     }

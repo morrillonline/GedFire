@@ -229,9 +229,16 @@ bound a missing vital. Missing kin, notes, or duplicates produce empty arrays.
 gap card for study `surnames`, and returns every card that pays for each of
 them, kept together: one card per eligible gap (a married person gets no New
 spouse card, a person with both parents no New parent card), then, for a man,
-his Biography card. A pack holds at most one person with Legendary-band cards,
-who may hold several; later such people are discarded whole, so a pack can
-hold fewer people than asked. A family's New child card and marriage
+his Biography card. A person's odds are weighted by one, plus one for each of
+their cards withheld only until enrichment writes an anchor (the `— enrich
+first` reasons): enriching that person also unlocks those cards for a later
+pack. A pack holds at most one person with Legendary-band cards, who may hold
+several; a later such person is passed over whole and the next person drawn
+takes the seat. A pack also seats at most two people whose only gap card is
+Enrich person while people holding a New parent, New spouse, or New child card
+remain: an enrichment pays a few points, a new relative many more. Those set
+aside fill only seats no one else can, so a pack holds fewer people than asked
+only when the pool runs out. A family's New child card and marriage
 enrichment sit on one spouse only. The result is `wanted.json`-shaped, without
 the GEDCOM path; `count` in it is the number of cards, and `totalCandidates`
 the gap cards before the draw. The clock seeds the draw. The CLI's
