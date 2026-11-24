@@ -20,9 +20,10 @@ public sealed record SuppressedCard(string Xref, string Name, string CardType, s
 public static class GapDetector
 {
     /// <summary>
-    /// No person born within this many years of today is ever surfaced as a
-    /// target, regardless of card type — a hard privacy floor with no CLI
-    /// override. Unknown birth years are not gated because a missing birth
+    /// No person born within this many years of today is surfaced by a
+    /// surname draw, regardless of card type — a privacy floor with no CLI
+    /// override. A person the owner names is scored whenever born. Unknown
+    /// birth years are not gated because a missing birth
     /// date is treated consistently with other unknown dates and places.
     /// </summary>
     const int PrivacyFloorYears = 100;
@@ -80,26 +81,20 @@ public static class GapDetector
     /// <summary>
     /// Score exactly <paramref name="people"/>, in order, with no surname
     /// filter: the caller has already nominated each person, so every gap
-    /// rule runs for each of them. The privacy floor still applies.
+    /// rule runs for each of them. The privacy floor does not apply: it keeps
+    /// the living out of a random draw, not out of a person the owner names.
     /// </summary>
-    public static List<SelectionTarget> DetectForPeople(IEnumerable<GedIndividual> people, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null) =>
-        DetectForPeople(people, DateTime.UtcNow.Year, suppressedCards, rules);
-
-    /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
     public static List<SelectionTarget> DetectForPeople(
-        IEnumerable<GedIndividual> people, int currentYear, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null)
+        IEnumerable<GedIndividual> people, ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null)
     {
         rules ??= GapRules.Default;
         var withholding = new Withholding(suppressedCards, rules);
-        int privacyFloorYear = currentYear - PrivacyFloorYears;
         var targets = new List<SelectionTarget>();
         var newChildFamiliesSeen = new HashSet<string>();
         var marriageEnrichFamiliesSeen = new HashSet<string>();
 
         foreach (var person in people)
         {
-            if (IsWithinPrivacyFloor(person, privacyFloorYear)) continue;
-
             DetectNewParent(person, targets, withholding);
             DetectNewSpouse(person, targets, withholding);
             DetectNewChild(person, _ => true, newChildFamiliesSeen, targets, withholding, rules.NewChild);
@@ -119,7 +114,8 @@ public static class GapDetector
     // Biography — not a gap: one repeatable card per man for his cited
     // biography beyond birth, death and marriage (facts and prose), open even
     // when it exists. A drawn man gets it
-    // only beside another of his cards; a man the owner names gets it alone.
+    // only beside another of his cards; a man the owner names gets it alone,
+    // whenever he was born.
     // Priced like enrichment: era and region of the person's own birth, no
     // anchor-strength adjustment.
     // -------------------------------------------------------------------
@@ -132,44 +128,44 @@ public static class GapDetector
 
     /// <summary>
     /// Every card that pays for each of <paramref name="people"/>, in order: the person's <paramref name="gapCards"/>,
-    /// then, for a man with at least one of them, his Biography card.
+    /// then, for a man with at least one of them outside the privacy floor, his Biography card.
     /// </summary>
     public static List<SelectionTarget> WithBiographyCards(
         IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards,
         ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null) =>
-        WithBiographyCards(people, gapCards, biographyAlone: false, new Withholding(suppressedCards, rules ?? GapRules.Default));
+        WithBiographyCards(people, gapCards, named: false, new Withholding(suppressedCards, rules ?? GapRules.Default));
 
     /// <summary>
     /// Every card that pays for each of the named <paramref name="people"/>, in order: the person's <paramref name="gapCards"/>,
-    /// then, for a man, his Biography card, even when he has no other card.
+    /// then, for a man, his Biography card, even when he has no other card and whenever he was born.
     /// </summary>
     public static List<SelectionTarget> WithNamedBiographyCards(
         IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards,
         ICollection<SuppressedCard>? suppressedCards = null, GapRules? rules = null) =>
-        WithBiographyCards(people, gapCards, biographyAlone: true, new Withholding(suppressedCards, rules ?? GapRules.Default));
+        WithBiographyCards(people, gapCards, named: true, new Withholding(suppressedCards, rules ?? GapRules.Default));
 
     static List<SelectionTarget> WithBiographyCards(
-        IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards, bool biographyAlone, Withholding withholding)
+        IEnumerable<GedIndividual> people, IReadOnlyList<SelectionTarget> gapCards, bool named, Withholding withholding)
     {
         var byPerson = gapCards.ToLookup(c => c.Xref, StringComparer.Ordinal);
-        return [.. people.SelectMany(person => biographyAlone || byPerson[person.Xref].Any()
-            ? byPerson[person.Xref].Concat(BiographyCards([person], DateTime.UtcNow.Year, withholding))
+        int? privacyFloorYear = named ? null : DateTime.UtcNow.Year - PrivacyFloorYears;
+        return [.. people.SelectMany(person => named || byPerson[person.Xref].Any()
+            ? byPerson[person.Xref].Concat(BiographyCards([person], privacyFloorYear, withholding))
             : [])];
     }
 
     /// <summary>Overload taking the current year explicitly, so the privacy floor is testable without a clock.</summary>
     public static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people, int currentYear) =>
-        BiographyCards(people, currentYear, new Withholding(null, GapRules.Default));
+        BiographyCards(people, currentYear - PrivacyFloorYears, new Withholding(null, GapRules.Default));
 
-    static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people, int currentYear, Withholding withholding)
-    {
-        int privacyFloorYear = currentYear - PrivacyFloorYears;
-        return [.. people
-            .Where(person => person.IsMale && !IsWithinPrivacyFloor(person, privacyFloorYear)
+    // A null privacyFloorYear deals a card to a man whenever he was born.
+    static List<SelectionTarget> BiographyCards(IEnumerable<GedIndividual> people, int? privacyFloorYear, Withholding withholding) =>
+        [.. people
+            .Where(person => person.IsMale
+                && !(privacyFloorYear is { } floor && IsWithinPrivacyFloor(person, floor))
                 && !withholding.OutOfScope(person, CardType.Biography))
             .Select(person => BuildTarget(person, CardType.Biography, BiographyPoints, DifficultyScore.Compute(
                 EraWeightForDate(BiographyEraDate(person)), ExactnessRules.GeographyWeight(person.Birth?.Place), contextAdjustment: 0)))];
-    }
 
     // The person's birth, else the first of death and marriage that is dated, as enrichment falls back.
     static string? BiographyEraDate(GedIndividual person) =>

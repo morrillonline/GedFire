@@ -360,9 +360,32 @@ public class SelectTargetsToolTests : IDisposable
         Assert.Equal(["New spouse", "Enrich person", "Biography"], cardTypes);
     }
 
+    [Fact]
+    public async Task Xrefs_AManBornWithinTheLastHundredYears_IsScoredLikeAnyoneNamed()
+    {
+        const string ged = """
+            0 HEAD
+            1 GEDC
+            2 VERS 5.5.1
+            0 @I1@ INDI
+            1 NAME Ada /Ashworth/
+            1 SEX M
+            1 BIRT
+            2 DATE 15 MAR 1990
+            0 TRLR
+            """;
+
+        var result = await CallXrefs(new SelectTargetsTool(_sessions.Open(ged), new ToolGate()), "[\"@I1@\"]");
+
+        var root = result.StructuredContent!.Value;
+        var cardTypes = root.GetProperty("targets").EnumerateArray().Select(t => t.GetProperty("cardType").GetString()!).ToList();
+        Assert.Contains("Enrich person", cardTypes);
+        Assert.Contains("Biography", cardTypes);
+        Assert.Equal(0, root.GetProperty("xrefsWithoutGaps").GetArrayLength());
+    }
+
     [Theory]
     [InlineData("F", "15 MAR 1820", "2 FEB 1890")]   // a woman with no gap
-    [InlineData("M", "15 MAR 1990", "2 FEB 2020")]   // a man inside the privacy floor
     public async Task Xrefs_PersonWhoGetsNoCardAtAll_IsNamedInXrefsWithoutGaps(string sex, string born, string died)
     {
         string ged = $"""

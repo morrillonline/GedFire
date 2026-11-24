@@ -235,14 +235,17 @@ hold fewer people than asked. A family's New child card and marriage
 enrichment sit on one spouse only. The result is `wanted.json`-shaped, without
 the GEDCOM path; `count` in it is the number of cards, and `totalCandidates`
 the gap cards before the draw. The clock seeds the draw. The CLI's
-`select-targets --count` is the same number of people.
+`select-targets --count` is the same number of people. The draw never surfaces
+anyone born within the last 100 years (the privacy floor); a person with no
+birth year is not held back.
 Alternatively, pass `xrefs` instead of people and surnames to score specified
-people the same way, deterministically. A named man also gets his Biography
-card when he has no other gap. `xrefsWithoutGaps` names the people who get no
-card at all, such as a woman with no gap or anyone inside the privacy floor,
-and `draw.seed` is null. An unknown xref is an error.
+people the same way, deterministically. The privacy floor does not apply to a
+person you name, and `research_brief` scores its person the same way. A named
+man also gets his Biography card when he has no other gap. `xrefsWithoutGaps`
+names the people who get no card at all, such as a woman with no gap, and
+`draw.seed` is null. An unknown xref is an error.
 
-- A man outside the privacy floor gets one `Biography` card: in the draw, only
+- A man gets one `Biography` card: in the draw, only
   beside another of his cards; with `xrefs`, always. Women get none. It
   stays open for people with complete vitals or existing prose, and pays again
   for each later changeset that adds new information: a new citation or new text

@@ -33,10 +33,9 @@ public sealed class SelectTargetsTool
         "draw keeps at most one person with Legendary-band cards (that person may hold several), discarding later such people whole, so a pack can come up short. " +
         "A family's New child card and marriage enrichment sit on one spouse only. This is " +
         "the same draw as the gedfire select-targets command. People born within the last 100 years are " +
-        "never selected. Pass xrefs instead of people and surnames to skip the draw and score exactly those " +
-        "people the same way: the result is " +
-        "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that got no card at all (a woman with no gap, " +
-        "or anyone born within the last 100 years). " +
+        "never drawn. Pass xrefs instead of people and surnames to skip the draw and score exactly those " +
+        "people the same way, whenever they were born: the result is " +
+        "deterministic, draw.seed is null, and xrefsWithoutGaps names the people that got no card at all (such as a woman with no gap). " +
         "A Biography target is a repeatable card for a man's biography beyond birth, death and marriage (service, occupation, " +
         "census, residence, migration, probate, a divorce...): in the draw it is offered only beside another of his cards, while a man named in xrefs gets it even with no other gap; " +
         "it is open even when prose exists; nominalPoints 3 plus the enrichment difficulty bonus (birth era and region), paid " +
@@ -138,7 +137,7 @@ public sealed class SelectTargetsTool
             "xrefsWithoutGaps": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Only with xrefs: the input xrefs that got no card at all. A named man outside the privacy floor always gets at least his Biography card."
+              "description": "Only with xrefs: the input xrefs that got no card at all. A named man always gets at least his Biography card."
             },
             "draw": {
               "type": "object",
